@@ -8,3 +8,5 @@ __pycache__/
 *.sqlite
 .pytest_cache/
 .DS_Store
+*.db-shm
+*.db-wal
