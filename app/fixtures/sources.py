@@ -1,25 +1,18 @@
-"""Adapters to the outside world, behind small interfaces so real providers drop in later.
-
-* LeadSource: seeded prospect dataset (Apollo / Sales Navigator / Clay would plug in here).
-* ResearchProvider: Gemini with Google Search grounding when available, seeded corpus otherwise.
-* Publisher / Sender: mock implementations; only reachable from human-approved actions.
-"""
+"""Synthetic sources used only with mock models (tests, load test, labelled demo): a fictional prospect
+dataset and a canned web corpus. Real runs use app.integrations instead and never touch this module."""
 from __future__ import annotations
 
 import json
-import logging
 import re
 import zlib
-from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from app.adapters.data.web_corpus import PAGES
-from app.core.config import get_settings
+from app.fixtures.web_corpus import PAGES
+from app.integrations.search import SearchHit, SearchResponse
 
-log = logging.getLogger(__name__)
-DATA = Path(__file__).parent / "data"
+DATA = Path(__file__).parent
 
 # Fields the dataset keeps for evals only. Agents must never see them.
 _HIDDEN_FIELDS = {"_case", "vertical"}
@@ -117,44 +110,22 @@ class SeededCorpus:
         return any(p["url"] == url for p in PAGES)
 
 
-class ResearchProvider:
-    """Live grounded search first; any failure (quota, outage, open circuit) falls back to the corpus."""
+class FixtureResearch:
+    """Same interface as the live research backend, answering from the canned corpus."""
+    name = "fixture"
+    synthetic = True
 
     def __init__(self):
         self.corpus = SeededCorpus()
-        self.live_disabled_until: float = 0.0
 
-    async def search(self, query: str) -> dict[str, Any]:
-        from app.llm.gateway import get_gateway
-        gw = get_gateway()
-        gemini = gw.providers.get("gemini")
-        now = datetime.now(timezone.utc).timestamp()
-        if gemini is not None and now >= self.live_disabled_until:
-            try:
-                res = await gemini.grounded_search(get_settings().research_model, query)  # type: ignore[attr-defined]
-                if res.get("answer"):
-                    return {"provider": "gemini_search", **res}
-            except Exception as e:  # quota/outage: stop trying for 10 minutes
-                log.warning("grounded search unavailable, using seeded corpus: %s", str(e)[:120])
-                self.live_disabled_until = now + 600
-        return {"provider": "seeded_corpus", "results": self.corpus.search(query)}
+    async def search(self, query: str) -> SearchResponse:
+        hits = [SearchHit(r["title"], r["url"], r["snippet"]) for r in self.corpus.search(query)]
+        return SearchResponse("fixture", query, hits=hits, synthetic=True)
 
+    async def fetch(self, url: str) -> tuple[str, str]:
+        text = self.corpus.fetch(url) or ""
+        title = next((p["title"] for p in PAGES if p["url"] == url), url)
+        return title, text
 
-_research: ResearchProvider | None = None
-
-
-def get_research() -> ResearchProvider:
-    global _research
-    if _research is None:
-        _research = ResearchProvider()
-    return _research
-
-
-class MockPublisher:
-    async def publish(self, tenant_id: str, post_id: str, text: str) -> dict[str, str]:
-        return {"external_id": f"li-post-{post_id}", "status": "published (mock)"}
-
-
-class MockSender:
-    async def send(self, tenant_id: str, message_id: str, to: str, text: str) -> dict[str, str]:
-        return {"external_id": f"li-msg-{message_id}", "status": "sent (mock)"}
+    def may_fetch(self, url: str, allowed: set[str]) -> bool:
+        return self.corpus.allowed(url)

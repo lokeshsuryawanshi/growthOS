@@ -158,7 +158,7 @@ for v, (titles, inds, suffix) in LIGHT.items():
         rows.append(make(f"p{n:04d}", v, f, l, "Junior Analyst" if low else rng.choice(titles), rng.choice(inds), comp, dom,
                          rng.randint(50, 2000), "US", "recently expanded the team", case="low_fit" if low else "fit"))
 
-out = Path(__file__).resolve().parents[1] / "app/adapters/data/prospects.json"
+out = Path(__file__).resolve().parents[1] / "app/fixtures/prospects.json"
 out.write_text(json.dumps(rows, indent=1))
 from collections import Counter
 print(len(rows), "prospects", Counter((r["vertical"], r["_case"]) for r in rows if r["vertical"] in VERTICALS))

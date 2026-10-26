@@ -47,6 +47,7 @@ class Tenant(Base):
     status: Mapped[str] = mapped_column(String(32), default="onboarding")  # onboarding|active|paused
     monthly_budget_usd: Mapped[float] = mapped_column(Float, default=25.0)
     kill_switch: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)   # synthetic fixture client; the UI labels it
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -58,6 +59,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(200))
     role: Mapped[str] = mapped_column(String(32))  # platform_admin|account_manager|client_owner|client_viewer
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Membership(Base):
@@ -85,6 +87,7 @@ class KnowledgeDoc(TenantScoped, Base):
     __tablename__ = "knowledge_docs"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     kind: Mapped[str] = mapped_column(String(32))  # founder_sample|website|intake_note|web_page
+    provider: Mapped[str] = mapped_column(String(32), default="client")  # client|web_fetch|fixture
     source: Mapped[str] = mapped_column(String(500), default="")
     title: Mapped[str] = mapped_column(String(300), default="")
     content: Mapped[str] = mapped_column(Text)
@@ -200,6 +203,7 @@ class Post(TenantScoped, Base):
     text: Mapped[str] = mapped_column(Text)
     hashtags: Mapped[list[Any]] = mapped_column(default=list)
     sources: Mapped[list[Any]] = mapped_column(default=list)
+    claims: Mapped[list[Any]] = mapped_column(default=list)   # each figure with its verbatim source quote
     rationale: Mapped[str] = mapped_column(Text, default="")
     critic_score: Mapped[float] = mapped_column(Float, default=0.0)
     critic_feedback: Mapped[dict[str, Any]] = mapped_column(default=dict)
@@ -211,6 +215,7 @@ class Post(TenantScoped, Base):
     reviewer_note: Mapped[str] = mapped_column(Text, default="")
     decided_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # founder confirmed it was posted
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -232,7 +237,13 @@ class Lead(TenantScoped, Base):
     fit_score: Mapped[int] = mapped_column(Integer, default=0)
     evidence: Mapped[list[Any]] = mapped_column(default=list)
     segment: Mapped[str] = mapped_column(String(120), default="")
-    status: Mapped[str] = mapped_column(String(32), default="qualified")  # qualified|outreach_drafted|contacted|replied|rejected
+    status: Mapped[str] = mapped_column(String(32), default="qualified")  # qualified|prospect|outreach_drafted|contacted|replied|rejected
+    source_url: Mapped[str] = mapped_column(String(500), default="")      # page the company/signal came from
+    source_provider: Mapped[str] = mapped_column(String(32), default="")  # gemini_search|tavily|fixture
+    contact_source: Mapped[str] = mapped_column(String(32), default="")   # hunter|fixture|""
+    email_status: Mapped[str] = mapped_column(String(24), default="")     # valid|accept_all|unknown|invalid|""
+    email_confidence: Mapped[int] = mapped_column(Integer, default=0)
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -254,7 +265,8 @@ class OutreachMessage(TenantScoped, Base):
     __tablename__ = "outreach_messages"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     lead_id: Mapped[str] = mapped_column(ForeignKey("leads.id"), index=True)
-    channel: Mapped[str] = mapped_column(String(32), default="linkedin_dm")
+    channel: Mapped[str] = mapped_column(String(32), default="email")
+    subject: Mapped[str] = mapped_column(String(300), default="")
     text: Mapped[str] = mapped_column(Text)
     alt_text: Mapped[str] = mapped_column(Text, default="")
     personalization: Mapped[str] = mapped_column(Text, default="")
@@ -266,7 +278,25 @@ class OutreachMessage(TenantScoped, Base):
     decided_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    external_id: Mapped[str] = mapped_column(String(120), default="")   # Gmail message id once sent
+    send_error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class IntegrationCredential(TenantScoped, Base):
+    """A connected third-party account (Gmail). Tokens are encrypted at rest."""
+    __tablename__ = "integration_credentials"
+    __table_args__ = (UniqueConstraint("tenant_id", "provider"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    provider: Mapped[str] = mapped_column(String(32))            # gmail
+    account_email: Mapped[str] = mapped_column(String(200), default="")
+    secret_enc: Mapped[str] = mapped_column(Text, default="")    # Fernet(JSON{refresh_token})
+    scopes: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="connected")  # connected|revoked|error
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    connected_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class SuppressionEntry(TenantScoped, Base):

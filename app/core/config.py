@@ -5,14 +5,36 @@ from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+DEV_JWT_SECRET = "dev-only-change-me-0123456789abcdef"
+
+
+class ConfigError(RuntimeError):
+    """The deployment is misconfigured in a way that must stop startup."""
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # --- environment ---------------------------------------------------------
+    # production: real providers only. No fixtures, no mock models, no demo data.
+    # demo / test: fixtures and mock models are allowed (automated tests, load test, labelled local demo).
+    app_env: Literal["production", "demo", "test"] = "production"
+    app_base_url: str = "http://localhost:8000"      # public URL; used for OAuth redirects and secure cookies
+    signup_invite_code: str = ""                      # if set, signup requires it
+    admin_email: str = ""                             # optional platform admin created at startup
+    admin_password: str = ""
+    global_daily_budget_usd: float = 5.0              # hard stop on total model spend per UTC day
 
     # --- providers ---------------------------------------------------------
     groq_api_key: str = ""
     google_api_key: str = ""
+    tavily_api_key: str = ""                          # optional web search
+    hunter_api_key: str = ""                          # optional: business email discovery + verification
+    google_oauth_client_id: str = ""                  # optional: Gmail sending
+    google_oauth_client_secret: str = ""
+    encryption_key: str = ""                          # Fernet key for stored OAuth tokens; derived from JWT_SECRET if empty
     # "live" calls real providers; "mock" uses deterministic offline responders
-    # (tests, CI, stress test). "auto" = live if a Groq key is present.
+    # (tests, load test, demo only). "auto" = live if a Groq key is present.
     llm_mode: Literal["live", "mock", "auto"] = "auto"
 
     # Model routing by tier. Writer and judge are deliberately different families.
@@ -27,7 +49,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./growthos.db"
 
     # --- auth --------------------------------------------------------------
-    jwt_secret: str = "dev-only-change-me-0123456789abcdef"
+    jwt_secret: str = DEV_JWT_SECRET
     jwt_ttl_minutes: int = 12 * 60
 
     # --- concurrency & limits ----------------------------------------------
@@ -43,6 +65,7 @@ class Settings(BaseSettings):
     # --- budgets -----------------------------------------------------------
     default_tenant_monthly_budget_usd: float = 25.0
     default_run_budget_usd: float = 2.0
+    self_serve_monthly_budget_usd: float = 2.0       # budget for accounts created through public signup
     budget_alert_ratio: float = 0.8
 
     # --- business targets --------------------------------------------------
@@ -56,10 +79,45 @@ class Settings(BaseSettings):
     outreach_daily_send_cap: int = 25
 
     @property
+    def fixtures_allowed(self) -> bool:
+        return self.app_env != "production"
+
+    @property
+    def cookie_secure(self) -> bool:
+        return self.app_base_url.startswith("https://")
+
+    @property
     def effective_llm_mode(self) -> str:
-        if self.llm_mode == "auto":
-            return "live" if self.groq_api_key else "mock"
-        return self.llm_mode
+        """live | mock | unconfigured. Production never falls back to mock."""
+        if self.llm_mode == "mock":
+            if not self.fixtures_allowed:
+                raise ConfigError("LLM_MODE=mock is only allowed when APP_ENV is 'demo' or 'test'")
+            return "mock"
+        if self.groq_api_key:
+            return "live"
+        if self.llm_mode == "auto" and self.fixtures_allowed:
+            return "mock"
+        return "unconfigured"
+
+    @property
+    def uses_fixture_sources(self) -> bool:
+        """Seeded research/prospects are used if and only if the models are mocked too."""
+        return self.fixtures_allowed and self.effective_llm_mode == "mock"
+
+    def validate_runtime(self) -> list[str]:
+        """Fatal problems stop startup; warnings are returned for logging and the integrations page."""
+        if self.app_env == "production":
+            if self.jwt_secret == DEV_JWT_SECRET or len(self.jwt_secret) < 32:
+                raise ConfigError("JWT_SECRET must be set to a random value of at least 32 characters in production "
+                                  "(generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\")")
+            if self.llm_mode == "mock":
+                raise ConfigError("LLM_MODE=mock is not allowed in production")
+        warnings = []
+        if self.effective_llm_mode == "unconfigured":
+            warnings.append("GROQ_API_KEY is not set: research and drafting are unavailable until it is.")
+        if self.app_env == "production" and not self.app_base_url.startswith("https://"):
+            warnings.append("APP_BASE_URL is not https: session cookies are not marked Secure.")
+        return warnings
 
 
 # USD per 1M tokens (input, output). Approximate list prices; verify against

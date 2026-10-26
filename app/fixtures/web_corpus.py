@@ -104,3 +104,28 @@ PAGES: list[dict] = [
      "tags": ["design", "saas", "product", "trends", "pixelpine"],
      "text": "B2B buyers expect consumer-grade onboarding. Teams that show value before sign-up see higher activation."},
 ]
+
+
+# ---- one fictional competitor page per fixture competitor that has no hand-written page --------------------------
+def _competitor_pages() -> list[dict]:
+    import re
+    from app.fixtures.clients import CLIENTS
+    have = " ".join((p["title"] + p["url"]).lower().replace(" ", "") for p in PAGES)
+    out = []
+    for c in CLIENTS:
+        for name in c["intake"].get("known_competitors", []):
+            key = name.lower().replace(" ", "")
+            if key in have:
+                continue
+            slug = re.sub(r"[^a-z0-9]+", "", name.lower())
+            out.append({"id": f"comp-{slug}", "url": f"https://www.{slug}.example/about", "title": f"{name} | {c['industry'].split(':')[0]}",
+                        "tags": [slug, "competitor", c["slug"]],
+                        "text": f"{name} sells to the same buyers as {c['name']}, mostly through direct sales. "
+                                f"Content focus: product announcements and occasional customer stories. "
+                                f"The company publishes about twice a month and the founder rarely posts. "
+                                f"Customers praise onboarding speed; reviewers mention limited reporting."})
+            have += key
+    return out
+
+
+PAGES.extend(_competitor_pages())
