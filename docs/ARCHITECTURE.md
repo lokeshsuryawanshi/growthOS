@@ -22,7 +22,9 @@ flowchart TB
   HUM --> OUT[Founder copies post to LinkedIn<br/>or Gmail sends approved email]
 ```
 
-## 2. The two workflows (DAGs)
+## 2. The workflows (DAGs)
+
+The founder-facing product runs **content** (posts and calendar) and **leads** (search and outreach) as two independent runs with separate buttons; they may overlap and share no nodes. The original all-in-one `weekly` run is kept for the agency console. Discovery is exclusive.
 
 ```mermaid
 flowchart LR

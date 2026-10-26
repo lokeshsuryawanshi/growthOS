@@ -1,7 +1,7 @@
 {# expects: run (Run), nodes (list), labels (dict), tenant, me, can_retry #}
 {% set active = run.status in ('pending', 'running') %}
 <section class="panel stack" id="run-{{ run.id }}" {% if active %}hx-get="/ui/{{ tenant.id }}/runs/{{ run.id }}/progress" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
-  <div class="row"><h2>{{ 'Research and strategy' if run.kind == 'discovery' else 'Weekly content and leads' }}</h2>
+  <div class="row"><h2>{{ run_titles.get(run.kind, run.kind) }}</h2>
     <span class="pill {{ run.status }}">{% if active %}<span class="dot"></span> {% endif %}{{ run.status.replace('_', ' ') }}</span>
     <span class="spacer"></span><span class="sub num">started {{ run.created_at.strftime('%H:%M:%S') }}</span></div>
   {% if usage %}

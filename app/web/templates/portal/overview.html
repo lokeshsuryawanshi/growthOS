@@ -19,5 +19,5 @@
 </section>
 {% include "partials/kpis.html" %}
 {% if k.leads_total == 0 and k.posts_pending == 0 and k.posts_approved_total == 0 %}
-<div class="flash"><div>Your numbers appear here once the first weekly cycle has run. Targets: <b>{{ k.targets.posts_per_week }}+ posts/week</b>, <b>{{ k.targets.calendar_weeks }} weeks</b> planned ahead, <b>{{ k.targets.leads_per_week[0] }}–{{ k.targets.leads_per_week[1] }} leads/week</b>.</div></div>
+<div class="flash"><div>Your numbers appear here once your first posts and leads have been generated. Targets: <b>{{ k.targets.posts_per_week }}+ posts/week</b>, <b>{{ k.targets.calendar_weeks }} weeks</b> planned ahead, <b>{{ k.targets.leads_per_week[0] }}–{{ k.targets.leads_per_week[1] }} leads/week</b>.</div></div>
 {% endif %}

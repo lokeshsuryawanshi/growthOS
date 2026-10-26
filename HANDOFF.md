@@ -83,6 +83,9 @@ Never print or commit `.env`.
 6. Commit in chunks, push, then hand the user the exact remaining credential/deploy steps (Tavily key, host account, optional Hunter and Google OAuth).
 
 
+## Update: workflows split (latest)
+- Content/calendar and lead generation are now separate runs (`content`, `leads` DAGs; `weekly` kept for agency). The agency name "Growth OS" leaked into an outreach email; prompts changed and an `agency_name_leak` guardrail added. 156 tests pass.
+
 ## Update (live run on 2026-10-27, later)
 - Live run on real services (Groq, Gemini, Tavily, Hunter): research/strategy succeeded (about 14 min on the free tier); weekly cycle produced 5 posts (guardrails blocked 3, correctly catching an invented "$2,000" figure and a false positive on list numbers, since fixed) and 11 real leads (5 with Hunter-verified emails).
 - Lead scout was rewritten (plan queries -> code searches -> one structured extraction) because the tool loop failed on small models.

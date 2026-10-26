@@ -4,7 +4,7 @@
 <div class="pagehead"><div><h1>Strategy and research</h1><div class="sub">What the agents learned, and the sources behind it. Facts whose source could not be verified are removed, not shown.</div></div>
   {% if ws.can_discover and st %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="discovery"><button>Re-run research</button></form>{% endif %}</div>
 {% if ws.gate_run %}
-<div class="flash warn" style="align-items:center"><div style="flex:1"><b>Your approval is needed.</b> Read the strategy below. When you approve, weekly content and lead generation unlock.</div>
+<div class="flash warn" style="align-items:center"><div style="flex:1"><b>Your approval is needed.</b> Read the strategy below. When you approve, post writing and lead search unlock, as two separate steps.</div>
   <form method="post" action="/ui/{{ tenant.id }}/runs/{{ ws.gate_run }}/approve/strategy_review"><button class="primary">Approve strategy</button></form></div>
 {% endif %}
 {% if not st and not v %}

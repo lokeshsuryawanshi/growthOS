@@ -118,6 +118,9 @@ def _common(text: str, p: PolicyContext) -> list[Violation]:
     for term in p.other_tenant_terms:
         if len(term) > 3 and _contains(text, term):
             v.append(Violation(rule="cross_tenant_leak", severity="critical", detail=f"mentions another client: '{term}'"))
+    if re.search(r"growth\s*os", text, re.I):
+        v.append(Violation(rule="agency_name_leak", severity="high",
+                           detail="mentions the tool that produced the text; write only as the founder's company"))
     if _EMAIL.search(text):
         v.append(Violation(rule="pii", severity="critical", detail="contains an email address"))
     if _PHONE.search(text):

@@ -1,6 +1,6 @@
 {% from "_macros.html" import empty, srcchip, srclink %}
 <div class="pagehead"><div><h1>Leads</h1><div class="sub">Companies that match your ideal customer profile, found through real web search. Emails go out only after you approve each one.</div></div>
-  {% if ws.can_weekly %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="weekly"><button class="primary">Find leads and draft content</button></form>{% endif %}</div>
+  {% if ws.can_leads %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="leads"><button class="primary">Find leads</button></form>{% endif %}</div>
 {% if not integ.hunter_ok %}
 <div class="flash warn"><div><b>Hunter.io is not connected.</b> Leads are listed as companies without a contact person, so no outreach email can be drafted. Add a Hunter.io key to find and verify decision-maker emails. <a href="/portal/{{ tenant.id }}?tab=integrations">See how</a></div></div>
 {% endif %}
@@ -25,7 +25,7 @@
       <td><span class="pill {{ r.msg.status if r.msg else l.status }}">{{ (r.msg.status if r.msg else l.status).replace('_', ' ') }}</span></td>
     </tr>{% endfor %}
   </table></div>
-  {% else %}{% call empty('users', 'No leads yet', 'After your strategy is approved, each weekly run searches the web for companies that match your ideal customer profile and shows the source for every one.') %}
-    {% if ws.can_weekly %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="weekly"><button class="primary">Find leads now</button></form>{% endif %}{% endcall %}
+  {% else %}{% call empty('users', 'No leads yet', 'After your strategy is approved, each lead search looks through the web for companies that match your ideal customer profile and shows the source for every one.') %}
+    {% if ws.can_leads %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="leads"><button class="primary">Find leads now</button></form>{% endif %}{% endcall %}
   {% endif %}
 </section>

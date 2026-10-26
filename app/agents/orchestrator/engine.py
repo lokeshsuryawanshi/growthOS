@@ -63,6 +63,19 @@ DAGS: dict[str, dict[str, list[str]]] = {
         "outreach": ["leads"],
         "kpi_snapshot": ["calendar_extend", "outreach"],
     },
+    # The founder-facing product runs content and leads as two independent workflows.
+    # ("weekly" above is kept for the agency's all-in-one run.)
+    "content": {
+        "reflect": [],
+        "trends_refresh": [],
+        "draft_week": ["reflect", "trends_refresh"],
+        "calendar_extend": ["draft_week"],
+        "kpi_snapshot": ["calendar_extend"],
+    },
+    "leads": {
+        "leads": [],
+        "outreach": ["leads"],
+    },
 }
 HUMAN_GATES = {"strategy_review"}
 TERMINAL = {"succeeded", "failed", "blocked", "skipped"}

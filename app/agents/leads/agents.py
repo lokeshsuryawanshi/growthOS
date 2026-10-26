@@ -370,7 +370,8 @@ async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date) -> dict[s
 
 
 OUTREACH_SYSTEM = (
-    "Write a short first cold email from the founder to a prospect. Give a plain subject line (under 8 words, no clickbait) "
+    "Write a short first cold email from the founder to a prospect, written as the founder of their own company (use the company "
+    "name you are given; never mention any marketing agency, tool or service that helped write it). Give a plain subject line (under 8 words, no clickbait) "
     "and a body of 60-120 words. Reference the prospect's company and, only if one is provided, the verified signal. One "
     "relevant observation, one sentence on how the founder's company helps, one low-pressure question. Never claim prior "
     "contact, never invent facts about the prospect or their company, no hype, no links, no signature block (it is added "

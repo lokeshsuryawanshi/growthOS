@@ -71,7 +71,7 @@ Roles: founder (`client_owner`), read-only viewer, account manager and platform 
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest -q        # 150 tests, ~1 minute
+.venv/bin/python -m pytest -q        # 156 tests, ~1 minute
 ```
 Covers tenancy, gateway, guardrails, grounding regressions, integrations (mock HTTP), orchestration failure/recovery, the send gate, accounts, and a production-mode boot audit.
 

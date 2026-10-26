@@ -213,7 +213,7 @@ async def outreach_send(tid: str, mid: str, p: Principal = Depends(current_princ
 
 
 class RunIn(BaseModel):
-    kind: Literal["discovery", "weekly"]
+    kind: Literal["discovery", "content", "leads", "weekly"]
     params: dict[str, Any] = {}
 
 

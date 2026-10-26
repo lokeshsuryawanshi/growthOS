@@ -1,6 +1,8 @@
 """Starting runs: one place for the checks the API and the UI share."""
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from sqlalchemy import select
 
 from app.agents.blackboard import latest
@@ -28,11 +30,20 @@ def preflight(kind: str) -> None:
                                "Set TAVILY_API_KEY (free tier at tavily.com) or enable billing for the Google key, then restart.")
 
 
-async def active_run(tenant_id: str) -> Run | None:
+def _conflicts(active_kind: str, kind: str) -> bool:
+    """Content and lead runs are independent and may overlap; everything else is exclusive."""
+    pair = {active_kind, kind}
+    if pair == {"content", "leads"}:
+        return False
+    return True
+
+
+async def active_run(tenant_id: str, kind: str | None = None) -> Run | None:
     with tenant_scope(tenant_id):
         async with get_db().reader() as s:
-            return (await s.execute(select(Run).where(Run.status.in_(["pending", "running", "waiting_human"]))
-                                    .order_by(Run.created_at.desc()))).scalars().first()
+            rows = (await s.execute(select(Run).where(Run.status.in_(["pending", "running", "waiting_human"]))
+                                    .order_by(Run.created_at.desc()))).scalars().all()
+    return next((r for r in rows if kind is None or _conflicts(r.kind, kind)), None)
 
 
 async def start_run(p: Principal, tenant_id: str, kind: str, params: dict | None = None) -> str:
@@ -44,13 +55,21 @@ async def start_run(p: Principal, tenant_id: str, kind: str, params: dict | None
     if tenant is None or tenant.kill_switch:
         raise RunRefused("this workspace is paused")
     if kind == "weekly" and not await latest(tenant_id, "icp"):
-        kind = "discovery"              # weekly work needs a strategy first
-    if (cur := await active_run(tenant_id)) is not None:
+        kind = "discovery"              # the all-in-one weekly run needs a strategy first
+    if kind == "content" and not await latest(tenant_id, "content_strategy"):
+        raise RunRefused("Run research and approve your strategy first: posts are written from it.")
+    if kind == "leads" and not await latest(tenant_id, "icp"):
+        raise RunRefused("Run research and approve your strategy first: lead search needs your ideal customer profile.")
+    if (cur := await active_run(tenant_id, kind)) is not None:
         raise RunRefused(f"a {cur.kind} run is already {cur.status.replace('_', ' ')}")
     preflight(kind)
     if not p.is_agency:
         limiter.check(f"run:{tenant_id}", 6, 3600)
+    params = dict(params or {})
+    if kind == "leads":                 # lead weeks follow the calendar week we are in, not the content calendar
+        today = date.today()
+        params.setdefault("week_start", (today - timedelta(days=today.weekday())).isoformat())
     orch = get_orchestrator()
-    rid = await orch.create_run(tenant_id, kind, params or {}, actor=p.user_id)
+    rid = await orch.create_run(tenant_id, kind, params, actor=p.user_id)
     orch.start(tenant_id, rid)
     return rid

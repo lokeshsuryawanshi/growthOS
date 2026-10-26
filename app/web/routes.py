@@ -191,56 +191,83 @@ async def onboarding_submit(request: Request):
 
 
 # ------------------------------------------------------------------ workspace
+RUN_TITLES = {"discovery": "Research and strategy", "content": "Posts and calendar", "leads": "Lead search and outreach",
+              "weekly": "Weekly content and leads"}
+ACTIVE = ("pending", "running", "waiting_human")
+
+
 async def workspace_state(tid: str, me: Principal, k: dict) -> dict:
     arts = await queries.artifacts(tid)
     runs = await queries.runs(tid, 12)
-    active = next((r for r in runs if r.status in ("pending", "running", "waiting_human")), None)
-    last_disc = next((r for r in runs if r.kind == "discovery"), None)
-    last_weekly = next((r for r in runs if r.kind == "weekly"), None)
+
+    def act(*kinds):
+        return next((r for r in runs if r.status in ACTIVE and r.kind in kinds), None)
+
+    def last(*kinds):
+        return next((r for r in runs if r.kind in kinds), None)
+    active = next((r for r in runs if r.status in ACTIVE), None)
+    active_disc, active_content, active_leads = act("discovery"), act("content", "weekly"), act("leads", "weekly")
+    last_disc, last_content, last_leads = last("discovery"), last("content", "weekly"), last("leads", "weekly")
     with tenant_scope(tid):
         async with get_db().reader() as s:
             gate_run = (await s.execute(select(RunNode.run_id).where(RunNode.status == "waiting_human"))).scalars().first()
     disc_ok = any(r.kind == "discovery" and r.status == "succeeded" for r in runs)
-    can_run = me.can("run:start") and active is None
+    can_run = me.can("run:start")
+    ready = can_run and disc_ok and not gate_run and active_disc is None
     hunter, gm = HunterClient().configured, await _gmail_connected(tid)
     steps = [{"title": "Tell us about your company", "detail": "Profile, writing samples and brand rules are saved.", "state": "done"}]
 
     if disc_ok:
         steps.append({"title": "Research your market and learn your voice", "detail": "Market, competitors, trends, strategy and an eight-week calendar are ready.", "state": "done",
                       "cta": "View strategy", "href": f"/portal/{tid}?tab=research"})
-    elif active and active.kind == "discovery":
+    elif active_disc:
         steps.append({"title": "Research your market and learn your voice", "detail": "Running now. This takes about ten minutes.", "state": "active",
-                      "cta": "Watch progress", "href": f"/portal/{tid}?tab=activity&run={active.id}", "primary": True})
+                      "cta": "Watch progress", "href": f"/portal/{tid}?tab=activity&run={active_disc.id}", "primary": True})
     elif last_disc and last_disc.status == "failed":
         steps.append({"title": "Research your market and learn your voice", "detail": "The last attempt did not finish. See why and retry the failed step.", "state": "bad",
                       "cta": "See what happened", "href": f"/portal/{tid}?tab=activity&run={last_disc.id}", "primary": True})
     else:
         steps.append({"title": "Research your market and learn your voice", "detail": "We read your site, research the web and study your writing. You approve the result before anything is drafted.",
-                      "state": "active", "cta": "Start research" if can_run else None, "post": f"/ui/{tid}/runs?kind=discovery", "primary": True})
+                      "state": "active", "cta": "Start research" if (can_run and active is None) else None, "post": f"/ui/{tid}/runs?kind=discovery", "primary": True})
     if gate_run:
-        steps.append({"title": "Approve your strategy", "detail": "Your sign-off is needed before content and leads are generated.", "state": "active",
+        steps.append({"title": "Approve your strategy", "detail": "Your sign-off is needed before posts and leads are generated.", "state": "active",
                       "cta": "Review and approve", "href": f"/portal/{tid}?tab=research", "primary": True})
     else:
         steps.append({"title": "Approve your strategy", "detail": "You review it; nothing is drafted until you do.", "state": "done" if disc_ok else "todo"})
+
     pending = k["posts_pending"]
-    if k["posts_approved_total"] or last_weekly and last_weekly.status == "succeeded" and not pending:
-        steps.append({"title": "Review your first posts", "detail": f"{k['posts_approved_total']} approved so far.", "state": "done",
-                      "cta": "Open content", "href": f"/portal/{tid}?tab=content"})
-    elif pending:
-        steps.append({"title": "Review your first posts", "detail": f"{pending} draft{'s' if pending != 1 else ''} waiting in your voice.", "state": "active",
+    if pending:
+        steps.append({"title": "Review your posts", "detail": f"{pending} draft{'s' if pending != 1 else ''} waiting in your voice.", "state": "active",
                       "cta": "Review drafts", "href": f"/portal/{tid}?tab=content", "primary": True})
-    elif active and active.kind == "weekly":
-        steps.append({"title": "Review your first posts", "detail": "Drafting now.", "state": "active", "cta": "Watch progress", "href": f"/portal/{tid}?tab=activity&run={active.id}"})
+    elif active_content:
+        steps.append({"title": "Review your posts", "detail": "Drafting now.", "state": "active", "cta": "Watch progress",
+                      "href": f"/portal/{tid}?tab=activity&run={active_content.id}"})
+    elif k["posts_approved_total"] or (last_content and last_content.status == "succeeded"):
+        steps.append({"title": "Review your posts", "detail": f"{k['posts_approved_total']} approved so far.", "state": "done",
+                      "cta": "Open content", "href": f"/portal/{tid}?tab=content"})
     else:
-        steps.append({"title": "Review your first posts", "detail": "Generate this week's posts and leads once your strategy is approved.",
-                      "state": "todo", "cta": "Draft this week's content" if (can_run and disc_ok and not gate_run) else None,
-                      "post": f"/ui/{tid}/runs?kind=weekly", "primary": disc_ok})
+        steps.append({"title": "Write this week's posts", "detail": "Writes the week's posts from your strategy and calendar. Separate from lead search.",
+                      "state": "todo", "cta": "Write this week's posts" if ready and active_content is None else None,
+                      "post": f"/ui/{tid}/runs?kind=content", "primary": disc_ok})
+    if active_leads:
+        steps.append({"title": "Find qualified leads", "detail": "Searching now.", "state": "active", "cta": "Watch progress",
+                      "href": f"/portal/{tid}?tab=activity&run={active_leads.id}"})
+    elif k["leads_total"]:
+        steps.append({"title": "Find qualified leads", "detail": f"{k['leads_total']} lead{'s' if k['leads_total'] != 1 else ''} found, {k['outreach_pending']} email{'s' if k['outreach_pending'] != 1 else ''} to approve.",
+                      "state": "done", "cta": "Open leads", "href": f"/portal/{tid}?tab=leads"})
+    else:
+        steps.append({"title": "Find qualified leads", "detail": "Searches the web for companies that match your ideal customer profile. Separate from your posts.",
+                      "state": "todo", "cta": "Find leads" if ready and active_leads is None else None,
+                      "post": f"/ui/{tid}/runs?kind=leads", "primary": disc_ok})
     steps.append({"title": "Connect Hunter.io for verified lead emails", "detail": "Optional. Without it, leads are companies with no contact person." if not hunter else "Connected.",
                   "state": "done" if hunter else "todo", "cta": None if hunter else "How to connect", "href": f"/portal/{tid}?tab=integrations"})
     steps.append({"title": "Connect Gmail to send approved emails", "detail": "Optional. You approve every email; it sends from your own mailbox." if not gm else "Connected.",
                   "state": "done" if gm else "todo", "cta": None if gm else "Connect", "href": f"/portal/{tid}?tab=integrations"})
     return {"steps": steps, "done_count": sum(1 for s in steps if s["state"] == "done"), "gate_run": gate_run,
-            "can_discover": can_run, "can_weekly": can_run and disc_ok and not gate_run, "active": active, "arts": arts, "runs": runs}
+            "can_discover": can_run and active is None,
+            "can_content": ready and active_content is None, "can_leads": ready and active_leads is None,
+            "can_weekly": ready and active_content is None and active_leads is None,
+            "active": active, "arts": arts, "runs": runs}
 
 
 @router.get("/portal/{tid}", response_class=HTMLResponse)
@@ -275,12 +302,12 @@ async def portal(request: Request, tid: str, tab: str = "overview", run: str | N
     elif tab == "settings":
         ctx.update(v=await accounts.profile_as_form_values(tid), saved=bool(saved), steps=False)
     elif tab == "activity":
-        ctx["runs"] = ws["runs"]
+        ctx["runs"], ctx["run_titles"] = ws["runs"], RUN_TITLES
         rid = run or (ws["active"].id if ws["active"] else (ws["runs"][0].id if ws["runs"] else None))
         if rid:
             d = await queries.run_detail(tid, rid)
             if d:
-                ctx.update(run=d["run"], nodes=d["nodes"], labels=NODE_LABELS, can_retry=me.can("run:start"),
+                ctx.update(run=d["run"], nodes=d["nodes"], labels=NODE_LABELS, run_titles=RUN_TITLES, can_retry=me.can("run:start"),
                            usage=await queries.run_usage(tid, rid))
     return await render(request, "portal.html", me, **ctx)
 
@@ -293,7 +320,7 @@ async def run_progress(request: Request, tid: str, rid: str):
     if d is None:
         raise HTTPException(404)
     return templates.TemplateResponse(request, "partials/run_progress.html", {
-        "run": d["run"], "nodes": d["nodes"], "labels": NODE_LABELS, "tenant": tenant, "me": me, "can_retry": me.can("run:start"),
+        "run": d["run"], "nodes": d["nodes"], "labels": NODE_LABELS, "run_titles": RUN_TITLES, "tenant": tenant, "me": me, "can_retry": me.can("run:start"),
         "usage": await queries.run_usage(tid, rid)})
 
 

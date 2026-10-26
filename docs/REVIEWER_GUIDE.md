@@ -38,7 +38,7 @@ flowchart TB
 
 **Design choice:** a fixed workflow with real agents inside each step. Order, checkpoints, budgets and approvals are deterministic code, so cost is predictable, runs resume after a crash and every gate is testable. Agents decide how to research and write.
 
-- **Two workflows.** Discovery (once per client): ingest, voice, market, competitors, trends, strategy, ICP, calendar, then a human gate. Weekly: learn from edits, refresh trends, draft posts, extend the calendar, find leads, draft outreach.
+- **Three independent workflows.** Discovery (once per client): ingest, voice, market, competitors, trends, strategy, ICP, calendar, then a human gate. Content (weekly): learn from edits, refresh trends, draft posts, extend the calendar. Leads (weekly): find companies, attach verified contacts, draft outreach emails. Content and lead runs are separate buttons, can run at the same time, and never depend on each other.
 - **Loops.** Researchers choose their own searches within step caps. Writer and critic revise until a 4.0 score (max 3 rounds). Guard failures trigger rewrites. The calendar planner is repaired against rules. Founder edits become learned voice rules.
 - **Real data only.** Web search (Tavily or Google grounding), SSRF-safe page fetch, Hunter.io contacts, Gmail OAuth for sending. If a provider is missing or failing, the step stops with the fix shown. Mock models and demo data exist only for tests.
 
@@ -94,7 +94,7 @@ Principle: **the model proposes, code disposes.** What code can check is checked
 
 A real bug found by a live run: a customer count ("1,100 SMB customers") was reused as a market statistic. That is now a claim-level check with a regression test.
 
-## 6. Tests: 150 passing
+## 6. Tests: 156 passing
 
 | Area | Tests | Covers |
 |---|---|---|
@@ -106,6 +106,7 @@ A real bug found by a live run: a customer count ("1,100 SMB customers") was reu
 | Orchestration | 10 | retry, fail-fast, blocked dependents, checkpoint reuse, crash resume, fairness, budget stop |
 | Send gate | 10 | unapproved, unverified, suppressed, wrong role, double click sends once, daily cap |
 | Production integrity | 10 | production refuses mock and weak secrets; boots the real app on an empty database with no demo data |
+| Separate content and lead workflows | 6 | independent runs, overlap rules, refusal before research, agency name never in client voice |
 | Pipeline, API security, research integrity, tenancy, evals | 31 | end-to-end cycles, RBAC matrix, cross-tenant probes, fabricated sources dropped, ORM interceptor |
 
 Run: `.venv/bin/python -m pytest -q` (about a minute).

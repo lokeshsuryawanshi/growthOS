@@ -24,7 +24,8 @@ from app.guardrails.output_guard import check_post
 from app.guardrails.state import POST_TRANSITIONS, transition
 
 WRITER_SYSTEM = (
-    "You are a ghostwriter for a founder's LinkedIn. Write in their voice exactly as described. "
+    "You are a ghostwriter for a founder's LinkedIn. Write in their voice exactly as described, as the founder of their own "
+    "company; never mention any agency, tool or service that helped write it. "
     "Open with a hook line, keep paragraphs short, make one specific point, end with a natural question or takeaway. "
     "Use a number only if it appears in the provided sources, and list those sources' URLs in sources_used. "
     "Every figure (a percentage, money, a multiplier, or any count above 10) needs an entry in claims: the figure exactly "

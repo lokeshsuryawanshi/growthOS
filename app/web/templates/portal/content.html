@@ -3,8 +3,8 @@
 <section class="stack">
   <div class="row"><h2>Waiting for your review</h2><span class="pill {{ 'warn' if pending_posts }}">{{ pending_posts | length }}</span></div>
   {% for r in pending_posts %}{% with post=r.post, slot=r.slot %}{% include "partials/post_card.html" %}{% endwith %}
-  {% else %}{% call empty('edit', 'Nothing to review yet', 'Drafts show up here after the weekly cycle runs. Each one comes with the sources behind every figure, so you can check before approving.') %}
-    {% if ws.can_weekly %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="weekly"><button class="primary">Draft this week's content</button></form>{% endif %}{% endcall %}
+  {% else %}{% call empty('edit', 'Nothing to review yet', 'Drafts show up here after you write the week&#39;s posts. Each one comes with the sources behind every figure, so you can check before approving.') %}
+    {% if ws.can_content %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="content"><button class="primary">Write this week's posts</button></form>{% endif %}{% endcall %}
   {% endfor %}
 </section>
 {% if ready_posts %}
