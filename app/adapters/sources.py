@@ -34,6 +34,16 @@ def _public(p: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in p.items() if k not in _HIDDEN_FIELDS}
 
 
+GEO_ALIASES = {
+    "us": "US", "usa": "US", "united states": "US", "united states of america": "US", "america": "US",
+    "uk": "UK", "united kingdom": "UK", "great britain": "UK", "britain": "UK", "england": "UK",
+}
+
+
+def normalize_geo(g: str) -> str:
+    return GEO_ALIASES.get(g.strip().lower().replace(".", ""), g.strip())
+
+
 class SeededLeadSource:
     name = "seeded"
 
@@ -59,7 +69,7 @@ class SeededLeadSource:
             ind_hit = any(w[:6] in ind for w in iw)
             if not (title_hits or generic_hit or ind_hit):
                 continue
-            if geos and p["geo"] not in geos:
+            if geos and p["geo"] not in {normalize_geo(g) for g in geos}:
                 continue
             if not (min_employees * 0.5 <= p["employees"] <= max_employees * 2):  # loose on size, like real filters
                 continue

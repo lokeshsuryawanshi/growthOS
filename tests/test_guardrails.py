@@ -105,3 +105,11 @@ def test_state_machine_refuses_illegal_moves():
 def test_lead_source_hides_ground_truth():
     rows = SeededLeadSource().search(titles=["CFO"], industries=["E-commerce"], limit=5)
     assert rows and all("_case" not in r and "vertical" not in r for r in rows)
+
+
+def test_lead_source_normalizes_country_names():
+    """Found in a live run: the model sent 'United States' where the source stores 'US'."""
+    src = SeededLeadSource()
+    by_code = src.search(titles=["CFO"], industries=["E-commerce"], geos=["US"], limit=50)
+    by_name = src.search(titles=["CFO"], industries=["E-commerce"], geos=["United States"], limit=50)
+    assert by_code and [r["id"] for r in by_code] == [r["id"] for r in by_name]

@@ -63,6 +63,10 @@ async def _search_tool(args: ProspectSearchArgs, ctx: AgentContext):
     for r in rows:
         pool[r["id"]] = r
     # The prospector only needs a compact view; the data stays server-side.
+    if not rows:
+        return {"found": 0, "pool_size": len(pool),
+                "hint": "No matches. Broaden: fewer or more general titles, related industries, a wider size range, "
+                        "or drop the geography filter."}
     return {"found": len(rows), "pool_size": len(pool),
             "sample": [f"{r['title']} @ {r['company']} ({r['industry']}, {r['employees']} emp, {r['geo']})" for r in rows[:12]]}
 
@@ -73,7 +77,9 @@ async def prospector(tenant_id: str, ctx: AgentContext, icp: dict, need: int, ro
                     "You are a B2B prospector. Use search_prospects to find people matching the ICP. Run one search per "
                     "segment; if results are thin, broaden titles or company size a little. Stop when the pool has "
                     f"about {need * 3} candidates, then call submit_result.",
-                    f"ICP: {compact(icp, 2000)}\nWe need {need} qualified leads this week. Round {round_no}.",
+                    f"ICP: {compact(icp, 2000)}\nWe need {need} qualified leads this week. Round {round_no}." +
+                    ("" if round_no == 1 else " Earlier rounds came up short: broaden titles, industries and size, "
+                                              "and drop the geography filter if it limits results."),
                     ProspectingSummary, [Tool("search_prospects", "Search the people database.", ProspectSearchArgs,
                                               _search_tool)],
                     ctx, max_steps=5, max_tool_calls=6, max_tokens=1200, metadata={"icp": icp, "round": round_no})
@@ -124,7 +130,8 @@ async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date) -> dict[s
         ctx.call.extra["exclude"] = seen
         pool = await prospector(tenant_id, ctx, icp, st.leads_per_week_max - kept, stats["rounds"])
         if not pool:
-            break
+            ctx.event("prospector", "empty_round", round=stats["rounds"])
+            continue  # next round runs with the broaden instruction
         rejections: list[dict] = []
         candidates: list[dict] = []
         for p in pool:
