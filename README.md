@@ -2,7 +2,7 @@
 
 A done-for-you growth portal for busy founders. Agents research the founder's market, competitors and voice from real web sources, plan an 8-week LinkedIn calendar, draft posts, find qualified leads and draft outreach emails. The founder only **approves, edits or rejects**. Nothing is posted or emailed without a human.
 
-- Plan and architecture: [PLAN.md](PLAN.md) · Decisions and lessons: [DECISIONS.md](DECISIONS.md) · Deploying: [docs/DEPLOY.md](docs/DEPLOY.md) · Handoff notes: [HANDOFF.md](HANDOFF.md)
+- Docs: [Architecture](docs/ARCHITECTURE.md) · [Evals and guardrails](docs/EVALS_AND_GUARDRAILS.md) · [Cost and run time](docs/ECONOMICS.md) · Plan: [PLAN.md](PLAN.md) · Decisions and lessons: [DECISIONS.md](DECISIONS.md) · Deploying: [docs/DEPLOY.md](docs/DEPLOY.md) · Handoff notes: [HANDOFF.md](HANDOFF.md)
 
 ## Honesty rules (enforced in code and tests)
 

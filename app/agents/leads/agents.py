@@ -163,36 +163,59 @@ async def _attach_contacts(ctx: AgentContext, pool: list[dict], titles: list[str
     stats["contacts"] = {k: results.count(k) for k in set(results)}
 
 
+class SearchPlan(BaseModel):
+    queries: list[str] = Field(min_length=2, max_length=5, description="Specific web search queries that surface companies")
+
+
 async def web_prospector(tenant_id: str, ctx: AgentContext, icp: dict, need: int, round_no: int,
                          seen_domains: set[str], stats: dict) -> list[dict]:
-    """Live discovery: scout agent -> verification against search results -> Hunter contacts."""
+    """Live discovery in three reliable steps: plan queries (model) -> search (code) -> extract companies (model).
+
+    Search is run by code, not by a tool-calling loop, because small models proved unreliable at finishing such a loop.
+    Every extracted candidate is still verified against the search results it came from, and contacts come from Hunter."""
     st = research_state(ctx)
     st.setdefault("snippets", {})
     st.setdefault("answers", [])
     known: list[str] = ctx.call.extra.setdefault("known_text", [])
+    broaden = "" if round_no == 1 else " Earlier rounds came up short: broaden industries, size and regions."
+    plan = (await structured(
+        "company_scout_plan", "small",
+        "Write web search queries that surface COMPANIES matching an ideal customer profile and showing a buying trigger "
+        "(funding, hiring, expansion, new leadership). Mix industry, role being hired, region and a growth signal.",
+        f"ICP: {compact(icp, 2000)}\nAlready seen (skip): {sorted(seen_domains)[:30]}\nRound {round_no}.{broaden}",
+        SearchPlan, ctx, max_tokens=500, metadata={"icp": icp, "round": round_no})).output
 
-    async def search(args: SearchArgs, c: AgentContext):
-        res = await _web_search(args, c)
-        for r in res["results"]:
-            st["snippets"][_norm(r["url"])] = (r["title"] + " " + r["snippet"]).strip()
-            known.append((r["url"] + " " + r["title"] + " " + r["snippet"]).lower())
-        if res["answer"]:
-            st["answers"].append(res["answer"])
-            known.append(res["answer"].lower())
-        return res
+    async def one(q: str):
+        try:
+            return await _web_search(SearchArgs(query=q[:200]), ctx)
+        except IntegrationError as e:
+            if e.code in ("not_configured", "auth_failed"):
+                raise
+            ctx.event("company_scout", "search_failed", query=q, error=e.message)
+            return None
 
-    res = await run_agent(
-        "company_scout", "small",
-        "You find real companies that fit an ideal customer profile and show a buying trigger right now. Use web_search "
-        "several times with specific queries (industry + role being hired + region + growth signals). Return companies, "
-        "not people. Only include a company if a search result mentions it. domain must be the company's own website; "
-        "evidence_url must be a URL a search returned; signal must be one concrete fact from that result, in its words. "
-        f"Return about {need * 2} candidates. Do not finish with an empty list: if the results name no suitable company, search again "
-        "with different, more specific queries (named industries, funding news, hiring posts). Then call submit_result.",
-        f"ICP: {compact(icp, 2200)}\nAlready seen (skip): {sorted(seen_domains)[:40]}\nRound {round_no}." +
-        ("" if round_no == 1 else " Earlier rounds came up short: broaden industries, size and regions."),
-        CompanyCandidates, [Tool("web_search", "Search the web for companies and news.", SearchArgs, search)],
-        ctx, max_steps=7, max_tool_calls=6, max_tokens=2500, metadata={"icp": icp, "round": round_no})
+    results = [r for r in await asyncio.gather(*[one(q) for q in plan.queries]) if r]
+    if not results:
+        raise IntegrationError("web_search", "unavailable", "none of the lead searches returned results",
+                               "Check the Integrations page (web search) and retry.")
+    blocks = []
+    for r in results:
+        for h in r["results"]:
+            st["snippets"][_norm(h["url"])] = (h["title"] + " " + h["snippet"]).strip()
+            known.append((h["url"] + " " + h["title"] + " " + h["snippet"]).lower())
+            blocks.append(f"- {h['title']} | {h['url']} | {h['snippet']}")
+        if r["answer"]:
+            st["answers"].append(r["answer"])
+            known.append(r["answer"].lower())
+            blocks.append("SUMMARY: " + r["answer"][:900])
+    res = await structured(
+        "company_scout", "big",
+        "From these web search results, list real companies that fit the ICP and show a buying trigger. Only include a company "
+        "if a result names it. domain must be the company's own website; evidence_url must be one of the result URLs above; "
+        "signal must be one concrete fact from that result, in its words. Return companies, not people or articles.",
+        f"ICP: {compact(icp, 1800)}\nSkip these domains: {sorted(seen_domains)[:30]}\n\n<untrusted_data source=\"search\">\n"
+        + "\n".join(blocks)[:9000] + "\n</untrusted_data>\nReturn about " + str(need * 2) + " candidates.",
+        CompanyCandidates, ctx, temperature=0.1, max_tokens=2200, metadata={"icp": icp, "round": round_no})
     known_text = " ".join(known)
     pool, rejected = [], Counter()
     seen_here: set[str] = set()

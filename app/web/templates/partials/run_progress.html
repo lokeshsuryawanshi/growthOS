@@ -4,6 +4,15 @@
   <div class="row"><h2>{{ 'Research and strategy' if run.kind == 'discovery' else 'Weekly content and leads' }}</h2>
     <span class="pill {{ run.status }}">{% if active %}<span class="dot"></span> {% endif %}{{ run.status.replace('_', ' ') }}</span>
     <span class="spacer"></span><span class="sub num">started {{ run.created_at.strftime('%H:%M:%S') }}</span></div>
+  {% if usage %}
+  <div class="metrics" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+    <div class="metric"><div class="label">Tokens in</div><div class="value num">{{ '{:,}'.format(usage.tokens_in) }}</div></div>
+    <div class="metric"><div class="label">Tokens out</div><div class="value num">{{ '{:,}'.format(usage.tokens_out) }}</div></div>
+    <div class="metric"><div class="label">Model calls</div><div class="value num">{{ usage.calls }}</div><div class="target">{{ usage.retries }} retr{{ 'y' if usage.retries == 1 else 'ies' }}</div></div>
+    <div class="metric"><div class="label">AI cost</div><div class="value num">${{ '%.4f' % usage.cost }}</div><div class="target">at list prices</div></div>
+    <div class="metric"><div class="label">Elapsed</div><div class="value num">{{ usage.elapsed_s // 60 }}m {{ usage.elapsed_s % 60 }}s</div></div>
+  </div>
+  {% endif %}
   {% if run.status == 'waiting_human' %}<div class="flash warn"><div><b>Waiting for you.</b> <a href="/portal/{{ tenant.id }}?tab=research">Review the strategy</a> and approve it to continue.</div></div>{% endif %}
   {% if run.status == 'failed' %}<div class="flash bad"><div><b>This run did not finish.</b> The steps below say why and what to do. Steps that already succeeded are kept, so a retry only redoes the failed part.</div></div>{% endif %}
   <div class="steps">

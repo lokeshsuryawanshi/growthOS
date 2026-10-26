@@ -159,6 +159,9 @@ def check_claims(text: str, claims: list, p: PolicyContext) -> list[Violation]:
         num = _norm_num(raw)
         if not num or (len(num) == 4 and 1900 <= int(num.split(".")[0]) <= 2100 and not re.search(r"[%$£€]", raw)):
             continue                                         # a year
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        if not text[line_start:m.start()].strip(" *#->") and text[m.end():m.end() + 1] in (".", ")") and raw.isdigit():
+            continue                                         # a list marker ("10. Reconcile"), not a statistic
         claim = by_num.get(num)
         if claim is None:
             v.append(Violation(rule="unclaimed_stat", severity="high",

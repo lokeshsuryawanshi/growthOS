@@ -280,7 +280,8 @@ async def portal(request: Request, tid: str, tab: str = "overview", run: str | N
         if rid:
             d = await queries.run_detail(tid, rid)
             if d:
-                ctx.update(run=d["run"], nodes=d["nodes"], labels=NODE_LABELS, can_retry=me.can("run:start"))
+                ctx.update(run=d["run"], nodes=d["nodes"], labels=NODE_LABELS, can_retry=me.can("run:start"),
+                           usage=await queries.run_usage(tid, rid))
     return await render(request, "portal.html", me, **ctx)
 
 
@@ -292,7 +293,8 @@ async def run_progress(request: Request, tid: str, rid: str):
     if d is None:
         raise HTTPException(404)
     return templates.TemplateResponse(request, "partials/run_progress.html", {
-        "run": d["run"], "nodes": d["nodes"], "labels": NODE_LABELS, "tenant": tenant, "me": me, "can_retry": me.can("run:start")})
+        "run": d["run"], "nodes": d["nodes"], "labels": NODE_LABELS, "tenant": tenant, "me": me, "can_retry": me.can("run:start"),
+        "usage": await queries.run_usage(tid, rid)})
 
 
 async def _post_card(request, me, tenant, post_id, msg="", bad=False):

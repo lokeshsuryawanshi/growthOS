@@ -132,3 +132,23 @@ async def portfolio(tenant_ids: list[str]) -> list[dict[str, Any]]:
         k = await tenant_kpis(tid)
         out.append({"tenant": t, "kpis": k, "last_run": last_runs.get(tid), "month_start": month_start})
     return out
+
+
+async def run_usage(tenant_id: str, run_id: str) -> dict[str, Any]:
+    """Live AI usage for one run: tokens, calls, cost and elapsed seconds. Safe to show to the founder."""
+    with tenant_scope(tenant_id):
+        async with get_db().reader() as s:
+            row = (await s.execute(select(func.count(LLMCall.id), func.coalesce(func.sum(LLMCall.prompt_tokens), 0),
+                                          func.coalesce(func.sum(LLMCall.completion_tokens), 0),
+                                          func.coalesce(func.sum(LLMCall.cost_usd), 0.0),
+                                          func.coalesce(func.sum(LLMCall.retries), 0))
+                                   .where(LLMCall.run_id == run_id))).one()
+            run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().first()
+    end = (run.finished_at if run and run.finished_at else datetime.now(timezone.utc))
+    start = run.created_at if run else end
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    return {"calls": int(row[0]), "tokens_in": int(row[1]), "tokens_out": int(row[2]), "cost": float(row[3]),
+            "retries": int(row[4]), "elapsed_s": max(0, int((end - start).total_seconds()))}
