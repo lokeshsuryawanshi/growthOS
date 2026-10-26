@@ -101,6 +101,18 @@ Mock models with 100–600 ms latency, 5% injected 429s and 2% 5xx errors. Each 
 | Cross-tenant violations | 0 | 0 |
 | Approval API p95 (50 concurrent) | ~465 ms | ~465 ms |
 
-### Live run (Groq)
+### Live run (Groq `gpt-oss-120b` / `gpt-oss-20b`, Gemini judge), LedgerLoop
 
-See [DECISIONS.md §5](DECISIONS.md#5-what-the-first-live-run-taught) for what the first live run broke and how it was fixed.
+| | Discovery | Weekly 1 | Weekly 2 |
+|---|---|---|---|
+| Status | all 9 nodes succeeded | succeeded | succeeded |
+| Wall time (paced to 8k tokens/min) | 621 s | 413 s | 383 s |
+| Output | voice, market, competitors, trends, strategy, ICP, 40-slot calendar | 5 posts awaiting approval, calendar extended to week 9 | 5 posts, 12 qualified leads + 12 outreach drafts |
+| Lead filtering | | 0 leads (geo bug, see below) | 5 suppressed, 1 competitor, 2 contactless filtered; 1 injected signal stripped |
+
+Totals: 119 model calls, **$0.031**, 0 errors, 0 fallbacks, 2 retries. Average critic score 3.94 after 2.0 rounds.
+
+What the live runs exposed (details in [DECISIONS.md §5](DECISIONS.md#5-what-the-first-live-run-taught)):
+- Groq rate limits, server-side tool-schema rejection, and a country-name mismatch that returned zero leads ("United States" vs "US"). All fixed, with regression tests.
+- **Not yet fixed:** one draft reused a real number in the wrong sense ("the 1,100 SMBs still guessing", where 1,100 is the customer count). The `uncited_stat` check confirms a number exists in the sources, not that it is used correctly. The next step is a claim-level check by the critic.
+- **Not yet fixed:** one draft opened with the founder's own sample hook. Near-duplicate checks should also cover the founder's samples.
