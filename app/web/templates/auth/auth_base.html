@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block content_bare %}
+<div class="auth">
+  <section class="auth-side">
+    <a class="brand" href="/"><span class="mark">{{ icon('bolt') }}</span>Growth OS</a>
+    <div>
+      <h2>Your content and pipeline, run for you.</h2>
+      <ul>
+        <li>{{ icon('compass') }}<span>Researches your market, competitors and trends from real sources, and shows you every source.</span></li>
+        <li>{{ icon('edit') }}<span>Drafts at least five LinkedIn posts a week in your own voice.</span></li>
+        <li>{{ icon('users') }}<span>Finds qualified leads and drafts personal outreach emails.</span></li>
+        <li>{{ icon('shield') }}<span>Nothing is posted or sent until you approve it.</span></li>
+      </ul>
+    </div>
+    <span style="font-size:12px;color:#7c89a6">Honest by design: no demo data, no faked results. If a service is down, we tell you.</span>
+  </section>
+  <section class="auth-main"><div class="auth-card">{% block form %}{% endblock %}</div></section>
+</div>
+{% endblock %}

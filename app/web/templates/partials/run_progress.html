@@ -1,0 +1,30 @@
+{# expects: run (Run), nodes (list), labels (dict), tenant, me, can_retry #}
+{% set active = run.status in ('pending', 'running') %}
+<section class="panel stack" id="run-{{ run.id }}" {% if active %}hx-get="/ui/{{ tenant.id }}/runs/{{ run.id }}/progress" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+  <div class="row"><h2>{{ 'Research and strategy' if run.kind == 'discovery' else 'Weekly content and leads' }}</h2>
+    <span class="pill {{ run.status }}">{% if active %}<span class="dot"></span> {% endif %}{{ run.status.replace('_', ' ') }}</span>
+    <span class="spacer"></span><span class="sub num">started {{ run.created_at.strftime('%H:%M:%S') }}</span></div>
+  {% if run.status == 'waiting_human' %}<div class="flash warn"><div><b>Waiting for you.</b> <a href="/portal/{{ tenant.id }}?tab=research">Review the strategy</a> and approve it to continue.</div></div>{% endif %}
+  {% if run.status == 'failed' %}<div class="flash bad"><div><b>This run did not finish.</b> The steps below say why and what to do. Steps that already succeeded are kept, so a retry only redoes the failed part.</div></div>{% endif %}
+  <div class="steps">
+  {% for n in nodes %}
+    <div class="step">
+      <span class="ico {{ n.status }}">{% if n.status == 'succeeded' %}✓{% elif n.status in ('failed', 'blocked') %}!{% else %}{{ loop.index }}{% endif %}</span>
+      <div><b>{{ labels.get(n.key, n.key) }}</b>
+        {% if n.status == 'failed' %}
+          <div class="why" style="color:var(--bad)">{{ (n.output.get('integration') or {}).get('message') or n.error }}</div>
+          {% if (n.output.get('integration') or {}).get('recovery') %}<div class="why"><b>What to do:</b> {{ n.output.integration.recovery }}</div>{% endif %}
+        {% elif n.status == 'blocked' %}<div class="why">Waiting on an earlier step that failed.</div>
+        {% elif n.status == 'succeeded' and n.output.get('skipped') %}<div class="why">Skipped: {{ n.output.skipped }}</div>
+        {% elif n.status == 'succeeded' and n.output.get('warnings') %}{% for w in n.output.warnings %}<div class="why" style="color:var(--warn)">{{ w }}</div>{% endfor %}
+        {% elif n.status == 'succeeded' and n.key == 'leads' %}<div class="why">{{ n.output.get('kept', 0) }} new lead{{ 's' if n.output.get('kept', 0) != 1 }}{% if n.output.get('contacts') == 'not configured' %} (no contacts: Hunter.io is not connected){% endif %}</div>
+        {% endif %}
+      </div>
+      <div class="row">
+        {% if n.status == 'waiting_human' %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ run.id }}/approve/{{ n.key }}"><button class="primary sm">Approve</button></form>{% endif %}
+        {% if n.status == 'failed' and can_retry %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ run.id }}/rerun/{{ n.key }}"><button class="sm primary">Retry this step</button></form>{% endif %}
+      </div>
+    </div>
+  {% endfor %}
+  </div>
+</section>

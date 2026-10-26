@@ -1,0 +1,24 @@
+{% from "_icons.html" import icon %}
+{% macro empty(ic, title, text) -%}
+<div class="empty"><div class="icon-wrap">{{ icon(ic) }}</div><h3>{{ title }}</h3><p>{{ text }}</p>{{ caller() if caller else '' }}</div>
+{%- endmacro %}
+{% macro srcchip(provider, synthetic=False) -%}
+{% if synthetic or provider == 'fixture' %}<span class="pill synthetic">synthetic</span>
+{% elif provider == 'gemini_search' %}<span class="pill accent">Google Search</span>
+{% elif provider == 'tavily' %}<span class="pill accent">Tavily</span>
+{% elif provider %}<span class="pill">{{ provider }}</span>{% endif %}
+{%- endmacro %}
+{% macro srclink(url) -%}
+{% if url and url.startswith('http') %}<a class="src" href="{{ url }}" target="_blank" rel="noopener noreferrer nofollow">{{ url | replace('https://', '') | replace('http://', '') | truncate(70) }}</a>{% elif url %}<span class="src">{{ url }}</span>{% endif %}
+{%- endmacro %}
+{% macro provenance(art) -%}
+{% set pv = art.data.get('_provenance') if art else none %}
+{% if pv %}<div class="prov">
+  <div class="row"><b>How this was produced</b>
+    {% if pv.mode == 'mock' or pv.synthetic %}<span class="pill synthetic">MOCK MODELS / SYNTHETIC SOURCES</span>{% else %}<span class="pill ok">live AI + real sources</span>{% endif %}
+    <span class="sub">{{ pv.generated_at[:16].replace('T', ' ') }} UTC</span></div>
+  {% if pv.searches %}<div>{{ pv.searches | length }} search{{ 'es' if pv.searches | length != 1 }} via {% for p in pv.searches | map(attribute='provider') | unique %}{{ p.replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}; {{ pv.pages | length }} page{{ 's' if pv.pages | length != 1 }} read.</div>{% endif %}
+  {% if pv.dropped_unverified %}<div>{{ pv.dropped_unverified }} claim{{ 's' if pv.dropped_unverified != 1 }} removed because the cited source could not be verified.</div>{% endif %}
+  {% for f in pv.fallbacks %}<div class="flash warn" style="padding:6px 10px">Fallback used: {{ f }}</div>{% endfor %}
+</div>{% endif %}
+{%- endmacro %}

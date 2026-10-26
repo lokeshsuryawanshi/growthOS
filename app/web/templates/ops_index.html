@@ -2,7 +2,7 @@
 {% block title %}Clients · Growth OS{% endblock %}
 {% block content %}
 <div class="pagehead">
-  <div><h1>Clients</h1><div class="sub">{{ rows | length }} clients · targets: ≥5 posts/week, 8 weeks planned, 10–20 leads/week</div></div>
+  <div><h1>Clients</h1><div class="sub">{{ rows | length }} client{{ 's' if rows | length != 1 }}</div></div>
   {% if me.can('run:start') %}
   <form method="post" action="/ui/ops/weekly"><button class="primary">Run weekly cycle for all ready clients</button></form>
   {% endif %}
@@ -15,14 +15,14 @@
   <tr>
     <td><a href="/ops/{{ t.id }}"><b>{{ t.name }}</b></a><br><span class="sub">{{ t.industry }}</span></td>
     <td>{% if t.kill_switch %}<span class="pill bad">paused</span>{% else %}<span class="pill ok">{{ t.status }}</span>{% endif %}</td>
-    <td class="n"><span class="pill {{ 'ok' if last_pw >= 5 else ('warn' if last_pw else '') }}">{{ last_pw }}</span></td>
+    <td class="n"><span class="pill {{ 'ok' if last_pw >= k.targets.posts_per_week else ('warn' if last_pw else '') }}">{{ last_pw }}</span></td>
     <td class="n"><span class="pill {{ 'ok' if k.calendar_weeks_planned >= 8 else ('warn' if k.calendar_weeks_planned else '') }}">{{ k.calendar_weeks_planned }}</span></td>
-    <td class="n"><span class="pill {{ 'ok' if 10 <= k.leads_latest_week <= 20 else ('warn' if k.leads_latest_week else '') }}">{{ k.leads_latest_week }}</span></td>
+    <td class="n"><span class="pill {{ 'ok' if k.targets.leads_per_week[0] <= k.leads_latest_week <= k.targets.leads_per_week[1] else ('warn' if k.leads_latest_week else '') }}">{{ k.leads_latest_week }}</span></td>
     <td class="n">{{ k.posts_pending + k.outreach_pending }}</td>
     <td class="n">{% if k.posts_blocked %}<span class="pill bad">{{ k.posts_blocked }}</span>{% else %}0{% endif %}</td>
     <td class="n num">${{ '%.2f' % k.cost_month_usd }} / ${{ '%.0f' % t.monthly_budget_usd }}</td>
     <td>{% if r.last_run %}<a href="/ops/{{ t.id }}/runs/{{ r.last_run.id }}">{{ r.last_run.kind }}</a> <span class="pill {{ r.last_run.status }}">{{ r.last_run.status.replace('_', ' ') }}</span>{% else %}<span class="sub">never</span>{% endif %}</td>
     <td>{% if me.can('run:start') and not r.last_run %}<form method="post" action="/ui/{{ t.id }}/runs"><input type="hidden" name="kind" value="discovery"><button>Start discovery</button></form>{% endif %}</td>
   </tr>{% endfor %}
-</table></div></section>
+</table></div>{% if not rows %}<div class="empty"><h3>No clients yet</h3><p>Clients appear here when they sign up and complete onboarding.</p></div>{% endif %}</section>
 {% endblock %}

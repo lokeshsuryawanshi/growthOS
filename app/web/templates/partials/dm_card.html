@@ -1,16 +1,19 @@
-{# expects: m (OutreachMessage), lead, tenant, me #}
+{# expects: m (OutreachMessage), lead, tenant, me, footer #}
+{% from "_macros.html" import srclink, srcchip %}
 {% set rep = m.guardrail_report or {} %}
-<article class="card {{ 'done' if m.status not in ('pending_approval', 'approved', 'blocked') }}" id="dm-{{ m.id }}">
+<article class="card {{ 'done' if m.status not in ('pending_approval', 'approved', 'sending', 'blocked') }}" id="dm-{{ m.id }}">
   <div class="preview stack">
-    <div><b>{{ lead.full_name }}</b> · {{ lead.title }}, {{ lead.company }}</div>
-    <div class="dm">{{ m.approved_text or m.text }}</div>
+    <div class="row"><b>To: {{ lead.full_name or lead.company }}</b><span class="sub">{{ lead.title }}{{ ', ' if lead.title }}{{ lead.company }} · {{ lead.email }}</span>
+      <span class="pill {{ lead.email_status or 'pending' }}">email {{ lead.email_status or 'unknown' }}</span>{% if lead.is_synthetic %}<span class="pill synthetic">synthetic</span>{% endif %}</div>
+    <div class="dm"><div class="subject">{{ m.subject }}</div>{{ m.approved_text or m.text }}<div class="footer">Your name, company and an opt-out line are added automatically when it is sent.</div></div>
     {% if m.alt_text %}<details><summary>Alternative version</summary><div class="dm" style="margin-top:8px">{{ m.alt_text }}</div></details>{% endif %}
   </div>
   <div class="meta">
     <div class="row"><span class="pill {{ m.status }}">{{ m.status.replace('_', ' ') }}</span>
       <span class="pill accent">fit {{ lead.fit_score }}</span><span class="pill">{{ lead.segment or 'ICP' }}</span></div>
-    {% if msg %}<div class="flash {{ 'bad' if msg_bad }}">{{ msg }}</div>{% endif %}
-    {% if lead.signal %}<div class="why"><b>Signal:</b> {{ lead.signal }}</div>{% endif %}
+    {% if msg %}<div class="flash {{ 'bad' if msg_bad else 'ok' }}">{{ msg }}</div>{% endif %}
+    {% if m.send_error %}<div class="flash bad"><div><b>Last send failed:</b> {{ m.send_error }}</div></div>{% endif %}
+    {% if lead.signal %}<div class="why"><b>Why now:</b> {{ lead.signal }}<br>{{ srcchip(lead.source_provider, lead.is_synthetic) }} {{ srclink(lead.source_url) }}</div>{% endif %}
     {% if lead.evidence %}<ul class="violations" style="color:var(--ink-2)">{% for e in lead.evidence %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
     {% if rep.violations or rep.warnings %}<ul class="violations">
       {% for v in (rep.violations or []) + (rep.warnings or []) %}<li class="{{ v.severity }}">{{ v.rule.replace('_', ' ') }}: {{ v.detail }}</li>{% endfor %}</ul>{% endif %}
@@ -24,21 +27,24 @@
       </div>
       {% endif %}
       {% if me.can('outreach:edit') %}
-      <details><summary>Edit the message</summary>
+      <details><summary>Edit the email</summary>
         <form class="stack" hx-post="/ui/{{ tenant.id }}/outreach/{{ m.id }}" hx-target="#dm-{{ m.id }}" hx-swap="outerHTML" style="margin-top:8px">
-          <textarea name="text" id="dmtext-{{ m.id }}" style="min-height:140px">{{ m.text }}</textarea>
+          <label>Subject<input type="text" name="subject" maxlength="300" value="{{ m.subject }}"></label>
+          <textarea name="text" id="dmtext-{{ m.id }}" style="min-height:160px">{{ m.text }}</textarea>
           <div class="row">{% if me.can('outreach:approve') %}<button class="primary" name="action" value="approve">Save and approve</button>{% endif %}
             <button name="action" value="edit">Save edit</button></div>
         </form>
       </details>
       {% endif %}
     {% elif m.status == 'approved' and me.can('outreach:send') %}
-      <form hx-post="/ui/{{ tenant.id }}/outreach/{{ m.id }}/send" hx-target="#dm-{{ m.id }}" hx-swap="outerHTML">
-        <button class="primary">Send on LinkedIn</button>
-        <div class="sub" style="margin-top:6px">Sends from your account. Approved messages only; daily cap applies.</div>
+      {% if gmail_connected %}
+      <form hx-post="/ui/{{ tenant.id }}/outreach/{{ m.id }}/send" hx-target="#dm-{{ m.id }}" hx-swap="outerHTML" hx-confirm="Send this email from your Gmail now?">
+        <button class="primary">Send from my Gmail</button>
+        <div class="sub" style="margin-top:6px">Approved emails only. Sent from your own mailbox; a daily cap applies.</div>
       </form>
+      {% else %}<div class="flash warn"><div>Gmail is not connected, so this cannot be sent yet. <a href="/portal/{{ tenant.id }}?tab=integrations">Connect Gmail</a></div></div>{% endif %}
     {% elif m.status == 'sent' %}
-      <div class="sub">Sent {{ m.sent_at.strftime('%d %b %H:%M') }}.</div>
+      <div class="sub">Sent {{ m.sent_at.strftime('%d %b %H:%M') }} UTC from your Gmail.</div>
     {% endif %}
   </div>
 </article>

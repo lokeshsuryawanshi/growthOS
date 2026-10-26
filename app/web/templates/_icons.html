@@ -1,0 +1,2 @@
+{# Inline icon sprite (stroke icons). Use: {{ icon('name') }} #}
+{% macro icon(name, cls='icon') -%}<svg class="{{ cls }}" aria-hidden="true"><use href="#i-{{ name }}"/></svg>{%- endmacro %}

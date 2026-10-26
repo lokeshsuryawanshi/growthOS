@@ -1,0 +1,9 @@
+{% from "_macros.html" import empty %}
+<div class="pagehead"><div><h1>Activity</h1><div class="sub">Every research and drafting run, what it did, and what went wrong if anything did.</div></div></div>
+{% if run %}{% include "partials/run_progress.html" %}{% endif %}
+<section class="panel stack"><h2>Runs</h2>
+  {% if runs %}<div class="tablewrap"><table><tr><th>Started</th><th>Run</th><th>Status</th><th></th></tr>
+  {% for r in runs %}<tr><td class="num">{{ r.created_at.strftime('%d %b %H:%M') }}</td><td>{{ 'Research and strategy' if r.kind == 'discovery' else 'Weekly content and leads' }}</td>
+    <td><span class="pill {{ r.status }}">{{ r.status.replace('_', ' ') }}</span></td><td><a href="/portal/{{ tenant.id }}?tab=activity&run={{ r.id }}">View</a></td></tr>{% endfor %}</table></div>
+  {% else %}{% call empty('activity', 'Nothing has run yet', 'Start research from the Overview page. Progress, errors and the fix for each error appear here.') %}{% endcall %}{% endif %}
+</section>

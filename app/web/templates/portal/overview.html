@@ -1,0 +1,23 @@
+{% from "_icons.html" import icon %}
+<div class="pagehead">
+  <div><h1>Good to see you, {{ me.name.split(' ')[0] }}</h1><div class="sub">{{ tenant.name }} · {{ tenant.industry }}</div></div>
+</div>
+{% set st = ws %}
+<section class="panel stack">
+  <div class="row"><h2>Getting set up</h2><span class="spacer"></span><span class="pill {{ 'ok' if st.done_count == st.steps | length else 'accent' }}">{{ st.done_count }} of {{ st.steps | length }} done</span></div>
+  <div class="checklist">
+    {% for s in st.steps %}
+    <div class="check {{ 'todo' if s.state == 'todo' }}">
+      <span class="ico {{ s.state }}">{% if s.state == 'done' %}{{ icon('check') }}{% elif s.state == 'bad' %}{{ icon('alert') }}{% endif %}</span>
+      <div><b>{{ s.title }}</b><div class="why">{{ s.detail }}</div></div>
+      <div>{% if s.cta %}
+        {% if s.post %}<form method="post" action="{{ s.post }}"><button class="{{ 'primary' if s.primary }}">{{ s.cta }}</button></form>
+        {% else %}<a class="btn {{ 'primary' if s.primary }}" href="{{ s.href }}">{{ s.cta }}</a>{% endif %}{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% include "partials/kpis.html" %}
+{% if k.leads_total == 0 and k.posts_pending == 0 and k.posts_approved_total == 0 %}
+<div class="flash"><div>Your numbers appear here once the first weekly cycle has run. Targets: <b>{{ k.targets.posts_per_week }}+ posts/week</b>, <b>{{ k.targets.calendar_weeks }} weeks</b> planned ahead, <b>{{ k.targets.leads_per_week[0] }}–{{ k.targets.leads_per_week[1] }} leads/week</b>.</div></div>
+{% endif %}

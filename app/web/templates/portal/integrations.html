@@ -1,0 +1,18 @@
+{% from "_icons.html" import icon %}
+<div class="pagehead"><div><h1>Integrations</h1><div class="sub">What is connected and what is not. Optional integrations stay off until you configure them; nothing is simulated in their place.</div></div></div>
+<div class="grid2">
+{% for i in integrations %}
+  <section class="panel stack">
+    <div class="row"><h2>{{ i.name }}</h2><span class="pill {{ i.state }}">{{ {'connected': 'connected', 'not_configured': 'not connected', 'degraded': 'needs attention'}[i.state] }}</span>{% if i.required %}<span class="pill">required</span>{% else %}<span class="pill">optional</span>{% endif %}</div>
+    <p class="why">{{ i.detail }}</p>
+    {% if i.state != 'connected' and i.how %}<div class="prov"><b>How to fix</b>{{ i.how }}</div>{% endif %}
+    {% if i.key == 'gmail' and me.can('integration:manage') %}
+      {% if i.state == 'connected' %}
+        <form method="post" action="/ui/{{ tenant.id }}/integrations/gmail/disconnect"><button class="danger">Disconnect Gmail</button></form>
+      {% elif gmail_ready %}
+        <a class="btn primary" href="/oauth/google/start?tid={{ tenant.id }}">{{ icon('mail') }} Connect Gmail</a>
+      {% endif %}
+    {% endif %}
+  </section>
+{% endfor %}
+</div>

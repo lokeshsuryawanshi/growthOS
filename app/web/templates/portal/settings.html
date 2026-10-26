@@ -1,0 +1,9 @@
+<div class="pagehead"><div><h1>Profile &amp; brand</h1><div class="sub">Everything the agents know about you. Changes apply to the next run; re-run research to refresh your voice profile and strategy.</div></div></div>
+{% if saved %}<div class="flash ok">Saved. Re-run research from the Strategy page to apply voice or market changes.</div>{% endif %}
+{% if error %}<div class="flash bad"><div><b>Not saved:</b> {{ error }}</div></div>{% endif %}
+{% if me.can('onboarding:edit') %}
+<form method="post" action="/ui/{{ tenant.id }}/settings" class="panel stack" style="gap:24px">
+  {% set steps = false %}{% set submit_label = 'Save changes' %}
+  {% include "partials/profile_form.html" %}
+</form>
+{% else %}<div class="flash">Your role can view but not change the profile.</div>{% endif %}

@@ -1,7 +1,8 @@
 {# expects: post, slot, tenant, me, founder, msg (optional) #}
+{% from "_macros.html" import srclink %}
 {% set rep = post.guardrail_report or {} %}
 {% set crit = post.critic_feedback or {} %}
-<article class="card {{ 'done' if post.status not in ('pending_approval', 'blocked') }}" id="post-{{ post.id }}">
+<article class="card {{ 'done' if post.status not in ('pending_approval', 'blocked', 'scheduled') }}" id="post-{{ post.id }}">
   <div class="preview">
     <div class="li">
       <div class="head">
@@ -9,20 +10,24 @@
         <div><div class="name">{{ founder.name }}</div><div class="title">{{ founder.title }}</div>
         <div class="title">{{ slot.publish_date.strftime('%a %d %b') if slot else 'Unscheduled' }} · 🌐</div></div>
       </div>
-      <div class="body">{{ (post.approved_text or post.text) }}</div>
+      <div class="body" id="body-{{ post.id }}">{{ (post.approved_text or post.text) }}</div>
       {% if post.hashtags %}<div class="tags">{{ post.hashtags | join(' ') }}</div>{% endif %}
       <div class="bar"><span>Like</span><span>Comment</span><span>Repost</span><span>Send</span></div>
     </div>
   </div>
   <div class="meta">
-    <div class="row"><span class="pill {{ post.status }}">{{ post.status.replace('_', ' ') }}</span>
+    <div class="row"><span class="pill {{ post.status }}">{{ 'ready to post' if post.status == 'scheduled' else post.status.replace('_', ' ') }}</span>
       {% if slot %}<span class="pill accent">{{ slot.pillar }}</span><span class="pill">{{ slot.format.replace('_', ' ') }}</span>{% endif %}</div>
-    {% if msg %}<div class="flash {{ 'bad' if msg_bad }}">{{ msg }}</div>{% endif %}
+    {% if msg %}<div class="flash {{ 'bad' if msg_bad else 'ok' }}">{{ msg }}</div>{% endif %}
     <div class="why"><b>Why this post:</b> {{ post.rationale }}</div>
-    <div class="score">Editor score <b>{{ '%.1f' % post.critic_score }}</b>/5 after {{ post.rounds }} round{{ 's' if post.rounds != 1 }}
+    <div class="score">Editor score <b class="num">{{ '%.1f' % post.critic_score }}</b>/5 after {{ post.rounds }} round{{ 's' if post.rounds != 1 }}
       {% if crit %}<span class="sub">(voice {{ crit.voice_match }}, specificity {{ crit.specificity }}, hook {{ crit.hook }}, insight {{ crit.insight }})</span>{% endif %}</div>
-    {% if post.sources %}<div class="why"><b>Sources:</b>
-      {% for s in post.sources %}<div class="mono" style="word-break:break-all">{{ s }}</div>{% endfor %}</div>{% endif %}
+    {% if post.claims %}
+      <details><summary>Facts used ({{ post.claims | length }}): check the source</summary>
+        <div class="facts" style="margin-top:8px">
+        {% for c in post.claims %}<div class="fact"><b>{{ c.number }}</b> · <q>{{ c.source_quote }}</q>{{ srclink(c.source_url) }}</div>{% endfor %}
+        </div></details>
+    {% else %}<div class="why sub">No figures or statistics in this post.</div>{% endif %}
     {% if rep.violations or rep.warnings %}
       <ul class="violations">
       {% for v in rep.violations %}<li class="{{ v.severity }}">{{ v.rule.replace('_', ' ') }}: {{ v.detail }}</li>{% endfor %}
@@ -41,7 +46,7 @@
       {% if me.can('content:edit') %}
       <details><summary>Edit the text</summary>
         <form class="stack" hx-post="/ui/{{ tenant.id }}/posts/{{ post.id }}" hx-target="#post-{{ post.id }}" hx-swap="outerHTML" style="margin-top:8px">
-          <textarea name="text" id="text-{{ post.id }}">{{ post.text }}</textarea>
+          <textarea class="tall" name="text" id="text-{{ post.id }}">{{ post.text }}</textarea>
           <div class="row">
             {% if me.can('content:approve') %}<button class="primary" name="action" value="approve">Save and approve</button>{% endif %}
             <button name="action" value="edit">Save edit</button>
@@ -57,7 +62,13 @@
       </details>
       {% endif %}
     {% elif post.status in ('approved', 'scheduled') %}
-      <div class="sub">Scheduled for {{ slot.publish_date.strftime('%a %d %b') if slot else 'the next open slot' }}{% if post.edit_distance %}, edited {{ (post.edit_distance * 100) | round | int }}%{% endif %}.</div>
+      <div class="sub">Planned for {{ slot.publish_date.strftime('%a %d %b') if slot else 'the next open slot' }}{% if post.edit_distance %}, edited {{ (post.edit_distance * 100) | round | int }}%{% endif %}. Growth OS does not post for you.</div>
+      {% if me.can('content:approve') %}
+      <div class="row">
+        <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('body-{{ post.id }}').innerText + {{ ('\n\n' ~ post.hashtags | join(' ')) | tojson if post.hashtags else '\"\"' }}).then(()=>{this.textContent='Copied'})">Copy post</button>
+        <form class="inline" hx-post="/ui/{{ tenant.id }}/posts/{{ post.id }}/posted" hx-target="#post-{{ post.id }}" hx-swap="outerHTML"><button class="primary">I posted it</button></form>
+      </div>
+      {% endif %}
     {% elif post.status == 'changes_requested' %}
       <div class="sub">New draft on the way: "{{ post.reviewer_note }}"</div>
     {% endif %}

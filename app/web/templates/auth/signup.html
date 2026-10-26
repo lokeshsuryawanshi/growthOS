@@ -1,0 +1,15 @@
+{% extends "auth/auth_base.html" %}
+{% block title %}Create your workspace · Growth OS{% endblock %}
+{% block form %}
+  <h1>Create your workspace</h1>
+  <p class="sub">Two minutes to sign up, then a short onboarding so we can learn your voice and market.</p>
+  {% if error %}<div class="flash bad">{{ error }}</div>{% endif %}
+  <form method="post" action="/signup" class="stack">
+    <label for="name">Your name<input id="name" name="name" type="text" required maxlength="100" autocomplete="name" value="{{ name or '' }}"></label>
+    <label for="email">Work email<input id="email" name="email" type="email" required autocomplete="email" value="{{ email or '' }}"></label>
+    <label for="password">Password<input id="password" name="password" type="password" required minlength="10" autocomplete="new-password"><span class="hint">At least 10 characters.</span></label>
+    {% if invite_required %}<label for="invite_code">Invite code<input id="invite_code" name="invite_code" type="text" required autocomplete="off"></label>{% endif %}
+    <button class="primary" type="submit" style="justify-content:center">Create account</button>
+  </form>
+  <p class="sub">Already have an account? <a href="/login">Sign in</a></p>
+{% endblock %}

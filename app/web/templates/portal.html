@@ -1,65 +1,7 @@
 {% extends "base.html" %}
+{% from "_macros.html" import empty %}
 {% block title %}{{ tenant.name }} · Growth OS{% endblock %}
 {% block content %}
-<div class="pagehead">
-  <div><h1>{{ tenant.name }}</h1><div class="sub">{{ tenant.industry }}</div></div>
-  {% if me.is_agency %}<a class="btn" href="/ops/{{ tenant.id }}">Open in ops console</a>{% endif %}
-</div>
-<nav class="tabs">
-  {% for key, label in [('inbox', 'Inbox'), ('calendar', 'Calendar'), ('leads', 'Leads'), ('results', 'Results')] %}
-  <a href="?tab={{ key }}" class="{{ 'on' if tab == key }}">{{ label }}{% if key == 'inbox' and inbox_count %} ({{ inbox_count }}){% endif %}</a>
-  {% endfor %}
-</nav>
-
-{% if tab == 'inbox' %}
-  <section class="stack">
-    <div class="row"><h2>Posts waiting for you</h2><span class="sub">{{ pending_posts | length }} to review</span></div>
-    {% for r in pending_posts %}{% with post=r.post, slot=r.slot %}{% include "partials/post_card.html" %}{% endwith %}
-    {% else %}<div class="empty">Nothing to review. New drafts arrive with each weekly cycle.</div>{% endfor %}
-  </section>
-  <section class="stack">
-    <div class="row"><h2>Outreach waiting for you</h2><span class="sub">{{ dms | length }} messages</span></div>
-    {% for r in dms %}{% with m=r.msg, lead=r.lead %}{% include "partials/dm_card.html" %}{% endwith %}
-    {% else %}<div class="empty">No messages to review.</div>{% endfor %}
-  </section>
-
-{% elif tab == 'calendar' %}
-  <section class="panel stack">
-    <div class="row"><h2>Content calendar</h2><span class="sub">{{ weeks | length }} weeks planned</span></div>
-    {% for w in weeks %}
-      <div class="week">
-        <div class="wk">Week of<br><b>{{ w.week }}</b></div>
-        {% for d in range(7) %}
-          {% set s = w.by_day.get(d) %}
-          {% if s %}<div class="slot"><span class="p">{{ s.publish_date.strftime('%a') }} · {{ s.pillar }}</span>{{ s.topic }}<span class="pill {{ s.status }}">{{ s.status }}</span></div>
-          {% else %}<div class="slot none"></div>{% endif %}
-        {% endfor %}
-      </div>
-    {% else %}<div class="empty">The calendar appears after discovery finishes.</div>{% endfor %}
-  </section>
-
-{% elif tab == 'leads' %}
-  <section class="panel">
-    <h2>Leads found for you</h2>
-    <div class="tablewrap"><table>
-      <tr><th>Week</th><th>Person</th><th>Company</th><th class="n">Fit</th><th>Why</th><th>Message</th></tr>
-      {% for r in leads %}<tr>
-        <td class="num">{{ r.lead.week_of.strftime('%d %b') }}</td>
-        <td><b>{{ r.lead.full_name }}</b><br><span class="sub">{{ r.lead.title }}</span></td>
-        <td>{{ r.lead.company }}</td><td class="n">{{ r.lead.fit_score }}</td>
-        <td class="sub">{{ r.lead.signal or (r.lead.evidence | first) }}</td>
-        <td>{% if r.msg %}<span class="pill {{ r.msg.status }}">{{ r.msg.status.replace('_', ' ') }}</span>{% endif %}</td>
-      </tr>{% else %}<tr><td colspan="6" class="empty">Leads arrive with the weekly cycle.</td></tr>{% endfor %}
-    </table></div>
-  </section>
-
-{% elif tab == 'results' %}
-  {% include "partials/kpis.html" %}
-  <section class="grid2">
-    <div class="panel"><h2>Posts per week</h2><div class="tablewrap"><table><tr><th>Week</th><th class="n">Ready or approved</th></tr>
-      {% for w, n in k.posts_per_week.items() %}<tr><td>{{ w }}</td><td class="n">{{ n }}</td></tr>{% else %}<tr><td colspan="2" class="sub">No posts yet.</td></tr>{% endfor %}</table></div></div>
-    <div class="panel"><h2>Leads per week</h2><div class="tablewrap"><table><tr><th>Week</th><th class="n">Qualified</th></tr>
-      {% for w, n in k.leads_per_week.items() %}<tr><td>{{ w }}</td><td class="n">{{ n }}</td></tr>{% else %}<tr><td colspan="2" class="sub">No leads yet.</td></tr>{% endfor %}</table></div></div>
-  </section>
-{% endif %}
+{% if tenant.kill_switch %}<div class="flash bad"><b>This workspace is paused.</b> Nothing will run or send until it is resumed.</div>{% endif %}
+{% include "portal/" ~ tab ~ ".html" %}
 {% endblock %}

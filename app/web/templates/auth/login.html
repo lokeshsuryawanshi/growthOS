@@ -1,0 +1,24 @@
+{% extends "auth/auth_base.html" %}
+{% block title %}Sign in · Growth OS{% endblock %}
+{% block form %}
+  <h1>Welcome back</h1>
+  <p class="sub">Sign in to your Growth OS workspace.</p>
+  {% if error %}<div class="flash bad">{{ error }}</div>{% endif %}
+  <form method="post" action="/login" class="stack">
+    <label for="email">Email<input id="email" name="email" type="email" required autocomplete="email" value="{{ email or '' }}"></label>
+    <label for="password">Password<input id="password" name="password" type="password" required autocomplete="current-password"></label>
+    <button class="primary" type="submit" style="justify-content:center">Sign in</button>
+  </form>
+  <p class="sub">New here? <a href="/signup">Create your workspace</a></p>
+  {% if demo_mode %}
+  <details class="panel flat"><summary>Demo accounts (synthetic data)</summary>
+    <p class="sub" style="margin-top:8px">Password for all: <code>growthos-demo</code></p>
+    <ul class="violations" style="color:var(--ink-2)">
+      <li><code>admin@growthos.example</code> platform admin</li>
+      <li><code>am.sam@growthos.example</code> account manager</li>
+      <li><code>priya@ledgerloop.example</code> founder</li>
+      <li><code>viewer@ledgerloop.example</code> read-only</li>
+    </ul>
+  </details>
+  {% endif %}
+{% endblock %}

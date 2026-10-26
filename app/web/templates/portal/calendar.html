@@ -1,0 +1,16 @@
+{% from "_macros.html" import empty %}
+<div class="pagehead"><div><h1>Content calendar</h1><div class="sub">{{ weeks | length }} week{{ 's' if weeks | length != 1 }} planned · target {{ k.targets.posts_per_week }}+ posts per week</div></div></div>
+<section class="panel stack">
+  {% for w in weeks %}
+    <div class="week">
+      <div class="wk">Week of<br><b style="color:var(--ink)">{{ w.week }}</b></div>
+      {% for d in range(7) %}
+        {% set s = w.by_day.get(d) %}
+        {% if s %}<div class="slot"><span class="p">{{ s.publish_date.strftime('%a') }} · {{ s.pillar }}</span>{{ s.topic }}<span class="pill {{ s.status }}">{{ s.status }}</span></div>
+        {% else %}<div class="slot none"></div>{% endif %}
+      {% endfor %}
+    </div>
+  {% else %}{% call empty('calendar', 'No calendar yet', 'Start your research and we will plan eight weeks of posts around your pillars, with at least ' ~ k.targets.posts_per_week ~ ' posts every week.') %}
+    {% if ws.can_discover %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="discovery"><button class="primary">Start research</button></form>{% endif %}{% endcall %}
+  {% endfor %}
+</section>

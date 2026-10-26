@@ -1,0 +1,85 @@
+{# expects: v (values dict), steps (bool: show as stepper), submit_label #}
+<div class="stepper" id="stepper" style="display:none"></div>
+<section class="obstep" data-title="Company">
+  <div><h2>About your company</h2><p class="sub">The research agents start from this. Be specific; it is all they know about you.</p></div>
+  <div class="fieldgrid">
+    <label>Company name<input type="text" name="company_name" required maxlength="120" value="{{ v.company_name }}"></label>
+    <label>Website<input type="text" name="website" placeholder="https://yourcompany.com" value="{{ v.website }}"><span class="hint">We read it once so strategy is grounded in what you say about yourself.</span></label>
+    <label>Industry<input type="text" name="industry" required maxlength="120" placeholder="e.g. Healthcare staffing software" value="{{ v.industry }}"></label>
+    <label>Where your customers are<textarea name="geographies" style="min-height:60px" placeholder="One per line, e.g. US, UK">{{ v.geographies }}</textarea></label>
+    <label class="wide">What your company does<textarea name="company" required minlength="20" maxlength="1500" placeholder="What you sell, to whom, and what changes for them">{{ v.company }}</textarea></label>
+    <label class="wide">Who you sell to<textarea name="target_customers" required minlength="10" maxlength="800" style="min-height:80px" placeholder="Job titles, company size, industries">{{ v.target_customers }}</textarea></label>
+    <label class="wide">Competitors you know of<textarea name="known_competitors" style="min-height:80px" placeholder="One per line. Add a website after a bar if you know it: Acme | https://acme.com">{{ v.known_competitors }}</textarea><span class="hint">Websites you give are read directly, which makes the competitor analysis verifiable.</span></label>
+  </div>
+</section>
+<section class="obstep" data-title="Your voice">
+  <div><h2>You and your voice</h2><p class="sub">Paste real posts or writing in your own words. Two is the minimum; more means a better match. Samples are used for style only and are never copied into posts.</p></div>
+  <div class="fieldgrid">
+    <label>Your name<input type="text" name="founder_name" required maxlength="100" value="{{ v.founder_name }}"></label>
+    <label>Your title<input type="text" name="founder_title" maxlength="100" value="{{ v.founder_title or 'Founder' }}"></label>
+    <label class="wide">LinkedIn profile URL <span class="hint">(optional)</span><input type="text" name="linkedin_url" value="{{ v.linkedin_url }}"></label>
+    {% for n in range(1, 6) %}
+    <label class="wide">Writing sample {{ n }}{% if n <= 2 %} (required){% endif %}<textarea name="sample_{{ n }}" {% if n <= 2 %}required minlength="80"{% endif %} maxlength="3000">{{ v['sample_' ~ n] }}</textarea></label>
+    {% endfor %}
+    <label class="wide">Tone preferences <span class="hint">(optional)</span><input type="text" name="tone" maxlength="400" placeholder="e.g. direct, practical, a little dry humour; no buzzwords" value="{{ v.tone }}"></label>
+  </div>
+</section>
+<section class="obstep" data-title="Brand rules">
+  <div><h2>Brand preferences and guardrails</h2><p class="sub">Hard rules every draft is checked against before you ever see it.</p></div>
+  <div class="fieldgrid">
+    <label>Topics to own<textarea name="topics_to_own" style="min-height:80px" placeholder="One per line">{{ v.topics_to_own }}</textarea></label>
+    <label>Topics to avoid<textarea name="topics_to_avoid" style="min-height:80px" placeholder="One per line, e.g. politics, pricing">{{ v.topics_to_avoid }}</textarea></label>
+    <label>Words and phrases to never use<textarea name="banned_phrases" style="min-height:80px" placeholder="One per line">{{ v.banned_phrases }}</textarea></label>
+    <label>Verified facts we may cite<textarea name="facts" style="min-height:80px" placeholder="One per line, e.g. We serve 1,100 customers across 12 countries">{{ v.facts }}</textarea><span class="hint">Numbers in posts must come from here or from a real source we show you.</span></label>
+    <label>Required disclaimer <span class="hint">(optional)</span><textarea name="disclaimer_text" style="min-height:60px" placeholder="Text that must appear when a trigger word is used">{{ v.disclaimer_text }}</textarea></label>
+    <label>Disclaimer trigger words<textarea name="disclaimer_triggers" style="min-height:60px" placeholder="One per line">{{ v.disclaimer_triggers }}</textarea></label>
+    <label class="wide">Do-not-contact list <span class="hint">(optional)</span><textarea name="do_not_contact" style="min-height:80px" placeholder="Existing customers, partners or opt-outs: emails, domains or company names, one per line">{{ v.do_not_contact }}</textarea></label>
+  </div>
+</section>
+<section class="obstep" data-title="Goals">
+  <div><h2>Goals</h2><p class="sub">These become your weekly targets.</p></div>
+  <div class="fieldgrid">
+    <label class="wide">What do you want from LinkedIn?<input type="text" name="primary_goal" maxlength="300" placeholder="e.g. Inbound demo requests from operations leaders" value="{{ v.primary_goal }}"></label>
+    <label>Posts per week<input type="number" name="posts_per_week" min="3" max="7" value="{{ v.posts_per_week }}"></label>
+    <label>Leads per week (minimum)<input type="number" name="leads_per_week_min" min="1" max="40" value="{{ v.leads_per_week_min }}"></label>
+    <label>Leads per week (maximum)<input type="number" name="leads_per_week_max" min="1" max="60" value="{{ v.leads_per_week_max }}"></label>
+  </div>
+</section>
+<div class="row" id="formnav">
+  <button type="button" id="prevbtn" class="ghost" style="display:none">Back</button>
+  <span class="spacer"></span>
+  <button type="button" id="nextbtn" class="primary" style="display:none">Continue</button>
+  <button type="submit" id="submitbtn" class="primary">{{ submit_label }}</button>
+</div>
+<script>
+(function () {
+  var steps = Array.prototype.slice.call(document.querySelectorAll('.obstep')), cur = 0;
+  if (!steps.length || !{{ 'true' if steps else 'false' }}) { return; }
+  var bar = document.getElementById('stepper'), prev = document.getElementById('prevbtn'),
+      next = document.getElementById('nextbtn'), sub = document.getElementById('submitbtn');
+  bar.style.display = 'flex';
+  steps.forEach(function (s, i) {
+    var b = document.createElement('button'); b.type = 'button'; b.textContent = (i + 1) + '. ' + s.dataset.title;
+    b.onclick = function () { show(i); }; bar.appendChild(b);
+  });
+  function valid(i) {
+    var ok = true;
+    steps[i].querySelectorAll('input,textarea').forEach(function (el) { if (!el.checkValidity()) { ok = false; el.reportValidity(); } });
+    return ok;
+  }
+  function show(i) {
+    if (i > cur && !valid(cur)) { return; }
+    cur = i;
+    steps.forEach(function (s, k) { s.classList.toggle('on', k === i); });
+    Array.prototype.forEach.call(bar.children, function (b, k) { b.className = k === i ? 'on' : (k < i ? 'done' : ''); });
+    prev.style.display = i ? '' : 'none'; next.style.display = i < steps.length - 1 ? '' : 'none';
+    sub.style.display = i === steps.length - 1 ? '' : 'none';
+    window.scrollTo({ top: 0 });
+  }
+  prev.onclick = function () { show(cur - 1); }; next.onclick = function () { show(cur + 1); };
+  document.querySelector('form').addEventListener('submit', function (e) {
+    for (var i = 0; i < steps.length; i++) { if (!valid(i)) { e.preventDefault(); show(i); return; } }
+  });
+  show(0);
+})();
+</script>
