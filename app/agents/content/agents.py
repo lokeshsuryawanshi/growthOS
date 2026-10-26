@@ -31,6 +31,8 @@ WRITER_SYSTEM = (
     "as written, the sentence using it, the source URL, and a verbatim quote copied from that source. Use each figure only "
     "for what the quote says it measures: a customer count is a customer count, never a market size or a problem statistic. "
     "The founder's sample posts are style references: never reuse their hooks, sentences or stories. "
+    "Never invent personal anecdotes, customer stories, dates, results or quotes: write only from the provided sources, the "
+    "founder's own samples and general reasoning. If the sources have no figure for a point, make the point without a number. "
     "No hashtag spam (0-3 hashtags). Never mention other companies the agency works with."
 )
 CRITIC_SYSTEM = (
@@ -87,11 +89,14 @@ async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str 
                                   metadata={**meta, "round": rounds, "must_fix": critique.must_fix})).output
 
     report = check_post(draft.text, draft.hashtags, policy, draft.claims)
-    if not report.passed and not report.critical:
-        ctx.event("output_guard", "auto_fix", slot=slot.id, violations=[v.rule for v in report.violations])
+    for fix_round in range(2):                      # up to two rewrites; critical violations are never auto-fixed
+        if report.passed or report.critical:
+            break
+        ctx.event("output_guard", "auto_fix", slot=slot.id, attempt=fix_round + 1, violations=[v.rule for v in report.violations])
         draft = (await structured("writer", "big", WRITER_SYSTEM,
                                   f"{brief}\n\nYour draft:\n{draft.text}\n\nIt failed these policy checks. Rewrite to fix all of "
-                                  f"them (remove or correct any figure the source does not support, and fix the claims list):\n{report.instructions()}",
+                                  f"them. If a figure cannot be tied to a source quote, remove the figure and the sentence around it; "
+                                  f"do not invent anecdotes. Fix the claims list too:\n{report.instructions()}",
                                   PostDraft, ctx, temperature=0.4, max_tokens=1600,
                                   metadata={**meta, "round": 99, "violations": [v.model_dump() for v in report.violations]})).output
         report = check_post(draft.text, draft.hashtags, policy, draft.claims)

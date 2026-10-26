@@ -188,7 +188,13 @@ async def _draft_week(n: NodeCtx) -> dict:
     async def one(slot_id: str):
         async with sem:
             try:
-                return (await draft_slot(n.tenant_id, slot_id, n.agent)).status
+                post = await draft_slot(n.tenant_id, slot_id, n.agent)
+                if post.status == "blocked":      # one fresh attempt, told why the first was refused
+                    why = "; ".join(v["rule"] for v in (post.guardrail_report or {}).get("violations", []))
+                    n.agent.event("writer", "redraft_after_block", slot=slot_id, rules=why)
+                    post = await draft_slot(n.tenant_id, slot_id, n.agent,
+                                            note=f"The previous draft was blocked ({why}). Write a new post with no statistics or invented stories.")
+                return post.status
             except (BudgetExceeded, TenantPaused):
                 raise
             except Exception as e:  # one bad slot shouldn't sink the week
