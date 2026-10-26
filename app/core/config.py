@@ -2,6 +2,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,7 +14,7 @@ class ConfigError(RuntimeError):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
 
     # --- environment ---------------------------------------------------------
     # production: real providers only. No fixtures, no mock models, no demo data.
@@ -30,8 +31,10 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     tavily_api_key: str = ""                          # optional web search
     hunter_api_key: str = ""                          # optional: business email discovery + verification
-    google_oauth_client_id: str = ""                  # optional: Gmail sending
-    google_oauth_client_secret: str = ""
+    # optional: Gmail sending. GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are accepted as aliases.
+    google_oauth_client_id: str = Field("", validation_alias=AliasChoices("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_CLIENT_ID"))
+    google_oauth_client_secret: str = Field("", validation_alias=AliasChoices("GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET"))
+    google_redirect_uri: str = ""                     # must match the Google console exactly; default APP_BASE_URL/oauth/google/callback
     encryption_key: str = ""                          # Fernet key for stored OAuth tokens; derived from JWT_SECRET if empty
     # "live" calls real providers; "mock" uses deterministic offline responders
     # (tests, load test, demo only). "auto" = live if a Groq key is present.

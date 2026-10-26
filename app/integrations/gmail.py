@@ -32,7 +32,8 @@ SCOPES = "https://www.googleapis.com/auth/gmail.send openid email"
 
 
 def redirect_uri() -> str:
-    return get_settings().app_base_url.rstrip("/") + "/oauth/google/callback"
+    s = get_settings()
+    return s.google_redirect_uri or s.app_base_url.rstrip("/") + "/oauth/google/callback"
 
 
 def configured() -> bool:

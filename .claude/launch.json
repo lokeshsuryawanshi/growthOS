@@ -4,14 +4,29 @@
     {
       "name": "growthos-mock",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "LLM_MODE=mock DATABASE_URL=sqlite+aiosqlite:///./demo_mock.db .venv/bin/uvicorn app.main:app --port 8010"],
+      "runtimeArgs": [
+        "-c",
+        "APP_ENV=demo LLM_MODE=mock DATABASE_URL=sqlite+aiosqlite:///./demo_mock.db .venv/bin/uvicorn app.main:app --port 8010"
+      ],
       "port": 8010
     },
     {
       "name": "growthos-live",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", ".venv/bin/uvicorn app.main:app --port 8000"],
+      "runtimeArgs": [
+        "-c",
+        ".venv/bin/uvicorn app.main:app --port 8000"
+      ],
       "port": 8000
+    },
+    {
+      "name": "growthos-fresh",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "APP_ENV=production DATABASE_URL=sqlite+aiosqlite:///./data/fresh.db APP_BASE_URL=http://localhost:8020 .venv/bin/uvicorn app.main:app --port 8020"
+      ],
+      "port": 8020
     }
   ]
 }

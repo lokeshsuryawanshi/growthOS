@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -14,8 +15,17 @@ from app.db.session import Database
 log = logging.getLogger(__name__)
 
 
+def ensure_sqlite_dir(url: str) -> None:
+    """A fresh deploy points at e.g. /data/growthos.db; SQLite will not create the directory itself."""
+    if url.startswith("sqlite") and ":memory:" not in url:
+        path = url.split("///", 1)[-1]
+        if path:
+            Path(path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+
+
 async def init_database(db: Database) -> None:
     s = get_settings()
+    ensure_sqlite_dir(db.url)
     if s.app_env == "production":
         await upgrade(db.url)          # migrations are the only way the production schema is created
     else:

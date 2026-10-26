@@ -449,6 +449,7 @@ async def gmail_start(request: Request, tid: str):
 
 
 @router.get("/oauth/google/callback")
+@router.get("/auth/gmail/callback")     # alias: matches the redirect URI already registered in Google Cloud
 async def gmail_callback(request: Request, code: str = "", state: str = "", error: str = ""):
     me = need_login(request)
     try:

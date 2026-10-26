@@ -1,118 +1,83 @@
 # Growth OS
 
-A done-for-you growth portal for busy founders. Agents research the founder's market, competitors and voice, plan an 8-week LinkedIn content calendar, draft posts, find qualified leads and draft outreach. The founder only **approves, edits or rejects**. Nothing is published or sent without a human.
+A done-for-you growth portal for busy founders. Agents research the founder's market, competitors and voice from real web sources, plan an 8-week LinkedIn calendar, draft posts, find qualified leads and draft outreach emails. The founder only **approves, edits or rejects**. Nothing is posted or emailed without a human.
 
-- **Plan and architecture:** [PLAN.md](PLAN.md)
-- **Decisions, trade-offs and lessons from live runs:** [DECISIONS.md](DECISIONS.md)
+- Plan and architecture: [PLAN.md](PLAN.md) · Decisions and lessons: [DECISIONS.md](DECISIONS.md) · Deploying: [docs/DEPLOY.md](docs/DEPLOY.md) · Handoff notes: [HANDOFF.md](HANDOFF.md)
 
-## Run it
+## Honesty rules (enforced in code and tests)
+
+- **Production never shows or produces synthetic data.** All fictional clients, prospects, web pages and mock models live in `app/fixtures/` and cannot be imported unless `APP_ENV` is `demo` or `test`. A test boots the real app in production mode on an empty database and checks this.
+- **No silent fallbacks.** If a key is missing or a provider fails, the step stops and the UI shows what failed and how to fix it (HTTP 424 from the API). Nothing is replaced by canned output.
+- **Sources are verified.** A cited URL must have actually come back from a search or page fetch; otherwise the claim is dropped and counted. Numbers in posts need a verbatim source quote and must be used for what the source says.
+- **New accounts start empty.** Sign up, answer the onboarding form, get a clean workspace with empty states.
+
+## Run it locally
 
 ```bash
 python3 -m venv .venv
-```
-
-```bash
 .venv/bin/pip install -r requirements.txt
+cp .env.example .env        # then fill it in (below)
+.venv/bin/uvicorn app.main:app --port 8000
 ```
+
+Open http://localhost:8000 and sign up. **Use a new database file** (e.g. `DATABASE_URL=sqlite+aiosqlite:///./data/growthos.db`); do not reuse an old `growthos.db` that was seeded with demo clients. The schema is created by Alembic at startup.
+
+Labelled synthetic demo (mock models, fictional clients, nothing real, local only):
 
 ```bash
-cp .env.example .env
+APP_ENV=demo LLM_MODE=mock DATABASE_URL=sqlite+aiosqlite:///./demo_mock.db .venv/bin/uvicorn app.main:app --port 8010
 ```
+Demo logins are shown on the login page (a red banner marks demo mode).
 
-Leave `GROQ_API_KEY` empty for **mock mode**: deterministic, offline and free, with every agent backed by a responder that uses the real tools and data. With a key, the app calls Groq (and Gemini if `GOOGLE_API_KEY` is set).
+## Configuration (`.env`)
 
-```bash
-.venv/bin/uvicorn app.main:app --reload
-```
-
-Open http://localhost:8000. The database seeds itself on first start with 12 fictional clients. Demo logins (password `growthos-demo`):
-
-| Login | Role | Sees |
+| Variable | Needed for | Notes |
 |---|---|---|
-| `am.sam@growthos.example` | Account manager (6 clients) | Ops console: run discovery/weekly cycles, approve strategy briefs, traces, costs, guardrails |
-| `priya@ledgerloop.example` | Founder, LedgerLoop | Approval inbox with post previews and outreach, calendar, leads, results |
-| `marcus@shiftwise.example` | Founder, ShiftWise | Same, for ShiftWise only |
-| `admin@growthos.example` | Platform admin | All clients, budgets |
-| `viewer@ledgerloop.example` | Read-only | LedgerLoop, no actions |
+| `JWT_SECRET` | **required** | 32+ random chars; the app refuses to start in production without it |
+| `GROQ_API_KEY` | **required** | writing, strategy, scoring (console.groq.com) |
+| `TAVILY_API_KEY` | **required for research** (or Gemini billing) | free tier at tavily.com. Gemini Google Search grounding also works if billing is enabled on `GOOGLE_API_KEY`; it reports quota errors honestly |
+| `GOOGLE_API_KEY` | optional | Gemini judge for the writer/critic loop; falls back to a Groq Qwen judge |
+| `HUNTER_API_KEY` | optional | find and verify lead emails. Without it leads are companies with no contact and no outreach is drafted. Free plan is ~25 searches/month |
+| `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET`, `GOOGLE_REDIRECT_URI` | optional | Gmail sending (`GOOGLE_CLIENT_ID`/`_SECRET` accepted too). Scope `gmail.send` only. Setup in [docs/DEPLOY.md](docs/DEPLOY.md) |
+| `DATABASE_URL` | recommended | persistent path in production; created if missing |
+| `APP_BASE_URL` | deploy | public https URL (OAuth redirect, secure cookies) |
+| `SIGNUP_INVITE_CODE`, `ADMIN_EMAIL`/`ADMIN_PASSWORD` | optional | gate signup; create a platform admin for the ops console |
+| `GLOBAL_DAILY_BUDGET_USD`, `SELF_SERVE_MONTHLY_BUDGET_USD` | optional | spend caps (5 and 2 by default) |
+| `ENCRYPTION_KEY` | optional | Fernet key for stored OAuth tokens (derived from `JWT_SECRET` if empty) |
 
-To drive a running server through a full demo (discovery for all clients, approve the strategy gates, two weekly cycles, a few founder decisions):
+The Integrations page in the app shows what is connected and how to fix what is not.
 
-```bash
-.venv/bin/python scripts/demo_drive.py http://localhost:8000
-```
+## How it works for a founder
 
-## Test, evaluate, stress
+1. **Onboarding:** company, website, competitors, writing samples, brand rules, do-not-contact list, goals (posts/week, leads/week).
+2. **Research** (about 10 minutes on Groq's free tier): reads your site, searches the web, builds voice profile, market, competitors, trends, strategy, ICP and an 8-week calendar, with provenance. You approve the strategy.
+3. **Weekly cycle:** drafts posts (writer ↔ critic loop, guardrails), finds leads (web search + Hunter), drafts emails.
+4. **You decide:** approve/edit/reject posts (copy to LinkedIn, then "I posted it"; no social integration). Approve emails, then send from your own Gmail.
 
-```bash
-.venv/bin/python -m pytest
-```
+Roles: founder (`client_owner`), read-only viewer, account manager and platform admin (ops console: runs, traces, costs, guardrails, audit log, kill switch).
 
-```bash
-.venv/bin/python -m evals.run_evals
-```
-
-```bash
-.venv/bin/python -m loadtest.stress --tenants 100
-```
-
-Add `--live` to the eval run to use real models; that also runs judge calibration.
-
-## How the interviewer's five topics map to code
+## Code map
 
 | Topic | Where |
 |---|---|
-| **Agentic loops** | `app/agents/runtime/loop.py`: one bounded loop for every agent (step cap, budget and cancel checks, tool guard, untrusted-data wrapping, schema validation with repair turns, trace). Tool-using agents finish by calling `submit_result`. Writer ↔ critic loop in `app/agents/content/agents.py`. Goal-seeking lead top-up loop in `app/agents/leads/agents.py`. Learning from founder edits in `reflect_on_feedback`. |
-| **Coordination** | `app/agents/orchestrator/engine.py`: discovery and weekly DAGs, node checkpoints, retries, resume after crash, rerun-from-node, human gates. `scheduler.py`: fair round-robin scheduler with global and per-client caps. Agents hand off only typed, versioned artifacts (`app/agents/blackboard.py`, `schemas.py`). |
-| **Evals** | `evals/run_evals.py` + `evals/baseline.json` (CI gate), `evals/datasets/` (red-team with benign controls, judge calibration), online signals in `app/services/kpis.py` (approval rate, edit distance). |
-| **Cost** | `app/llm/gateway.py`: tiered routing, per-model token buckets, per-run and per-client monthly budgets, kill switch, response cache, cost ledger on every call. Cost views in the ops console. |
-| **Guardrails** | `app/guardrails/`: input (hidden-markup stripping, heuristics + Llama Prompt Guard, quarantine), tool (allowlist, schema, URL allowlist, no model-chosen tenant), output (leakage, canary, PII, uncited stats, disparagement, disclaimers, near-duplicates, spam), process (state machines, send gate). |
-| Security | `app/core/security.py` (RBAC policy table), `app/db/session.py` (ORM tenant interceptor), `migrations/postgres_rls.sql`, `tests/test_api_security.py`, `tests/test_tenancy.py` |
+| Agentic loops | `app/agents/runtime/loop.py`, writer↔critic in `app/agents/content/agents.py`, lead loop in `app/agents/leads/agents.py` |
+| Coordination | `app/agents/orchestrator/` (DAGs, checkpoints, retries, gates, fair scheduler) |
+| Real integrations | `app/integrations/` (search chain, safe fetch, Hunter, Gmail OAuth, status) |
+| Cost | `app/llm/gateway.py` (tiers, buckets, run/tenant/global budgets, kill switch, ledger) |
+| Guardrails | `app/guardrails/` (input, output incl. claim-level grounding, state machines) |
+| Security | `app/core/security.py` (RBAC), `app/db/session.py` (tenant interceptor), `migrations/postgres_rls.sql`, rate limits in `app/core/ratelimit.py` |
+| Fixtures (tests/demo only) | `app/fixtures/` |
 
-## Results
+## Tests
 
-### Tests
+```bash
+.venv/bin/python -m pytest -q        # 150 tests, ~1 minute
+```
+Covers tenancy, gateway, guardrails, grounding regressions, integrations (mock HTTP), orchestration failure/recovery, the send gate, accounts, and a production-mode boot audit.
 
-54 tests: tenancy interceptor and contextvar propagation, gateway (retries, breaker, budgets, cache, token bucket), runtime (repair, tool guard, step cap), guardrails, state machines, end-to-end pipeline, approvals and learning loop, crash resume, API role matrix and cross-tenant probes.
+## Status and known limitations
 
-### Eval gate (mock mode), from [evals/reports/eval-mock.md](evals/reports/eval-mock.md)
-
-| | LedgerLoop | ShiftWise |
-|---|---|---|
-| 8-week calendar valid (≥ 5 posts/week) | yes | yes |
-| Drafts reaching the founder | 100% | 100% |
-| Leads per week | 20, 20 | 20, 20 |
-| Suppressed / competitor / contactless leads kept | 0 | 0 |
-| Injection pages caught | 2 | 1 |
-| Injected text found in any output | 0 | 0 |
-
-Guardrails: red-team block recall 1.0 (with the right rule), benign false-positive rate 0.0, input-injection recall 0.8. The miss is the obfuscated case, which only the live classifier is meant to catch.
-
-### Stress test, from [loadtest/reports/stress-100.md](loadtest/reports/stress-100.md)
-
-Mock models with 100–600 ms latency, 5% injected 429s and 2% 5xx errors. Each tenant runs discovery plus one weekly cycle.
-
-| | 12 tenants | 100 tenants |
-|---|---|---|
-| Runs succeeded | 24/24 | 200/200 |
-| Failed nodes / DB lock errors | 0 / 0 | 0 / 0 |
-| Wall time | ~23 s | ~80 s |
-| Model calls/s | ~60 | ~145 |
-| Clients meeting posts / calendar / leads targets | 12 / 12 / 12 | 100 / 100 / 100 |
-| Cross-tenant violations | 0 | 0 |
-| Approval API p95 (50 concurrent) | ~465 ms | ~465 ms |
-
-### Live run (Groq `gpt-oss-120b` / `gpt-oss-20b`, Gemini judge), LedgerLoop
-
-| | Discovery | Weekly 1 | Weekly 2 |
-|---|---|---|---|
-| Status | all 9 nodes succeeded | succeeded | succeeded |
-| Wall time (paced to 8k tokens/min) | 621 s | 413 s | 383 s |
-| Output | voice, market, competitors, trends, strategy, ICP, 40-slot calendar | 5 posts awaiting approval, calendar extended to week 9 | 5 posts, 12 qualified leads + 12 outreach drafts |
-| Lead filtering | | 0 leads (geo bug, see below) | 5 suppressed, 1 competitor, 2 contactless filtered; 1 injected signal stripped |
-
-Totals: 119 model calls, **$0.031**, 0 errors, 0 fallbacks, 2 retries. Average critic score 3.94 after 2.0 rounds.
-
-What the live runs exposed (details in [DECISIONS.md §5](DECISIONS.md#5-what-the-first-live-run-taught)):
-- Groq rate limits, server-side tool-schema rejection, and a country-name mismatch that returned zero leads ("United States" vs "US"). All fixed, with regression tests.
-- **Not yet fixed:** one draft reused a real number in the wrong sense ("the 1,100 SMBs still guessing", where 1,100 is the customer count). The `uncited_stat` check confirms a number exists in the sources, not that it is used correctly. The next step is a claim-level check by the critic.
-- **Not yet fixed:** one draft opened with the founder's own sample hook. Near-duplicate checks should also cover the founder's samples.
+- The evals (`python -m evals.run_evals`) and load test (`python -m loadtest.stress --tenants 100`) run on mock models and fixtures. Their last reports (`evals/reports`, `loadtest/reports`) **predate the latest refactor and have not been re-run**; treat them as historical.
+- Orchestrator and rate limiter are in-process; SQLite has one writer. Path to scale: Postgres (RLS migration included), a durable job queue, Redis rate limits. Run a single worker.
+- No LinkedIn publishing, no email verification or password reset, no CSRF token beyond `SameSite=Lax`.
+- Not yet deployed. Hunter and Gmail were tested against mock HTTP only; a live run with the latest code is pending (see HANDOFF.md).

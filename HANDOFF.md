@@ -1,6 +1,6 @@
 # Growth OS: handoff
 
-State as of 2026-10-27. **Nothing from this session is committed or pushed** (`git status` shows all of it as uncommitted). Last commit on `main` is `26f73d3`. Remote: `https://github.com/lokeshsuryawanshi/growthOS.git` (`gh` is logged in as `lokeshsuryawanshi`).
+State as of 2026-10-27. Work is **committed locally in chunks but not pushed** (`main` is ahead of `origin/main`). Only `coding-round-links.md` (the user's own file) is untracked on purpose. Remote: `https://github.com/lokeshsuryawanshi/growthOS.git` (`gh` is logged in as `lokeshsuryawanshi`).
 
 ## 1. What this is
 
@@ -25,7 +25,7 @@ APP_ENV=demo LLM_MODE=mock .venv/bin/uvicorn app.main:app --port 8010   # labell
 
 `APP_ENV` = `production` (default) | `demo` | `test`. Only `demo`/`test` allow `app/fixtures/*` and mock models. Production refuses `LLM_MODE=mock`, refuses a weak/default `JWT_SECRET` (<32 chars), and runs Alembic at startup.
 
-## 3. Completed this session (all uncommitted)
+## 3. Completed this session
 
 - **Data-integrity gate**: all synthetic things moved to `app/fixtures/` (clients, corpus, prospects, mocks, seed, `SeededLeadSource`, `FixtureResearch`); importing it in production raises. No mock publisher/sender exists anymore. Gateway has an `unconfigured` mode that raises an honest `IntegrationError` (HTTP 424 with `recovery`).
 - **Accounts/onboarding**: `/signup`, `/onboarding` (4-step form), `/portal/{tid}?tab=settings` edit, `app/services/accounts.py`. New workspaces start empty (empty states on every tab). Optional `SIGNUP_INVITE_CODE`, `ADMIN_EMAIL`/`ADMIN_PASSWORD` bootstrap. Founders may start runs and approve the strategy gate (`POLICY` changed). Rate limits (`app/core/ratelimit.py`, in-memory), per-tenant run limit, `SELF_SERVE_MONTHLY_BUDGET_USD`=2, `GLOBAL_DAILY_BUDGET_USD`=5.
@@ -46,10 +46,10 @@ Not verified at all: the new UI in a browser (no screenshot taken), any live Gro
 
 ## 5. Remaining work, by priority
 
-1. **Verify in a browser** (production mode, fresh DB, e.g. `DATABASE_URL=sqlite+aiosqlite:///./fresh.db`): signup → onboarding → settings → every tab's empty state → integrations page. Fix template/CSS bugs. `ops_client.html` and `ops_run.html` were not updated for new fields/shell.
+1. **Browser check, partly done** (launch config `growthos-fresh`, port 8020, `data/fresh.db`): signup, onboarding, overview, integrations and leads render correctly. Still unchecked: content, calendar, research, settings, activity tabs with data, and the ops pages (`ops_client.html`/`ops_run.html` not updated for new fields).
 2. **Live run** with real keys: needs `TAVILY_API_KEY` (Gemini grounding was still 429/quota-exhausted on 2026-10-27). Run discovery for a fresh account; check research provenance, claims, DM drafting.
-3. **Deployment (not started)**: no `Dockerfile`, `render.yaml`/`fly.toml`, `docs/DEPLOY.md`. No hosting CLI or credentials on this machine. Must run **one worker** (in-process orchestrator, SQLite) with a persistent disk, `uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers`. User must create the host account and set env vars.
-4. **Update docs**: `.env.example` (new vars below; it shows as modified in git, inspect the diff first), `README.md`, `DECISIONS.md`, `PLAN.md`. They still describe demo logins, seeded data, LinkedIn DMs and mock publisher.
+3. **Deployment**: `Dockerfile`, `.dockerignore`, `render.yaml` and `docs/DEPLOY.md` are written but untested (no Docker or hosting access here). New empty DB at `/data/growthos.db`; one worker only. The user must create the host account and set env vars.
+4. **Docs**: `README.md`, `.env.example`, `docs/DEPLOY.md` are current. `DECISIONS.md` and `PLAN.md` are not updated (they still describe seeded data, LinkedIn DMs, a mock publisher).
 5. **Re-run** evals + stress (12 and 100 tenants), update baselines/reports honestly. Add deterministic evals (factual, brand voice, output quality, safety) to `evals/`; currently the deterministic checks exist only as pytest tests.
 6. Add an Alembic drift test (migration schema == `Base.metadata`); regenerate `0001` if models change before first deploy.
 7. CSRF/Origin check for cookie-authenticated POSTs (only `SameSite=Lax` today); email verification; password reset; multi-instance rate limiting (Redis).
@@ -57,6 +57,9 @@ Not verified at all: the new UI in a browser (no screenshot taken), any live Gro
 
 ## 6. Known bugs and risks
 
+- The user's `.env` uses `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REDIRECT_URI` (=`http://localhost:8000/auth/gmail/callback`) and has `HUNTER_API_KEY`; the app accepts these names and serves that callback path. Hunter/Gmail have still not been exercised live.
+- An earlier uncommitted `.env.example` contained a real Google key pasted by mistake; it was replaced with a clean template before any commit (the key remains only in `.env`).
+- Web search status shows `degraded` when only Gemini grounding is configured (known quota 429); `TAVILY_API_KEY` is still missing.
 - **`growthos.db` (the `DATABASE_URL` in `.env`) holds old seeded demo tenants and no `alembic_version`.** In production it would show fake clients or fail the first migration. Move it aside or point `DATABASE_URL` at a new file before running production mode. `demo_mock.db` is demo data too. Both are git-ignored.
 - A server on port 8010 (old code, mock mode, `demo_mock.db`) may still be running from earlier.
 - During testing, one early subprocess test run picked up the project `.env` and may have started a real Groq run for a few seconds (cents at most). Fixed by running the subprocess in a temp cwd.
@@ -74,9 +77,9 @@ Never print or commit `.env`.
 
 ## 8. Exact next steps
 
-1. `git status`, `git diff .env.example`; run `.venv/bin/python -m pytest -q` to confirm 150 pass.
+1. `git status`, `git log --oneline -12`; run `.venv/bin/python -m pytest -q` once to confirm 150 pass.
 2. Inspect before editing: `app/core/config.py`, `app/web/routes.py`, `app/services/accounts.py`, `app/integrations/*`, `tests/test_production_integrity.py`.
 3. Start a clean production server on a fresh DB and walk the UI (item 5.1). Fix what breaks, rerun tests.
 4. Re-run evals and stress; fix import breakage; save new reports.
-5. Write Dockerfile + host config + `docs/DEPLOY.md`, update `.env.example` and README.
+5. Finish the browser check; update `DECISIONS.md`/`PLAN.md`.
 6. Commit in chunks, push, then hand the user the exact remaining credential/deploy steps (Tavily key, host account, optional Hunter and Google OAuth).

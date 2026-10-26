@@ -142,7 +142,7 @@ label { display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); font-weig
 label .hint { color: var(--muted); font-weight: 400; font-size: 12.5px; }
 form.inline { display: inline; }
 details > summary { cursor: pointer; color: var(--ink-2); font-weight: 500; }
-.fieldgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.fieldgrid { align-items: start; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
 .fieldgrid .wide { grid-column: 1 / -1; }
 .flash { padding: 11px 14px; border-radius: 10px; background: var(--info-soft); color: #1d4f91; display: flex; gap: 10px; align-items: flex-start; }
 .flash.ok { background: var(--ok-soft); color: var(--ok); }

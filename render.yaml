@@ -1,0 +1,36 @@
+# Render blueprint. A persistent disk requires a paid instance type.
+services:
+  - type: web
+    name: growth-os
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    disk:
+      name: growthos-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:////data/growthos.db   # a NEW empty database on the persistent disk
+      - key: APP_BASE_URL
+        sync: false          # e.g. https://growth-os.onrender.com
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GROQ_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: HUNTER_API_KEY
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false          # APP_BASE_URL/oauth/google/callback, also added in Google Cloud
+      - key: SIGNUP_INVITE_CODE
+        sync: false          # optional: gate signup for the interview link

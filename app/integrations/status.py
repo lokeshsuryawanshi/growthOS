@@ -25,10 +25,12 @@ async def integration_status(tenant_id: str | None = None) -> list[dict]:
                 else "Not set: a Groq Qwen model judges drafts instead.",
                 "how": "Get a key at aistudio.google.com/apikey and set GOOGLE_API_KEY."})
     search_ok = bool(s.google_api_key or s.tavily_api_key)
-    out.append({"key": "search", "name": "Web search", "required": True, "state": OK if search_ok else MISSING,
+    search_state = OK if s.tavily_api_key else (DEGRADED if s.google_api_key else MISSING)   # Gemini grounding needs billing; unverified
+    out.append({"key": "search", "name": "Web search", "required": True, "state": search_state,
                 "detail": ("Providers: " + ", ".join(p for p, on in (("Gemini Google Search grounding", s.google_api_key),
                                                                    ("Tavily", s.tavily_api_key)) if on)
-                           + ". Gemini grounding needs billing enabled; if its quota is exhausted the run says so.")
+                           + (". Only Gemini grounding is configured: it needs billing enabled and may be out of quota, in which case research stops "
+                              "with that message. Add TAVILY_API_KEY for a dependable provider." if not s.tavily_api_key else "."))
                 if search_ok else "No search provider: market, competitor and trend research cannot run.",
                 "how": "Set TAVILY_API_KEY (free tier at tavily.com), or enable billing on the Google key."})
     hunter = HunterClient()

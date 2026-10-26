@@ -9,6 +9,9 @@ os.environ["GROQ_API_KEY"] = ""
 os.environ["GOOGLE_API_KEY"] = ""
 os.environ["TAVILY_API_KEY"] = ""
 os.environ["HUNTER_API_KEY"] = ""
+os.environ["GOOGLE_REDIRECT_URI"] = ""
+os.environ["GOOGLE_CLIENT_ID"] = ""
+os.environ["GOOGLE_CLIENT_SECRET"] = ""
 
 import pytest
 
