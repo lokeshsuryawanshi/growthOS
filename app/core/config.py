@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     global_max_concurrency: int = 16       # concurrent DAG nodes across all tenants
     per_tenant_max_concurrency: int = 3    # fairness: no tenant hogs workers
     provider_max_concurrency: int = 8      # in-flight requests per LLM provider
-    llm_max_retries: int = 4
+    llm_max_retries: int = 4              # transient errors (5xx, timeouts, malformed output)
+    llm_rate_limit_retries: int = 10      # 429s are expected under load: wait them out
+    llm_rate_limit_max_wait_s: float = 60.0
     circuit_failure_threshold: int = 5
     circuit_cooldown_s: float = 30.0
 
@@ -72,6 +74,16 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
     "mock-small": (0.075, 0.30),
     "mock-judge": (0.10, 0.40),
     "mock-guard": (0.04, 0.04),
+}
+
+
+# Tokens-per-minute per model, from the provider's x-ratelimit-limit-tokens header
+# (Groq on-demand tier). The gateway paces requests with a token bucket per model.
+MODEL_TPM: dict[str, int] = {
+    "openai/gpt-oss-120b": 8000,
+    "openai/gpt-oss-20b": 8000,
+    "qwen/qwen3.8-27b": 8000,
+    "meta-llama/llama-prompt-guard-2-86m": 15000,
 }
 
 

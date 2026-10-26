@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Growth OS{% endblock %}
+{% block content %}
+<div class="login panel stack">
+  <h1>Growth<span style="color:var(--accent)">OS</span></h1>
+  <p class="sub">Content, personal brand and pipeline, run for you.</p>
+  {% if error %}<div class="flash bad">{{ error }}</div>{% endif %}
+  <form method="post" action="/login" class="stack">
+    <label for="email">Email<input id="email" name="email" type="email" required value="{{ email or '' }}"></label>
+    <label for="password">Password<input id="password" name="password" type="password" required></label>
+    <button class="primary" type="submit">Sign in</button>
+  </form>
+  <details class="creds"><summary>Demo accounts (local seed data)</summary>
+    <p>Password for all: <code>growthos-demo</code></p>
+    <ul>
+      <li><code>admin@growthos.example</code>: platform admin</li>
+      <li><code>am.sam@growthos.example</code>: account manager (6 clients)</li>
+      <li><code>priya@ledgerloop.example</code>: founder, LedgerLoop</li>
+      <li><code>marcus@shiftwise.example</code>: founder, ShiftWise</li>
+      <li><code>viewer@ledgerloop.example</code>: read-only</li>
+    </ul>
+  </details>
+</div>
+{% endblock %}

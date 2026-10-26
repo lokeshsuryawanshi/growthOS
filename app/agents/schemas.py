@@ -27,17 +27,17 @@ class MarketReport(BaseModel):
     summary: str
     buyer_segments: list[str] = Field(min_length=1, max_length=6)
     buyer_pains: list[str] = Field(min_length=1, max_length=8)
-    key_facts: list[Sourced] = Field(max_length=10)
+    key_facts: list[Sourced] = Field(default_factory=list, max_length=10)
 
 
 class Competitor(BaseModel):
     name: str
     positioning: str
-    offerings: list[str] = Field(max_length=6)
-    content_themes: list[str] = Field(max_length=6)
-    posting_cadence: str
-    strengths: list[str] = Field(max_length=4)
-    weaknesses: list[str] = Field(max_length=4)
+    offerings: list[str] = Field(default_factory=list, max_length=6)
+    content_themes: list[str] = Field(default_factory=list, max_length=6)
+    posting_cadence: str = "unknown"
+    strengths: list[str] = Field(default_factory=list, max_length=4)
+    weaknesses: list[str] = Field(default_factory=list, max_length=4)
     source_urls: list[str] = Field(default_factory=list)
 
 
@@ -49,8 +49,8 @@ class CompetitorMatrix(BaseModel):
 class Trend(BaseModel):
     name: str
     summary: str
-    evidence_url: str
-    relevance: int = Field(ge=1, le=5)
+    evidence_url: str = ""
+    relevance: int = Field(default=3, ge=1, le=5)
     content_angle: str
 
 

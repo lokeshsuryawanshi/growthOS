@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -34,6 +35,41 @@ class RawResponse:
     completion_tokens: int
 
 
+def retry_hint(message: str) -> float | None:
+    """Groq puts the wait in the message: 'Please try again in 10.14s' / '450ms'."""
+    m = re.search(r"try again in (?:(\d+)m)?([\d.]+)(ms|s)", message)
+    if not m:
+        return None
+    secs = float(m.group(2)) / (1000 if m.group(3) == "ms" else 1)
+    return secs + 60 * int(m.group(1) or 0)
+
+
+class TokenBucket:
+    """Client-side tokens-per-minute pacing so we queue instead of collecting 429s."""
+
+    def __init__(self, tokens_per_minute: int):
+        self.capacity = float(tokens_per_minute)
+        self.tokens = float(tokens_per_minute)
+        self.rate = tokens_per_minute / 60.0
+        self.updated = time.monotonic()
+        self.lock = asyncio.Lock()
+
+    async def acquire(self, amount: int) -> float:
+        amount = min(float(amount), self.capacity)
+        waited = 0.0
+        async with self.lock:  # FIFO: one waiter refills at a time
+            while True:
+                now = time.monotonic()
+                self.tokens = min(self.capacity, self.tokens + (now - self.updated) * self.rate)
+                self.updated = now
+                if self.tokens >= amount:
+                    self.tokens -= amount
+                    return waited
+                need = (amount - self.tokens) / self.rate
+                waited += need
+                await asyncio.sleep(need)
+
+
 class Provider:
     name = "base"
 
@@ -55,6 +91,10 @@ class GroqProvider(Provider):
         kwargs: dict[str, Any] = dict(model=model, messages=req.messages, max_tokens=req.max_tokens)
         if req.tier != "guard":
             kwargs["temperature"] = req.temperature
+        if model.startswith("openai/gpt-oss"):
+            kwargs["reasoning_effort"] = req.reasoning
+        elif model.startswith("qwen/"):
+            kwargs["reasoning_format"] = "hidden"  # keep thinking out of the JSON answer
         if req.tools:
             kwargs["tools"] = [t.to_openai() for t in req.tools]
             kwargs["tool_choice"] = "auto"
@@ -64,7 +104,7 @@ class GroqProvider(Provider):
             r = await self.client.chat.completions.create(**kwargs)
         except groq.RateLimitError as e:
             ra = e.response.headers.get("retry-after") if e.response is not None else None
-            raise RateLimited(str(e), float(ra) if ra else None) from e
+            raise RateLimited(str(e), float(ra) if ra else retry_hint(str(e))) from e
         except (groq.APIConnectionError, groq.APITimeoutError, groq.InternalServerError) as e:
             raise TransientError(str(e)) from e
         except groq.BadRequestError as e:

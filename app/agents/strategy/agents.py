@@ -33,7 +33,8 @@ async def strategist(tenant_id: str, ctx: AgentContext) -> ContentStrategy:
                            "You are a B2B content strategist for founder-led LinkedIn. Define positioning against the "
                            f"competitors' whitespace, 3-5 content pillars whose share_pct sums to 100, a format mix and a "
                            f"cadence of at least {get_settings().posts_per_week_target} posts per week.",
-                           user, ContentStrategy, ctx, metadata={"intake": intake, **inputs})
+                           user, ContentStrategy, ctx, max_tokens=3000, reasoning="medium",
+                           metadata={"intake": intake, **inputs})
     return res.output
 
 
@@ -46,7 +47,7 @@ async def icp_builder(tenant_id: str, ctx: AgentContext) -> ICP:
     res = await structured("icp_builder", "big",
                            "Define the ideal customer profile for outbound prospecting: 1-3 segments with job titles, "
                            "industries, company size and geography, their pains and buying triggers. Exclude the client's "
-                           "competitors and their staff.", user, ICP, ctx, metadata={"intake": intake})
+                           "competitors and their staff.", user, ICP, ctx, max_tokens=2000, metadata={"intake": intake})
     return res.output
 
 
@@ -107,7 +108,7 @@ async def calendar_planner(tenant_id: str, ctx: AgentContext, start: date, weeks
             prompt = user if not problems else user + "\n\nYour previous plan broke these rules, fix them:\n- " + "\n- ".join(problems)
             plan = (await structured("calendar_planner", "big",
                                      "You are a content calendar planner. Give every slot a specific topic and angle.",
-                                     prompt, CalendarPlan, ctx, max_tokens=7000,
+                                     prompt, CalendarPlan, ctx, max_tokens=4000,
                                      metadata={**meta, "attempt": attempt, "problems": problems})).output
             problems = validate_calendar(plan, chunk, pillars, per_week)
             ctx.event("calendar_planner", "calendar_validation", weeks=chunk, attempt=attempt, problems=problems)

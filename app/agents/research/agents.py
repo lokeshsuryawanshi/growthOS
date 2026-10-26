@@ -102,7 +102,7 @@ async def voice_analyst(tenant_id: str, ctx: AgentContext) -> VoiceProfile:
     res = await structured("voice_analyst", "big",
                            "Analyse how this founder writes so a ghostwriter can match the voice exactly. "
                            "Be concrete (sentence length, structure, words they use and never use).",
-                           user, VoiceProfile, ctx, cacheable=True,
+                           user, VoiceProfile, ctx, cacheable=True, max_tokens=2000,
                            metadata={"intake": intake, "samples": samples,
                                      "learned_rules": (current or {}).get("learned_rules", [])})
     out = res.output
@@ -116,7 +116,7 @@ async def market_analyst(tenant_id: str, ctx: AgentContext) -> MarketReport:
     res = await run_agent("market_analyst", "big",
                           "You are a B2B market analyst. Research the client's industry: buyer segments, their pains, "
                           "and hard facts with sources. Every key_fact must carry the URL it came from.",
-                          brief, MarketReport, RESEARCH_TOOLS, ctx, metadata={"intake": intake})
+                          brief, MarketReport, RESEARCH_TOOLS, ctx, metadata={"intake": intake}, max_tokens=2500)
     return res.output
 
 
@@ -126,7 +126,7 @@ async def competitor_analyst(tenant_id: str, ctx: AgentContext) -> CompetitorMat
                           "You are a competitive analyst. For each competitor find positioning, offerings, what they post "
                           "about and how often, strengths and weaknesses. Then list whitespace: content angles nobody owns. "
                           "Stay factual and neutral; describe weaknesses as gaps, never as insults.",
-                          brief, CompetitorMatrix, RESEARCH_TOOLS, ctx, metadata={"intake": intake})
+                          brief, CompetitorMatrix, RESEARCH_TOOLS, ctx, metadata={"intake": intake}, max_tokens=3000)
     return res.output
 
 
@@ -137,5 +137,5 @@ async def trend_scout(tenant_id: str, ctx: AgentContext) -> TrendReport:
                           "You track market and content trends. Find current trends relevant to the client's buyers and "
                           "suggest a content angle for each. Each trend needs an evidence URL.",
                           f"{brief}\nMarket summary: {compact(market, 800)}", TrendReport, RESEARCH_TOOLS, ctx,
-                          metadata={"intake": intake})
+                          metadata={"intake": intake}, max_tokens=2500)
     return res.output

@@ -1,0 +1,44 @@
+{# expects: m (OutreachMessage), lead, tenant, me #}
+{% set rep = m.guardrail_report or {} %}
+<article class="card {{ 'done' if m.status not in ('pending_approval', 'approved', 'blocked') }}" id="dm-{{ m.id }}">
+  <div class="preview stack">
+    <div><b>{{ lead.full_name }}</b> · {{ lead.title }}, {{ lead.company }}</div>
+    <div class="dm">{{ m.approved_text or m.text }}</div>
+    {% if m.alt_text %}<details><summary>Alternative version</summary><div class="dm" style="margin-top:8px">{{ m.alt_text }}</div></details>{% endif %}
+  </div>
+  <div class="meta">
+    <div class="row"><span class="pill {{ m.status }}">{{ m.status.replace('_', ' ') }}</span>
+      <span class="pill accent">fit {{ lead.fit_score }}</span><span class="pill">{{ lead.segment or 'ICP' }}</span></div>
+    {% if msg %}<div class="flash {{ 'bad' if msg_bad }}">{{ msg }}</div>{% endif %}
+    {% if lead.signal %}<div class="why"><b>Signal:</b> {{ lead.signal }}</div>{% endif %}
+    {% if lead.evidence %}<ul class="violations" style="color:var(--ink-2)">{% for e in lead.evidence %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    {% if rep.violations or rep.warnings %}<ul class="violations">
+      {% for v in (rep.violations or []) + (rep.warnings or []) %}<li class="{{ v.severity }}">{{ v.rule.replace('_', ' ') }}: {{ v.detail }}</li>{% endfor %}</ul>{% endif %}
+    {% if m.status == 'pending_approval' %}
+      {% if me.can('outreach:approve') %}
+      <div class="row">
+        <form class="inline" hx-post="/ui/{{ tenant.id }}/outreach/{{ m.id }}" hx-target="#dm-{{ m.id }}" hx-swap="outerHTML">
+          <input type="hidden" name="action" value="approve"><button class="primary">Approve</button></form>
+        <form class="inline" hx-post="/ui/{{ tenant.id }}/outreach/{{ m.id }}" hx-target="#dm-{{ m.id }}" hx-swap="outerHTML">
+          <input type="hidden" name="action" value="reject"><button class="danger">Not a fit</button></form>
+      </div>
+      {% endif %}
+      {% if me.can('outreach:edit') %}
+      <details><summary>Edit the message</summary>
+        <form class="stack" hx-post="/ui/{{ tenant.id }}/outreach/{{ m.id }}" hx-target="#dm-{{ m.id }}" hx-swap="outerHTML" style="margin-top:8px">
+          <textarea name="text" id="dmtext-{{ m.id }}" style="min-height:140px">{{ m.text }}</textarea>
+          <div class="row">{% if me.can('outreach:approve') %}<button class="primary" name="action" value="approve">Save and approve</button>{% endif %}
+            <button name="action" value="edit">Save edit</button></div>
+        </form>
+      </details>
+      {% endif %}
+    {% elif m.status == 'approved' and me.can('outreach:send') %}
+      <form hx-post="/ui/{{ tenant.id }}/outreach/{{ m.id }}/send" hx-target="#dm-{{ m.id }}" hx-swap="outerHTML">
+        <button class="primary">Send on LinkedIn</button>
+        <div class="sub" style="margin-top:6px">Sends from your account. Approved messages only; daily cap applies.</div>
+      </form>
+    {% elif m.status == 'sent' %}
+      <div class="sub">Sent {{ m.sent_at.strftime('%d %b %H:%M') }}.</div>
+    {% endif %}
+  </div>
+</article>

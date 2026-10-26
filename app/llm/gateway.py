@@ -16,14 +16,14 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
-from app.core.config import MODEL_PRICES, Settings, get_settings
+from app.core.config import MODEL_PRICES, MODEL_TPM, Settings, get_settings
 from app.core.tenancy import tenant_scope
 from app.db.audit import incident
 from app.db.models import LLMCache, LLMCall, Tenant
 from app.db.session import get_db
 from app.llm.providers import (
     CircuitBreaker, FatalError, GeminiProvider, GroqProvider, MockConfig, MockProvider, Provider,
-    RateLimited, TransientError,
+    RateLimited, TokenBucket, TransientError,
 )
 from app.llm.types import BudgetExceeded, CallContext, LLMRequest, LLMResponse, LLMUnavailable, Tier
 
@@ -61,6 +61,7 @@ class LLMGateway:
         self.breakers = {n: CircuitBreaker(self.s.circuit_failure_threshold, self.s.circuit_cooldown_s)
                          for n in self.providers}
         self.semaphores = {n: asyncio.Semaphore(self.s.provider_max_concurrency) for n in self.providers}
+        self.buckets: dict[str, TokenBucket] = {m: TokenBucket(tpm) for m, tpm in MODEL_TPM.items()}
         self._tenants: dict[str, _TenantState] = {}
         self._tenant_lock = asyncio.Lock()
 
@@ -197,10 +198,20 @@ class LLMGateway:
         await self._ledger(ctx, req, None, "error", msg, model=chain[0][1])
         raise LLMUnavailable(msg)
 
+    @staticmethod
+    def _estimate_tokens(req: LLMRequest) -> int:
+        # Providers reserve prompt + max_tokens against the per-minute budget.
+        chars = sum(len(str(m.get("content") or "")) for m in req.messages)
+        chars += sum(len(str(t.parameters)) for t in req.tools or [])
+        return chars // 4 + req.max_tokens
+
     async def _call_with_retries(self, pname: str, model: str, req: LLMRequest) -> LLMResponse:
         provider = self.providers[pname]
-        retries = 0
+        retries = rate_limited = 0
+        bucket = self.buckets.get(model)
         while True:
+            if bucket is not None:
+                await bucket.acquire(self._estimate_tokens(req))
             t0 = time.monotonic()
             try:
                 async with self.semaphores[pname]:
@@ -210,13 +221,19 @@ class LLMGateway:
                     prompt_tokens=raw.prompt_tokens, completion_tokens=raw.completion_tokens,
                     cost_usd=price(model, raw.prompt_tokens, raw.completion_tokens),
                     latency_ms=int((time.monotonic() - t0) * 1000), retries=retries)
-            except (RateLimited, TransientError) as e:
-                if retries >= self.s.llm_max_retries:
+            except RateLimited as e:
+                # Expected under load: wait as long as the provider asks (plus jitter), within limits.
+                if rate_limited >= self.s.llm_rate_limit_retries:
                     raise
-                backoff = min(20.0, 0.5 * 2 ** retries) * random.uniform(0.7, 1.3)
-                wait = e.retry_after if isinstance(e, RateLimited) and e.retry_after else backoff
+                rate_limited += 1
                 retries += 1
-                await asyncio.sleep(wait)
+                wait = e.retry_after if e.retry_after else min(20.0, 0.5 * 2 ** rate_limited)
+                await asyncio.sleep(min(self.s.llm_rate_limit_max_wait_s, wait) * random.uniform(1.0, 1.2))
+            except TransientError:
+                if retries - rate_limited >= self.s.llm_max_retries:
+                    raise
+                retries += 1
+                await asyncio.sleep(min(20.0, 0.5 * 2 ** (retries - rate_limited)) * random.uniform(0.7, 1.3))
 
 
 _gateway: LLMGateway | None = None

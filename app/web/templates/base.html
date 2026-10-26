@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Growth OS{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/app.css">
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+{% if me %}
+<header class="topbar"><div class="wrap inner">
+  <a class="brand" href="/">Growth<span>OS</span></a>
+  <nav>
+    {% if me.is_agency %}<a href="/ops" class="{{ 'on' if section == 'ops' }}">Clients</a>{% endif %}
+    {% for t in my_tenants if not me.is_agency %}<a href="/portal/{{ t.id }}" class="{{ 'on' if tenant and tenant.id == t.id }}">{{ t.name }}</a>{% endfor %}
+  </nav>
+  <span class="who"><b>{{ me.name }}</b> · {{ me.role.replace('_', ' ') }}</span>
+  <a href="/logout" style="color:#c9cfca">Sign out</a>
+</div></header>
+{% endif %}
+<main class="wrap">
+{% if flash %}<div class="flash {{ flash_kind or '' }}">{{ flash }}</div>{% endif %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

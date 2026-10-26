@@ -63,14 +63,14 @@ async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str 
                      "format": slot.format, "trend_ref": slot.trend_ref}, "voice": voice, "sources": sources[:8],
             "note": note}
 
-    draft = (await structured("writer", "big", WRITER_SYSTEM, brief, PostDraft, ctx, temperature=0.7,
+    draft = (await structured("writer", "big", WRITER_SYSTEM, brief, PostDraft, ctx, temperature=0.7, max_tokens=1600,
                               metadata={**meta, "round": 0})).output
     critique: Critique | None = None
     rounds = 0
     for rounds in range(1, st.critic_max_rounds + 1):
         critique = (await structured("critic", "judge", CRITIC_SYSTEM,
                                      f"Founder voice: {compact(voice, 1200)}\nBrief: topic '{slot.topic}', angle '{slot.angle}'.\n"
-                                     f"Draft:\n{draft.text}", Critique, ctx, temperature=0.1,
+                                     f"Draft:\n{draft.text}", Critique, ctx, temperature=0.1, max_tokens=800,
                                      metadata={**meta, "round": rounds, "draft": draft.text})).output
         ctx.event("critic", "critic_round", slot=slot.id, round=rounds, score=critique.overall, must_fix=critique.must_fix)
         if critique.overall >= st.critic_pass_score or rounds == st.critic_max_rounds:
@@ -78,6 +78,7 @@ async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str 
         draft = (await structured("writer", "big", WRITER_SYSTEM,
                                   f"{brief}\n\nYour previous draft:\n{draft.text}\n\nEditor's required fixes:\n- " +
                                   "\n- ".join(critique.must_fix or [critique.verdict]), PostDraft, ctx, temperature=0.6,
+                                  max_tokens=1600,
                                   metadata={**meta, "round": rounds, "must_fix": critique.must_fix})).output
 
     report = check_post(draft.text, draft.hashtags, policy)
@@ -86,7 +87,7 @@ async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str 
         draft = (await structured("writer", "big", WRITER_SYSTEM,
                                   f"{brief}\n\nYour draft:\n{draft.text}\n\nIt failed these policy checks. Rewrite to fix all of "
                                   f"them (remove any number that isn't in the sources):\n{report.instructions()}",
-                                  PostDraft, ctx, temperature=0.4,
+                                  PostDraft, ctx, temperature=0.4, max_tokens=1600,
                                   metadata={**meta, "round": 99, "violations": [v.model_dump() for v in report.violations]})).output
         report = check_post(draft.text, draft.hashtags, policy)
 
@@ -122,7 +123,7 @@ async def reflect_on_feedback(tenant_id: str, ctx: AgentContext) -> int:
         rules = (await structured("voice_reflector", "small",
                                   "Compare drafts with what the founder changed or said. Infer concrete writing rules for "
                                   "future drafts (e.g. 'never open with a question'). Ignore one-off factual fixes.",
-                                  f"Current rules: {voice.get('learned_rules', [])}\n\n{pairs}", LearnedRules, ctx,
+                                  f"Current rules: {voice.get('learned_rules', [])}\n\n{pairs}", LearnedRules, ctx, max_tokens=800,
                                   metadata={"feedback": [{"action": f.action, "note": f.note, "original": f.original,
                                                           "revised": f.revised} for f in useful]})).output
         merged = list(dict.fromkeys(voice.get("learned_rules", []) + rules.rules))[:15]

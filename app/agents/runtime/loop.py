@@ -88,6 +88,24 @@ def _clean_schema(model: type[BaseModel]) -> dict[str, Any]:
     return schema
 
 
+_STRICT_KEYS = {"required", "minItems", "maxItems", "minLength", "maxLength", "minimum", "maximum",
+                "exclusiveMinimum", "exclusiveMaximum", "pattern"}
+
+
+def loose_schema(schema: Any) -> Any:
+    """Schema without hard constraints, for the provider.
+
+    Some providers validate tool arguments server-side and drop the whole
+    response on a mismatch. Sending a loose schema lets the output reach our
+    Pydantic validation, which feeds precise errors back in a repair turn.
+    """
+    if isinstance(schema, dict):
+        return {k: loose_schema(v) for k, v in schema.items() if k not in _STRICT_KEYS}
+    if isinstance(schema, list):
+        return [loose_schema(v) for v in schema]
+    return schema
+
+
 def extract_json(text: str | None) -> Any:
     if not text:
         raise ValueError("empty response")
@@ -120,7 +138,8 @@ class AgentResult(Generic[T]):
 
 async def structured(agent: str, tier: Tier, system: str, user: str, out: type[T], ctx: AgentContext, *,
                      temperature: float = 0.4, max_tokens: int = 3000, max_repairs: int = 2,
-                     cacheable: bool = False, metadata: dict[str, Any] | None = None) -> AgentResult[T]:
+                     cacheable: bool = False, metadata: dict[str, Any] | None = None,
+                     reasoning: str = "low") -> AgentResult[T]:
     gw = get_gateway()
     schema = json.dumps(_clean_schema(out))
     messages: list[dict[str, Any]] = [
@@ -131,7 +150,7 @@ async def structured(agent: str, tier: Tier, system: str, user: str, out: type[T
     for attempt in range(max_repairs + 1):
         resp = await gw.complete(LLMRequest(agent=agent, tier=tier, messages=messages, json_mode=True,
                                             temperature=temperature, max_tokens=max_tokens,
-                                            cacheable=cacheable and attempt == 0,
+                                            cacheable=cacheable and attempt == 0, reasoning=reasoning,
                                             metadata={**(metadata or {}), "attempt": attempt}), ctx.call)
         cost += resp.cost_usd
         try:
@@ -149,14 +168,16 @@ async def structured(agent: str, tier: Tier, system: str, user: str, out: type[T
 
 async def run_agent(agent: str, tier: Tier, system: str, user: str, out: type[T], tools: list[Tool],
                     ctx: AgentContext, *, max_steps: int = 8, max_tool_calls: int = 12,
-                    temperature: float = 0.3, metadata: dict[str, Any] | None = None) -> AgentResult[T]:
+                    temperature: float = 0.3, metadata: dict[str, Any] | None = None,
+                    max_tokens: int = 2000) -> AgentResult[T]:
     gw = get_gateway()
     registry = {t.name: t for t in tools}
     submit = ToolSpec(name="submit_result", description="Submit your final answer. Call exactly once when done.",
-                      parameters=_clean_schema(out))
+                      parameters=loose_schema(_clean_schema(out)))
     specs = [t.spec() for t in tools] + [submit]
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": f"{BASE_POLICY}\n\n{system}\n\nUse the tools to gather evidence, then call submit_result."},
+        {"role": "system", "content": f"{BASE_POLICY}\n\n{system}\n\nUse the tools to gather evidence, then call submit_result "
+                                      f"with every field filled. Result schema:\n{json.dumps(_clean_schema(out))}"},
         {"role": "user", "content": user},
     ]
     cost, tool_calls_made, repairs = 0.0, 0, 0
@@ -166,6 +187,7 @@ async def run_agent(agent: str, tier: Tier, system: str, user: str, out: type[T]
             messages.append({"role": "user", "content": "Step limit reached. Call submit_result now with what you have."})
         resp = await gw.complete(LLMRequest(agent=agent, tier=tier, messages=messages,
                                             tools=[submit] if final_step else specs, temperature=temperature,
+                                            max_tokens=max_tokens,
                                             metadata={**(metadata or {}), "step": step}), ctx.call)
         cost += resp.cost_usd
         if not resp.tool_calls:

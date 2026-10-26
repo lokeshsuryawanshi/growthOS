@@ -158,3 +158,28 @@ async def test_tool_loop_step_cap(db, tenant):
     with pytest.raises(AgentError):
         await run_agent("t_loop", "big", "sys", "go", Out, [Tool("search", "s", SearchArgs, search)],
                         ctx(tenant), max_steps=3)
+
+
+def test_retry_hint_parsing():
+    from app.llm.providers import retry_hint
+    assert retry_hint("Rate limit reached ... Please try again in 10.14s. Need more") == pytest.approx(10.14)
+    assert retry_hint("Please try again in 450ms") == pytest.approx(0.45)
+    assert retry_hint("Please try again in 1m2.5s") == pytest.approx(62.5)
+    assert retry_hint("no hint") is None
+
+
+async def test_token_bucket_paces_requests():
+    import time
+    from app.llm.providers import TokenBucket
+    b = TokenBucket(tokens_per_minute=600)  # 10 tokens/s
+    t0 = time.monotonic()
+    await b.acquire(600)       # drains the minute
+    waited = await b.acquire(5)  # needs ~0.5s of refill
+    assert 0.4 <= time.monotonic() - t0 <= 1.5 and waited > 0
+
+
+def test_loose_schema_strips_constraints():
+    from app.agents.runtime.loop import _clean_schema, loose_schema
+    from app.agents.schemas import CompetitorMatrix
+    s = json.dumps(loose_schema(_clean_schema(CompetitorMatrix)))
+    assert '"required"' not in s and "minItems" not in s and '"properties"' in s

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "growthos-mock",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "LLM_MODE=mock DATABASE_URL=sqlite+aiosqlite:///./demo_mock.db .venv/bin/uvicorn app.main:app --port 8010"],
+      "port": 8010
+    },
+    {
+      "name": "growthos-live",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", ".venv/bin/uvicorn app.main:app --port 8000"],
+      "port": 8000
+    }
+  ]
+}

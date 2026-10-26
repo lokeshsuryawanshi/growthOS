@@ -288,7 +288,8 @@ def _writer(req: LLMRequest) -> dict:
     md = req.metadata
     slot, rnd = md["slot"], md.get("round", 0)
     key = h(slot["id"])
-    facts = [(s, src["url"]) for src in md.get("sources", []) for s in _sentences(src["text"]) if re.search(r"\d", s)]
+    facts = [(s, src["url"]) for src in md.get("sources", []) for s in _sentences(src["text"])
+             if re.search(r"\d+%|\$\d|\b\d{2,}\b", s) and not re.match(r"(Trend \d|\d\.)", s)]
     fact, url = facts[key % len(facts)] if facts else ("", "")
     violations = md.get("violations", [])
     if any(v["rule"] == "near_duplicate" for v in violations):

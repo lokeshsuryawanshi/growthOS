@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Run · {{ tenant.name }} · Growth OS{% endblock %}
+{% block content %}
+{% set run = d.run %}
+<div class="pagehead">
+  <div><h1>{{ run.kind | capitalize }} run · {{ tenant.name }}</h1>
+    <div class="sub">{{ run.created_at.strftime('%d %b %Y %H:%M:%S') }} · <span class="pill {{ run.status }}">{{ run.status.replace('_', ' ') }}</span>
+      · ${{ '%.4f' % run.cost_usd }} of ${{ '%.2f' % run.budget_usd }} budget {% if run.error %}· {{ run.error }}{% endif %}</div></div>
+  <a class="btn" href="/ops/{{ tenant.id }}?tab=runs">All runs</a>
+</div>
+{% if run.status in ('running', 'pending') %}<div class="flash" hx-get="" hx-trigger="every 2s" hx-select="main" hx-target="main" hx-swap="outerHTML">Running… this page refreshes itself.</div>{% endif %}
+<section class="panel stack"><h2>Plan (DAG) and checkpoints</h2>
+  <div class="dag">
+  {% for n in d.nodes %}{% set agg = d.by_node.get(n.key, {}) %}
+    <div class="node">
+      <div><b>{{ n.key }}</b><div class="deps">{{ ('after ' ~ (n.deps | join(', '))) if n.deps else 'start' }}</div></div>
+      <div><span class="pill {{ n.status }}">{{ n.status.replace('_', ' ') }}</span>{% if n.attempts > 1 %} <span class="pill warn">try {{ n.attempts }}</span>{% endif %}</div>
+      <div class="sub mono" style="word-break:break-word">{{ n.error or (n.output | tojson) }}</div>
+      <div class="row">
+        <span class="sub num">{{ agg.calls or 0 }} calls · ${{ '%.4f' % (agg.cost or 0) }}</span>
+        {% if n.status == 'waiting_human' and me.can('strategy:review') %}
+          <form method="post" action="/ui/{{ tenant.id }}/runs/{{ run.id }}/approve/{{ n.key }}"><button class="primary">Approve</button></form>
+        {% elif n.status in ('succeeded', 'failed', 'blocked') and me.can('run:start') and run.status not in ('running',) %}
+          <form method="post" action="/ui/{{ tenant.id }}/runs/{{ run.id }}/rerun/{{ n.key }}"><button>Re-run from here</button></form>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+  </div>
+</section>
+<section class="panel"><h2>Agent trace</h2><div class="tablewrap"><table>
+  <tr><th>Node</th><th>Agent</th><th>Event</th><th>Detail</th></tr>
+  {% for e in d.events %}<tr><td>{{ e.node_key }}</td><td>{{ e.agent }}</td><td><span class="pill {{ 'bad' if e.type in ('tool_denied', 'repair', 'budget_stop', 'slot_failed') else ('warn' if e.type in ('auto_fix', 'critic_round', 'lead_signal_stripped') else '') }}">{{ e.type }}</span></td>
+    <td class="sub mono" style="word-break:break-word">{{ e.payload | tojson | truncate(300) }}</td></tr>{% else %}<tr><td colspan="4" class="sub">No events.</td></tr>{% endfor %}
+</table></div></section>
+<section class="panel"><h2>Model calls</h2><div class="tablewrap"><table>
+  <tr><th>Node</th><th>Agent</th><th>Model</th><th class="n">In</th><th class="n">Out</th><th class="n">ms</th><th class="n">Retries</th><th>Status</th><th class="n">Cost</th></tr>
+  {% for c in d.calls %}<tr><td>{{ c.node_key }}</td><td>{{ c.agent }}</td><td class="mono">{{ c.model }}</td><td class="n">{{ c.prompt_tokens }}</td><td class="n">{{ c.completion_tokens }}</td>
+    <td class="n">{{ c.latency_ms }}</td><td class="n">{{ c.retries }}</td><td><span class="pill {{ 'ok' if c.status == 'ok' else ('warn' if c.status == 'fallback' else 'bad') }}">{{ 'cached' if c.cached else c.status }}</span></td><td class="n">${{ '%.5f' % c.cost_usd }}</td></tr>{% endfor %}
+</table></div></section>
+{% endblock %}

@@ -33,6 +33,7 @@ class LLMRequest(BaseModel):
     temperature: float = 0.4
     max_tokens: int = 2500
     cacheable: bool = False  # deterministic-ish work (research, scoring) may be served from cache
+    reasoning: Literal["low", "medium", "high"] = "low"  # gpt-oss reasoning budget; tokens count against TPM
     metadata: dict[str, Any] = Field(default_factory=dict)  # passed to mock responders
 
 
