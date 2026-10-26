@@ -1,0 +1,35 @@
+# Stress test: 100 tenants
+
+| Metric | Value |
+|---|---|
+| config | {"tenants": 100, "latency_ms": [100, 600], "rate_limit_rate": 0.05, "transient_rate": 0.02, "global_concurrency": 48, "per_tenant_concurrency": 3, "provider_concurrency": 64} |
+| wall_seconds | 78.5 |
+| discovery_seconds | 21.4 |
+| weekly_seconds | 57.1 |
+| run_status | {"succeeded": 100, "weekly:succeeded": 100} |
+| nodes | 1600 |
+| nodes_failed | 0 |
+| node_seconds_p50 | 0.866 |
+| node_seconds_p95 | 10.812 |
+| queue_wait_p50 | 1.678 |
+| queue_wait_p95 | 16.581 |
+| fairness_mean_wait_max_over_min | 2.46 |
+| scheduler_peak_concurrency | 48 |
+| llm_calls | 11309 |
+| llm_calls_per_second | 144.1 |
+| llm_retries | 596 |
+| llm_errors | 0 |
+| injected_failures | {"429": 421, "5xx": 175} |
+| db_lock_errors | 0 |
+| posts | 500 |
+| posts_blocked | 0 |
+| leads | 1820 |
+| outreach | 1820 |
+| tenants_meeting_posts_target | 100/100 |
+| tenants_meeting_calendar_target | 100/100 |
+| tenants_meeting_leads_target | 100/100 |
+| cross_tenant_fk_violations | 0 |
+| cross_tenant_name_mentions | 0 |
+| cost_usd_total | 1.2633 |
+| cost_usd_per_tenant | 0.0126 |
+| api | {"requests": 3000, "rps": 150.5, "p50_ms": 331.3, "p95_ms": 458.2, "p99_ms": 532.1, "errors": {}} |

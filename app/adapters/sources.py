@@ -37,30 +37,36 @@ def _public(p: dict[str, Any]) -> dict[str, Any]:
 class SeededLeadSource:
     name = "seeded"
 
+    GENERIC = {"head", "director", "manager", "officer", "chief", "vice", "president", "lead", "leads", "senior",
+               "the", "and", "of", "for"}
+
     def search(self, *, titles: list[str], industries: list[str], min_employees: int = 0,
                max_employees: int = 10**7, geos: list[str] | None = None, exclude_ids: set[str] | None = None,
                limit: int = 40) -> list[dict[str, Any]]:
-        """Loose keyword match, like a real people-search API: precision is the qualifier's job."""
+        """Loose match ranked by relevance, like a real people-search API. Precision is the qualifier's job."""
         exclude_ids = exclude_ids or set()
-        tw = {w for t in titles for w in re.findall(r"\w{3,}", t.lower())} - {"head", "the", "and", "of"}
+        tw = {w for t in titles for w in re.findall(r"\w{2,}", t.lower())} - {"the", "and", "of", "for"}
+        distinctive = tw - self.GENERIC
         iw = {w for i in industries for w in re.findall(r"\w{4,}", i.lower())}
-        out = []
-        # Real people-search APIs return a mix; a stable hash order keeps it deterministic.
-        for p in sorted(_prospects(), key=lambda r: zlib.crc32(r["id"].encode())):
+        ranked = []
+        for p in _prospects():
             if p["id"] in exclude_ids:
                 continue
-            title_hit = any(w in p["title"].lower() for w in tw)
-            ind_hit = any(w in p["industry"].lower() for w in iw)
-            if not (title_hit or ind_hit):
+            title = set(re.findall(r"\w{2,}", p["title"].lower()))
+            ind = p["industry"].lower()
+            title_hits = len({w for w in distinctive if any(x.startswith(w[:6]) for x in title)})
+            generic_hit = bool((tw - distinctive) & title)
+            ind_hit = any(w[:6] in ind for w in iw)
+            if not (title_hits or generic_hit or ind_hit):
                 continue
             if geos and p["geo"] not in geos:
                 continue
             if not (min_employees * 0.5 <= p["employees"] <= max_employees * 2):  # loose on size, like real filters
                 continue
-            out.append(_public(p))
-            if len(out) >= limit:
-                break
-        return out
+            score = 3 * title_hits + 2 * ind_hit + 0.5 * generic_hit
+            ranked.append((-score, zlib.crc32(p["id"].encode()), p))
+        ranked.sort(key=lambda x: (x[0], x[1]))
+        return [_public(p) for _, _, p in ranked[:limit]]
 
     def get(self, prospect_id: str) -> dict[str, Any] | None:
         return next((_public(p) for p in _prospects() if p["id"] == prospect_id), None)

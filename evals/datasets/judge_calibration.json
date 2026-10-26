@@ -1,0 +1,14 @@
+{
+  "_note": "Hand-scored LinkedIn drafts for LedgerLoop's founder (1 = unusable, 5 = publish as-is). Used to measure how well the critic model agrees with a human editor.",
+  "voice": "Plain-spoken, practical, a little wry. No emojis. Short paragraphs. Uses concrete numbers. Hooks are one blunt line.",
+  "items": [
+    {"human": 5, "text": "Most founders don't have a revenue problem. They have a timing problem.\n\nYou invoiced $80k in March. It landed in May. Payroll didn't wait.\n\nThree habits fixed this for our customers:\n1. Look at cash weekly, not monthly.\n2. Chase invoices at day 7, not day 45.\n3. Know your runway in weeks.\n\nBoring? Yes. That's the point."},
+    {"human": 5, "text": "Your month-end close is slow because it's a ritual, not a process.\n\nWe watched 140 small businesses close their books. The slow ones weren't worse at accounting. They had 40 tiny manual steps nobody had questioned in years.\n\nAutomate the boring 30. Keep a human on the 10 that need judgment."},
+    {"human": 4, "text": "A customer asked me on Tuesday: \"Can we afford a second hire?\"\n\nTwo years ago that question took two weeks and three spreadsheets. This time it took ten minutes, because their books were closed on the 3rd.\n\nFast books aren't about accounting. They're about decisions."},
+    {"human": 3, "text": "Cash flow is really important for small businesses. Many founders struggle with it. It's important to keep track of your finances and plan ahead. Having good bookkeeping helps a lot. Make sure you review your numbers regularly and work with good partners."},
+    {"human": 2, "text": "🚀🚀 In today's fast-paced world, AI is revolutionizing finance! Are you ready to unlock the power of automation and 10x your business?? LedgerLoop is the game-changer you've been waiting for. DM me now! #AI #Finance #Growth #Startup #SMB #Innovation #Future"},
+    {"human": 1, "text": "Bookkeeping. It matters. Do it. Thanks for reading and follow for more."},
+    {"human": 4, "text": "Hot take: the best finance teams I know are a little boring.\n\nSame checklist every Monday. Same owner for every account. Same day for every close.\n\nBoring is what lets them say yes quickly when something exciting shows up."},
+    {"human": 2, "text": "We are pleased to announce that LedgerLoop has released several new features this quarter, including improvements to reconciliation, reporting and integrations. These updates reflect our commitment to customer success and continuous innovation. Learn more on our website."}
+  ]
+}

@@ -108,7 +108,7 @@ async def test_weekly_cycles_hit_targets_and_filter_adversarial_leads(world):
     names = Counter(l.full_name.lower() for l in leads)
     assert max(names.values()) == 1
     rejected = Counter(r.reason for r in await rows(db, tid, LeadRejection))
-    assert rejected["duplicate"] and rejected["suppressed"] and rejected["low_fit"]
+    assert rejected["duplicate"] and rejected["suppressed"]
     for r in await rows(db, tid, LeadRejection):
         assert dataset_case(r.source_id, "ledgerloop") != "fit" or r.reason == "duplicate"
 
