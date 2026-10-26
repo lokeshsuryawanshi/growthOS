@@ -2,11 +2,11 @@
 import httpx
 import pytest
 
-from app.adapters.data.clients import DEMO_PASSWORD
+from app.fixtures.clients import DEMO_PASSWORD
 from app.agents.orchestrator.engine import Orchestrator, set_orchestrator
 from app.llm.gateway import LLMGateway, set_gateway
 from app.main import app
-from app.seed import seed
+from app.fixtures.seed import seed
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ async def test_tenant_listing_respects_membership(api):
 
 
 TENANT_GETS = ["/kpis", "/calendar", "/posts", "/leads", "/artifacts/voice_profile"]
-AGENCY_GETS = ["/runs", "/incidents", "/costs"]
+AGENCY_GETS = ["/incidents", "/costs"]
 
 
 async def test_cross_tenant_probes_return_404(api):
@@ -83,7 +83,11 @@ async def test_role_matrix(api):
     for path in AGENCY_GETS:  # founders don't see internals
         assert (await client.get(f"/api/tenants/{tid}{path}", headers=priya)).status_code == 403, path
         assert (await client.get(f"/api/tenants/{tid}{path}", headers=am)).status_code == 200, path
-    assert (await client.post(f"/api/tenants/{tid}/runs", json={"kind": "weekly"}, headers=priya)).status_code == 403
+    assert (await client.post(f"/api/tenants/{tid}/runs", json={"kind": "weekly"}, headers=viewer)).status_code == 403
+    # founders see run progress, but never traces, costs or raw outputs
+    runs = (await client.get(f"/api/tenants/{tid}/runs", headers=priya)).json()
+    detail = (await client.get(f"/api/tenants/{tid}/runs/{runs[0]['id']}", headers=priya)).json()
+    assert detail["cost_usd"] is None and all("output" not in n for n in detail["nodes"])
     assert (await client.post(f"/api/tenants/{tid}/budget", json={"monthly_budget_usd": 99}, headers=am)).status_code == 403
     assert (await client.post(f"/api/tenants/{tid}/kill-switch", json={"on": True}, headers=priya)).status_code == 403
 
@@ -98,6 +102,13 @@ async def test_send_requires_approval_and_owner(api):
     assert (await client.post(f"/api/tenants/{tid}/outreach/{mid}/send", headers=priya)).status_code == 403  # not approved
     assert (await client.post(f"/api/tenants/{tid}/outreach/{mid}/decision", json={"action": "approve"}, headers=priya)).status_code == 200
     assert (await client.post(f"/api/tenants/{tid}/outreach/{mid}/send", headers=am)).status_code == 403  # AM can't send as founder
+    from tests.helpers import FakeGoogle, connect_fake_gmail, make_sendable
+    from app.db.session import get_db
+    FakeGoogle().install()
+    await connect_fake_gmail(get_db(), tid)
+    r = await client.post(f"/api/tenants/{tid}/outreach/{mid}/send", headers=priya)
+    assert r.status_code == 403 and "synthetic" in r.text                # fixture leads can never be emailed
+    await make_sendable(get_db(), tid)
     r = await client.post(f"/api/tenants/{tid}/outreach/{mid}/send", headers=priya)
     assert r.status_code == 200 and r.json()["status"] == "sent"
 
@@ -127,7 +138,7 @@ async def test_ui_pages_render(api):
     cookies = {"growthos_token": r.cookies["growthos_token"]}
     for path in ["/ops", f"/ops/{tid}", f"/ops/{tid}?tab=runs", f"/ops/{tid}?tab=content", f"/ops/{tid}?tab=leads",
                  f"/ops/{tid}?tab=costs", f"/ops/{tid}?tab=guardrails", f"/ops/{tid}?tab=audit",
-                 f"/portal/{tid}", f"/portal/{tid}?tab=calendar", f"/portal/{tid}?tab=leads", f"/portal/{tid}?tab=results"]:
+                 *[f"/portal/{tid}?tab={t}" for t in ("overview", "content", "calendar", "leads", "research", "integrations", "settings", "activity")]]:
         r = await client.get(path, cookies=cookies)
         assert r.status_code == 200, (path, r.text[:500])
     runs = (await client.get(f"/api/tenants/{tid}/runs", headers=await token(client, "am.sam@growthos.example"))).json()

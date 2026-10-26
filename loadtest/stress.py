@@ -21,6 +21,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
+os.environ["APP_ENV"] = "test"
 os.environ["LLM_MODE"] = "mock"
 import logging  # noqa: E402
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -28,7 +29,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 import httpx  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
-from app.adapters.data.clients import CLIENTS, DEMO_PASSWORD  # noqa: E402
+from app.fixtures.clients import CLIENTS, DEMO_PASSWORD  # noqa: E402
 from app.agents.orchestrator.engine import Orchestrator, set_orchestrator  # noqa: E402
 from app.agents.orchestrator.scheduler import FairScheduler  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
@@ -39,7 +40,7 @@ from app.db.models import (CalendarSlot, Lead, LLMCall, Membership, OutreachMess
 from app.db.session import Database, set_db  # noqa: E402
 from app.llm.gateway import LLMGateway, set_gateway  # noqa: E402
 from app.llm.providers import MockConfig  # noqa: E402
-from app.seed import seed  # noqa: E402
+from app.fixtures.seed import seed  # noqa: E402
 from app.services.kpis import tenant_kpis  # noqa: E402
 
 PREFIXES = ["Nova", "Apex", "Orbit", "Vega", "Zenith", "Polar", "Quanta", "Helix", "Arbor"]

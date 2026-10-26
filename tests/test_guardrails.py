@@ -1,7 +1,7 @@
 import pytest
 
-from app.adapters.data.web_corpus import PAGES
-from app.adapters.sources import SeededLeadSource, dataset_case
+from app.fixtures.web_corpus import PAGES
+from app.fixtures.sources import SeededLeadSource, dataset_case
 from app.agents.runtime.loop import CANARY
 from app.guardrails.input_guard import scan
 from app.guardrails.output_guard import PolicyContext, check_outreach, check_post

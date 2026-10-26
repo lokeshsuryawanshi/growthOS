@@ -28,6 +28,7 @@ HERE = Path(__file__).parent
 
 
 def _setup_mode(live: bool) -> None:
+    os.environ["APP_ENV"] = "test"      # evals are automated tests: mock models and fixtures are allowed here
     os.environ["LLM_MODE"] = "live" if live else "mock"
 
 
@@ -85,7 +86,7 @@ _EVAL_TENANT: dict = {}
 async def eval_pipeline(weeks: int) -> dict:
     from sqlalchemy import select
 
-    from app.adapters.sources import dataset_case
+    from app.fixtures.sources import dataset_case
     from app.agents.orchestrator.engine import Orchestrator, set_orchestrator
     from app.core.tenancy import tenant_scope
     from app.db.models import Artifact, CalendarSlot, KnowledgeDoc, Lead, LeadRejection, LLMCall, OutreachMessage, Post, TraceEvent
@@ -96,7 +97,7 @@ async def eval_pipeline(weeks: int) -> dict:
     s = get_settings()
     from app.db.session import get_db
     db = get_db()
-    from app.seed import seed
+    from app.fixtures.seed import seed
     ids = await seed(db)
     orch = Orchestrator()
     set_orchestrator(orch)
@@ -266,7 +267,7 @@ async def main_async(args) -> int:
     set_db(db)
     from app.llm.gateway import LLMGateway, set_gateway
     set_gateway(LLMGateway())
-    from app.seed import seed
+    from app.fixtures.seed import seed
     ids = await seed(db)
     _EVAL_TENANT["id"] = ids["ledgerloop"]
 

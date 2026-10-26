@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import pytest
 from sqlalchemy import func, select
 
-from app.adapters.sources import dataset_case
+from app.fixtures.sources import dataset_case
 from app.agents.orchestrator.engine import Orchestrator
 from app.core.config import get_settings
 from app.core.security import ForbiddenError, Principal
@@ -14,7 +14,8 @@ from app.db.models import (Artifact, CalendarSlot, Feedback, GuardrailIncident, 
                            OutreachMessage, Post, RunNode, Tenant)
 from app.guardrails.state import IllegalTransition
 from app.llm.gateway import LLMGateway, set_gateway
-from app.seed import seed
+from app.fixtures.seed import seed
+from tests.helpers import FakeGoogle, connect_fake_gmail, make_sendable
 from app.services import approvals
 from app.services.kpis import tenant_kpis
 
@@ -171,7 +172,13 @@ async def test_approval_flow_rbac_and_learning(world):
 
     k = await tenant_kpis(tid)
     assert k["approval_rate"] is not None and k["mean_edit_distance"] > 0
-    assert await approvals.publish_due(tid, today=date(2026, 11, 30)) == 2
+    scheduled = await rows(db, tid, Post, Post.status == "scheduled")
+    assert scheduled
+    with pytest.raises(ForbiddenError):
+        await approvals.mark_posted(am, tid, scheduled[0].id)          # only the founder confirms a post went out
+    assert (await approvals.mark_posted(owner(tid), tid, scheduled[0].id)).status == "published"
+    with pytest.raises(IllegalTransition):
+        await approvals.mark_posted(owner(tid), tid, scheduled[0].id)  # cannot be marked twice
 
 
 async def test_send_gate(world):
@@ -180,11 +187,20 @@ async def test_send_gate(world):
     await discover(orch, tid, auto_approve_gates=True)
     await orch.execute(tid, await orch.create_run(tid, "weekly", {}))
     msgs = await rows(db, tid, OutreachMessage, OutreachMessage.status == "pending_approval")
+    google = FakeGoogle().install()
+    await connect_fake_gmail(db, tid)
     with pytest.raises(ForbiddenError):
         await approvals.send_outreach(owner(tid), tid, msgs[0].id)  # not approved yet
     await approvals.decide_outreach(owner(tid), tid, msgs[0].id, "approve")
+    with pytest.raises(ForbiddenError, match="synthetic"):
+        await approvals.send_outreach(owner(tid), tid, msgs[0].id)  # fixture leads can never be emailed
+    await make_sendable(db, tid)
     sent = await approvals.send_outreach(owner(tid), tid, msgs[0].id)
-    assert sent.status == "sent" and sent.sent_at
+    assert sent.status == "sent" and sent.sent_at and sent.external_id == "gmail-1"
+    assert len(google.sent) == 1                                      # exactly one Gmail call
+    with pytest.raises(ForbiddenError):
+        await approvals.send_outreach(owner(tid), tid, msgs[0].id)    # cannot be sent twice
+    assert len(google.sent) == 1
 
     await approvals.decide_outreach(owner(tid), tid, msgs[1].id, "approve")
     async with db.session() as s:
