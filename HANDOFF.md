@@ -81,3 +81,12 @@ Never print or commit `.env`.
 4. Re-run evals and stress; fix import breakage; save new reports.
 5. Finish the browser check; update `DECISIONS.md`/`PLAN.md`.
 6. Commit in chunks, push, then hand the user the exact remaining credential/deploy steps (Tavily key, host account, optional Hunter and Google OAuth).
+
+
+## Update (live run on 2026-10-27, later)
+- Live run on real services (Groq, Gemini, Tavily, Hunter): research/strategy succeeded (about 14 min on the free tier); weekly cycle produced 5 posts (guardrails blocked 3, correctly catching an invented "$2,000" figure and a false positive on list numbers, since fixed) and 11 real leads (5 with Hunter-verified emails).
+- Lead scout was rewritten (plan queries -> code searches -> one structured extraction) because the tool loop failed on small models.
+- New: live token/cost counter on the Activity run page; docs/ARCHITECTURE.md, docs/EVALS_AND_GUARDRAILS.md, docs/ECONOMICS.md.
+- Evals and stress re-run after the refactor (reports refreshed): gate PASS, 100/100 clients OK, 0 failures.
+- Groq free tier caps each model at 200k tokens/day; a second key is in .env as GROQ_API_KEY2 (not read by the app; pass it as GROQ_API_KEY to use it).
+- Still open: deployment (Render account pending), Gmail live send untested, search credits not in the cost ledger, post quality tuning on the 120b writer, ops pages not restyled.
