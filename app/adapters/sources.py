@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import zlib
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -44,7 +45,8 @@ class SeededLeadSource:
         tw = {w for t in titles for w in re.findall(r"\w{3,}", t.lower())} - {"head", "the", "and", "of"}
         iw = {w for i in industries for w in re.findall(r"\w{4,}", i.lower())}
         out = []
-        for p in _prospects():
+        # Real people-search APIs return a mix; a stable hash order keeps it deterministic.
+        for p in sorted(_prospects(), key=lambda r: zlib.crc32(r["id"].encode())):
             if p["id"] in exclude_ids:
                 continue
             title_hit = any(w in p["title"].lower() for w in tw)
@@ -64,22 +66,27 @@ class SeededLeadSource:
         return next((_public(p) for p in _prospects() if p["id"] == prospect_id), None)
 
 
-def dataset_case(prospect_id: str) -> str:
-    """Ground-truth label for evals/tests only."""
-    return next((p["_case"] for p in _prospects() if p["id"] == prospect_id), "unknown")
+def dataset_case(prospect_id: str, vertical: str | None = None) -> str:
+    """Ground-truth label for evals/tests only. With `vertical`, a fit for another client counts as low_fit."""
+    p = next((p for p in _prospects() if p["id"] == prospect_id), None)
+    if p is None:
+        return "unknown"
+    if vertical and p["vertical"] != vertical and p["_case"] == "fit":
+        return "low_fit"
+    return p["_case"]
 
 
 class SeededCorpus:
     name = "seeded_corpus"
 
     def search(self, query: str, limit: int = 5) -> list[dict[str, str]]:
-        q = {w for w in re.findall(r"\w{3,}", query.lower())}
+        q = set(re.findall(r"\w{3,}", query.lower()))
         scored = []
         for page in PAGES:
-            hay_title = page["title"].lower()
-            hay = " ".join(page["tags"]) + " " + hay_title
-            score = sum(3 for w in q if w in hay_title) + sum(2 for w in q if w in hay) + \
-                sum(1 for w in q if w in page["text"].lower())
+            title = set(re.findall(r"\w+", page["title"].lower()))
+            tags = set(re.findall(r"\w+", " ".join(page["tags"]).lower()))
+            body = set(re.findall(r"\w+", page["text"].lower()))
+            score = 3 * len(q & title) + 2 * len(q & tags) + len(q & body)
             if score:
                 scored.append((score, page))
         scored.sort(key=lambda x: -x[0])
