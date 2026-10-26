@@ -194,7 +194,7 @@ class Candidate(BaseModel):
 
 
 class CompanyCandidates(BaseModel):
-    companies: list[Candidate] = Field(default_factory=list, max_length=25)
+    companies: list[Candidate] = Field(min_length=1, max_length=25, description="Companies named in the search results")
 
 
 class OutreachCritique(BaseModel):

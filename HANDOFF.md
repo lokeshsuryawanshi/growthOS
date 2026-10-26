@@ -69,14 +69,12 @@ Not verified at all: the new UI in a browser (no screenshot taken), any live Gro
 - `kpis` and some read paths call `profile()`/`intake_of()`; legacy fixture `intake["goals"]` is a string (handled).
 
 ## 7. Environment variables
-
 Required in production: `JWT_SECRET` (≥32 chars, set in `.env`, 64 chars), `GROQ_API_KEY` (set, validated), `DATABASE_URL` (persistent path), `APP_BASE_URL` (public https URL).
 Search (one needed for research): `TAVILY_API_KEY` (**missing**; free at tavily.com) or `GOOGLE_API_KEY` with billing (set, but grounding quota exhausted).
 Optional, not configured: `HUNTER_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` (Google Cloud OAuth web client, Gmail API enabled, redirect `{APP_BASE_URL}/oauth/google/callback`, app in testing mode needs test users), `ENCRYPTION_KEY` (Fernet; derived from `JWT_SECRET` if empty, so rotating the secret disconnects Gmail), `SIGNUP_INVITE_CODE`, `ADMIN_EMAIL`/`ADMIN_PASSWORD`, `GLOBAL_DAILY_BUDGET_USD`, `SELF_SERVE_MONTHLY_BUDGET_USD`.
 Never print or commit `.env`.
 
 ## 8. Exact next steps
-
 1. `git status`, `git log --oneline -12`; run `.venv/bin/python -m pytest -q` once to confirm 150 pass.
 2. Inspect before editing: `app/core/config.py`, `app/web/routes.py`, `app/services/accounts.py`, `app/integrations/*`, `tests/test_production_integrity.py`.
 3. Start a clean production server on a fresh DB and walk the UI (item 5.1). Fix what breaks, rerun tests.

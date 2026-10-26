@@ -187,7 +187,8 @@ async def web_prospector(tenant_id: str, ctx: AgentContext, icp: dict, need: int
         "several times with specific queries (industry + role being hired + region + growth signals). Return companies, "
         "not people. Only include a company if a search result mentions it. domain must be the company's own website; "
         "evidence_url must be a URL a search returned; signal must be one concrete fact from that result, in its words. "
-        f"Return about {need * 2} candidates.",
+        f"Return about {need * 2} candidates. Do not finish with an empty list: if the results name no suitable company, search again "
+        "with different, more specific queries (named industries, funding news, hiring posts). Then call submit_result.",
         f"ICP: {compact(icp, 2200)}\nAlready seen (skip): {sorted(seen_domains)[:40]}\nRound {round_no}." +
         ("" if round_no == 1 else " Earlier rounds came up short: broaden industries, size and regions."),
         CompanyCandidates, [Tool("web_search", "Search the web for companies and news.", SearchArgs, search)],

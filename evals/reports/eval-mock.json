@@ -16,14 +16,14 @@
           "succeeded",
           "succeeded"
         ],
-        "seconds": 1.5,
+        "seconds": 0.9,
         "calendar_valid": 1,
         "topics_unique": 1,
         "posts": 10,
         "posts_ready": 10,
         "posts_ready_rate": 1.0,
         "avg_critic_score": 4.0,
-        "avg_critic_rounds": 1.5,
+        "avg_critic_rounds": 1.2,
         "guard_autofixes": 1,
         "pending_posts_with_violations": 0,
         "leads": 40,
@@ -38,10 +38,10 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 2,
         "artifact_contamination": 0,
-        "llm_calls": 225,
-        "tokens": 138920,
-        "cost_usd": 0.0239,
-        "cost_per_client_cycle_usd": 0.008
+        "llm_calls": 218,
+        "tokens": 140199,
+        "cost_usd": 0.0248,
+        "cost_per_client_cycle_usd": 0.0083
       },
       "shiftwise": {
         "run_status": [
@@ -49,15 +49,15 @@
           "succeeded",
           "succeeded"
         ],
-        "seconds": 2.0,
+        "seconds": 0.9,
         "calendar_valid": 1,
         "topics_unique": 1,
         "posts": 10,
         "posts_ready": 10,
         "posts_ready_rate": 1.0,
         "avg_critic_score": 4.0,
-        "avg_critic_rounds": 1.4,
-        "guard_autofixes": 0,
+        "avg_critic_rounds": 1.2,
+        "guard_autofixes": 3,
         "pending_posts_with_violations": 0,
         "leads": 40,
         "leads_per_week": [
@@ -72,16 +72,16 @@
         "injection_pages_caught": 1,
         "artifact_contamination": 0,
         "llm_calls": 223,
-        "tokens": 133502,
-        "cost_usd": 0.0231,
-        "cost_per_client_cycle_usd": 0.0077
+        "tokens": 144733,
+        "cost_usd": 0.0257,
+        "cost_per_client_cycle_usd": 0.0086
       }
     },
     "calendar_valid": 1,
     "posts_ready_rate": 1.0,
     "avg_critic_score": 4.0,
     "leads_week_in_range_rate": 1.0,
-    "cost_per_client_cycle_usd": 0.008,
+    "cost_per_client_cycle_usd": 0.0086,
     "pending_posts_with_violations": 0,
     "lead_policy_violations": 0,
     "explicit_low_fit_kept": 0,
