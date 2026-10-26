@@ -24,10 +24,13 @@ POLICY: dict[str, set[str]] = {
     "tenant:kill_switch": {"platform_admin", "account_manager"},
     "tenant:view":       _ALL,
     "strategy:view":     _ALL,
-    "strategy:review":   {"platform_admin", "account_manager"},
+    "strategy:review":   {"platform_admin", "account_manager", "client_owner"},   # self-serve founders sign off their own brief
     "onboarding:edit":   {"platform_admin", "account_manager", "client_owner"},
-    "run:start":         {"platform_admin", "account_manager"},
-    "run:view":          {"platform_admin", "account_manager"},
+    "run:start":         {"platform_admin", "account_manager", "client_owner"},
+    "run:view":          {"platform_admin", "account_manager"},                    # traces/internals: agency only
+    "run:status":        _ALL,                                                     # progress and plain-language errors
+    "integration:manage": {"platform_admin", "account_manager", "client_owner"},
+    "integration:view":  _ALL,
     "content:view":      _ALL,
     "content:edit":      {"account_manager", "client_owner"},
     "content:approve":   {"client_owner"},            # the founder has the final say

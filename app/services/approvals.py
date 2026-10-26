@@ -6,13 +6,14 @@ feedback row (fuels learning + online evals) -> audit row.
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
-from app.adapters.sources import MockPublisher, MockSender
 from app.agents.blackboard import policy_context
+from app.agents.blackboard import intake_of
 from app.agents.content.agents import draft_slot, edit_distance_ratio
+from app.agents.leads.agents import email_footer
 from app.agents.runtime.loop import AgentContext
 from app.core.config import get_settings
 from app.core.security import ForbiddenError, Principal, authorize
@@ -22,6 +23,8 @@ from app.db.models import CalendarSlot, Feedback, Lead, OutreachMessage, Post, S
 from app.db.session import get_db
 from app.guardrails.output_guard import check_outreach, check_post
 from app.guardrails.state import OUTREACH_TRANSITIONS, POST_TRANSITIONS, transition
+from app.integrations import gmail
+from app.integrations.errors import IntegrationError
 from app.llm.types import Budget, CallContext
 
 
@@ -58,7 +61,7 @@ async def decide_post(p: Principal, tenant_id: str, post_id: str, action: str, t
             post = await _post(s, post_id)
             original = post.text
             if text is not None and text.strip() != original.strip():
-                report = check_post(text, post.hashtags, policy)  # human edits are checked too
+                report = check_post(text, post.hashtags, policy)  # human edits are checked too (no claim bookkeeping asked of the founder)
                 if report.critical:
                     incident(s, "output", "human_edit_blocked", "critical", report.instructions(), "post", post.id)
                     raise GuardrailRefusal(report.instructions())
@@ -111,7 +114,7 @@ async def regenerate(tenant_id: str, slot_id: str, note: str) -> Post:
 
 
 async def decide_outreach(p: Principal, tenant_id: str, msg_id: str, action: str, text: str | None = None,
-                          note: str = "") -> OutreachMessage:
+                          note: str = "", subject: str | None = None) -> OutreachMessage:
     perm = {"approve": "outreach:approve", "reject": "outreach:approve", "request_changes": "outreach:edit",
             "edit": "outreach:edit"}.get(action)
     if perm is None:
@@ -131,6 +134,8 @@ async def decide_outreach(p: Principal, tenant_id: str, msg_id: str, action: str
                     raise GuardrailRefusal(report.instructions())
                 msg.guardrail_report = report.model_dump()
             final = (text or original).strip()
+            if subject is not None and subject.strip():
+                msg.subject = subject.strip()[:300]
             if action == "edit":
                 if msg.status != "pending_approval":
                     raise ValueError("only messages awaiting approval can be edited")
@@ -154,12 +159,18 @@ async def decide_outreach(p: Principal, tenant_id: str, msg_id: str, action: str
 
 
 async def send_outreach(p: Principal, tenant_id: str, msg_id: str) -> OutreachMessage:
-    """Process guard for the one irreversible action: approved + role + kill switch + suppression + daily cap."""
+    """Process guard for the one irreversible action.
+
+    Requires: founder role, approved message, kill switch off, a verified recipient address, not suppressed, under the
+    daily cap, Gmail connected. The message is locked as 'sending' before Gmail is called, so a double click or a crash
+    can never send twice; a failure puts it back to 'approved' with the reason.
+    """
     authorize(p, "outreach:send", tenant_id)
     async with get_db().reader() as s:
         tenant = await s.get(Tenant, tenant_id)
     if tenant is None or tenant.kill_switch:
         raise ForbiddenError("sending is paused for this client")
+    intake = await intake_of(tenant_id)
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     with tenant_scope(tenant_id):
         async with get_db().session() as s:
@@ -169,37 +180,72 @@ async def send_outreach(p: Principal, tenant_id: str, msg_id: str) -> OutreachMe
             if msg.status != "approved":
                 raise ForbiddenError("only approved messages can be sent")
             lead = (await s.execute(select(Lead).where(Lead.id == msg.lead_id))).scalars().one()
+            if lead.is_synthetic:
+                raise ForbiddenError("this lead is synthetic demo data and can never be emailed")
+            if not lead.email or lead.email_status != "valid":
+                raise ForbiddenError("the recipient's address is not verified (Hunter.io status: "
+                                     f"{lead.email_status or 'none'}); only verified addresses can be emailed")
             sup = (await s.execute(select(SuppressionEntry))).scalars().all()
             if any((x.kind == "email" and x.value.lower() == lead.email.lower()) or
                    (x.kind == "domain" and x.value.lower() == lead.company_domain.lower()) or
                    (x.kind == "company" and x.value.lower() == lead.company.lower()) for x in sup):
-                incident(s, "process", "suppressed_send_blocked", "high", f"{lead.full_name} is on the suppression list",
+                incident(s, "process", "suppressed_send_blocked", "high", f"{lead.full_name or lead.company} is on the suppression list",
                          "outreach", msg.id)
                 raise ForbiddenError("recipient is on the do-not-contact list")
             sent_today = (await s.execute(select(func.count(OutreachMessage.id))
                                           .where(OutreachMessage.sent_at >= today))).scalar_one()
-            if sent_today >= get_settings().outreach_daily_send_cap:
-                raise ForbiddenError("daily send cap reached; protects the founder's account")
-            res = await MockSender().send(tenant_id, msg.id, lead.linkedin_url or lead.email, msg.approved_text or msg.text)
-            transition(msg, "sent", OUTREACH_TRANSITIONS)
-            msg.sent_at = _now()
-            lead.status = "contacted"
-            audit(s, p.user_id, "outreach.sent", "outreach", msg.id, external=res["external_id"])
-            return msg
-
-
-async def publish_due(tenant_id: str, today: date | None = None) -> int:
-    """Publisher job: only approved+scheduled posts whose date has come."""
-    today = today or date.today()
-    n = 0
+            in_flight = (await s.execute(select(func.count(OutreachMessage.id))
+                                         .where(OutreachMessage.status == "sending"))).scalar_one()
+            if sent_today + in_flight >= get_settings().outreach_daily_send_cap:
+                raise ForbiddenError("daily send cap reached; protects the founder's mailbox reputation")
+            to, subject = lead.email, msg.subject or f"Quick question for {lead.company}"
+            body = (msg.approved_text or msg.text) + email_footer(intake)
+            transition(msg, "sending", OUTREACH_TRANSITIONS)
+            msg.send_error = ""
+            audit(s, p.user_id, "outreach.send_started", "outreach", msg.id, to_domain=to.split("@")[-1])
+    try:
+        external_id = await gmail.send_email(tenant_id, to, subject, body)
+    except IntegrationError as e:
+        with tenant_scope(tenant_id):
+            async with get_db().session() as s:
+                m = (await s.execute(select(OutreachMessage).where(OutreachMessage.id == msg_id))).scalars().one()
+                transition(m, "approved", OUTREACH_TRANSITIONS)
+                m.send_error = f"{e.message}. {e.recovery}".strip()
+                audit(s, p.user_id, "outreach.send_failed", "outreach", m.id, code=e.code, integration=e.integration)
+        raise
     with tenant_scope(tenant_id):
         async with get_db().session() as s:
-            rows = (await s.execute(select(Post, CalendarSlot).join(CalendarSlot, CalendarSlot.id == Post.slot_id)
-                                    .where(Post.status == "scheduled", CalendarSlot.publish_date <= today))).all()
-            for post, slot in rows:
-                await MockPublisher().publish(tenant_id, post.id, post.approved_text or post.text)
-                transition(post, "published", POST_TRANSITIONS)
+            m = (await s.execute(select(OutreachMessage).where(OutreachMessage.id == msg_id))).scalars().one()
+            ld = (await s.execute(select(Lead).where(Lead.id == m.lead_id))).scalars().one()
+            transition(m, "sent", OUTREACH_TRANSITIONS)
+            m.sent_at, m.external_id = _now(), external_id
+            ld.status = "contacted"
+            audit(s, p.user_id, "outreach.sent", "outreach", m.id, gmail_id=external_id)
+            return m
+
+
+async def recover_interrupted_sends() -> int:
+    """At startup: a message left in 'sending' (process died mid-send) goes back to 'approved' with a warning.
+    It is never re-sent automatically, because Gmail may already have delivered it."""
+    from sqlalchemy import update
+    from app.core.tenancy import system_scope
+    with system_scope("startup: recover interrupted sends"):
+        async with get_db().session() as s:
+            res = await s.execute(update(OutreachMessage).where(OutreachMessage.status == "sending").values(
+                status="approved", send_error="Interrupted while sending. Check your Gmail Sent folder before sending again."))
+            return res.rowcount or 0
+
+
+async def mark_posted(p: Principal, tenant_id: str, post_id: str) -> Post:
+    """The founder confirms they posted an approved post on LinkedIn (no auto-publishing is integrated)."""
+    authorize(p, "content:approve", tenant_id)
+    with tenant_scope(tenant_id):
+        async with get_db().session() as s:
+            post = await _post(s, post_id)
+            transition(post, "published", POST_TRANSITIONS)
+            post.published_at = _now()
+            if post.slot_id:
+                slot = (await s.execute(select(CalendarSlot).where(CalendarSlot.id == post.slot_id))).scalars().one()
                 slot.status = "published"
-                audit(s, "system:publisher", "post.published", "post", post.id)
-                n += 1
-    return n
+            audit(s, p.user_id, "post.marked_posted", "post", post.id)
+            return post
