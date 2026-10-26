@@ -25,6 +25,7 @@ from app.llm.providers import (
     CircuitBreaker, FatalError, GeminiProvider, GroqProvider, MockConfig, MockProvider, Provider,
     RateLimited, TokenBucket, TransientError,
 )
+from app.integrations.errors import NOT_CONFIGURED, IntegrationError
 from app.llm.types import BudgetExceeded, CallContext, LLMRequest, LLMResponse, LLMUnavailable, Tier
 
 
@@ -53,17 +54,19 @@ class LLMGateway:
         self.mode = self.s.effective_llm_mode
         self.providers: dict[str, Provider] = {}
         if self.mode == "mock":
-            self.providers["mock"] = MockProvider(mock_config)
-        else:
+            self.providers["mock"] = MockProvider(mock_config)   # settings only allow this outside production
+        elif self.mode == "live":
             self.providers["groq"] = GroqProvider(self.s.groq_api_key)
             if self.s.google_api_key:
                 self.providers["gemini"] = GeminiProvider(self.s.google_api_key)
+        # mode "unconfigured": no providers. Every call fails with a clear error instead of faking output.
         self.breakers = {n: CircuitBreaker(self.s.circuit_failure_threshold, self.s.circuit_cooldown_s)
                          for n in self.providers}
         self.semaphores = {n: asyncio.Semaphore(self.s.provider_max_concurrency) for n in self.providers}
         self.buckets: dict[str, TokenBucket] = {m: TokenBucket(tpm) for m, tpm in MODEL_TPM.items()}
         self._tenants: dict[str, _TenantState] = {}
         self._tenant_lock = asyncio.Lock()
+        self._global: tuple[str, float, float] | None = None   # (utc day, spend, fetched_at)
 
     # -- routing ---------------------------------------------------------------
     def route(self, tier: Tier) -> list[tuple[str, str]]:
@@ -97,9 +100,31 @@ class LLMGateway:
             self._tenants[tenant_id] = st
             return st
 
+    async def _global_spend(self) -> float:
+        """Service-wide spend today (UTC), so one open signup page cannot drain the provider account."""
+        from app.core.tenancy import system_scope
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if self._global and self._global[0] == day and time.monotonic() - self._global[2] < 10:
+            return self._global[1]
+        start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        with system_scope("gateway: service-wide daily budget"):
+            async with get_db().reader() as s:
+                spent = float((await s.execute(select(func.coalesce(func.sum(LLMCall.cost_usd), 0.0))
+                                               .where(LLMCall.created_at >= start))).scalar_one())
+        self._global = (day, spent, time.monotonic())
+        return spent
+
+    def require_configured(self) -> None:
+        if self.mode == "unconfigured":
+            raise IntegrationError("ai", NOT_CONFIGURED, "No AI provider is configured on this server",
+                                   "Set GROQ_API_KEY in the server environment (free key: console.groq.com) and restart.")
+
     async def _preflight(self, ctx: CallContext) -> None:
+        self.require_configured()
         if ctx.cancel is not None and ctx.cancel.is_set():
             raise BudgetExceeded("run cancelled")
+        if self.mode == "live" and await self._global_spend() >= self.s.global_daily_budget_usd:
+            raise BudgetExceeded(f"service-wide daily AI budget ${self.s.global_daily_budget_usd:.2f} reached; try again tomorrow")
         st = await self._tenant_state(ctx.tenant_id)
         if st.kill_switch:
             raise TenantPaused("tenant kill switch is on")

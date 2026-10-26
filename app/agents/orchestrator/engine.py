@@ -19,11 +19,11 @@ from typing import Any, Awaitable, Callable
 
 from sqlalchemy import func, select
 
-from app.agents import mocks  # noqa: F401  (registers offline responders)
 from app.agents.blackboard import latest, latest_meta, put_artifact
 from app.agents.content.agents import draft_slot, reflect_on_feedback
 from app.agents.leads.agents import draft_outreach, find_leads
-from app.agents.research.agents import competitor_analyst, market_analyst, trend_scout, voice_analyst
+from app.agents.research.agents import (competitor_analyst, ingest_website, market_analyst, provenance, trend_scout,
+                                        voice_analyst)
 from app.agents.runtime.loop import AgentContext
 from app.agents.strategy.agents import calendar_planner, icp_builder, next_monday, strategist
 from app.core.config import get_settings
@@ -32,9 +32,13 @@ from app.db.audit import audit
 from app.db.models import CalendarSlot, KnowledgeDoc, LLMCall, Lead, Run, RunNode, Tenant
 from app.db.session import get_db
 from app.guardrails.input_guard import scan
+from app.integrations.errors import IntegrationError
 from app.llm.gateway import TenantPaused
 from app.llm.types import Budget, BudgetExceeded, CallContext
 from app.agents.orchestrator.scheduler import FairScheduler
+
+if get_settings().fixtures_allowed:      # offline responders exist only outside production
+    from app.fixtures import mocks  # noqa: F401
 
 log = logging.getLogger(__name__)
 
@@ -108,12 +112,13 @@ async def _ingest(n: NodeCtx) -> dict:
                 async with get_db().session() as s:
                     row = (await s.execute(select(KnowledgeDoc).where(KnowledgeDoc.id == d.id))).scalars().one()
                     row.injection_score, row.quarantined = v.score, v.quarantined
-    return {"docs_scanned": len(docs), "flagged": flagged}
+    return {"docs_scanned": len(docs), "flagged": flagged, "website": await ingest_website(n.tenant_id, n.agent)}
 
 
 async def _artifact(n: NodeCtx, kind: str, fn) -> dict:
     out = await fn(n.tenant_id, n.agent)
-    art = await put_artifact(n.tenant_id, kind, out.model_dump(), n.run_id)
+    data = {**out.model_dump(), "_provenance": provenance(n.agent)}
+    art = await put_artifact(n.tenant_id, kind, data, n.run_id)
     return {"artifact": kind, "version": art.version}
 
 
@@ -230,7 +235,7 @@ async def _leads(n: NodeCtx) -> dict:
 async def _outreach(n: NodeCtx) -> dict:
     with tenant_scope(n.tenant_id):
         async with get_db().reader() as s:
-            ids = (await s.execute(select(Lead.id).where(Lead.status == "qualified"))).scalars().all()
+            ids = (await s.execute(select(Lead.id).where(Lead.status == "qualified", Lead.email != ""))).scalars().all()
     sem = asyncio.Semaphore(3)
 
     async def one(lid):
@@ -367,7 +372,14 @@ class Orchestrator:
             except Exception as e:  # noqa: BLE001 - recorded on the node
                 await nctx.agent.flush()
                 log.warning("node %s/%s attempt %d failed: %s", run_id, node.key, attempt, e)
+                if isinstance(e, IntegrationError) and not e.retryable:
+                    # Missing key, bad credentials, exhausted quota: another attempt cannot help. Say so and stop.
+                    await self._set_node(tenant_id, node.id, status="failed", error=str(e)[:2000],
+                                         output={"integration": e.as_dict()}, finished_at=_now())
+                    return
                 if attempt == MAX_ATTEMPTS:
+                    if isinstance(e, IntegrationError):
+                        await self._set_node(tenant_id, node.id, output={"integration": e.as_dict()})
                     await self._set_node(tenant_id, node.id, status="failed", error=f"{type(e).__name__}: {e}"[:2000],
                                          finished_at=_now())
                     return

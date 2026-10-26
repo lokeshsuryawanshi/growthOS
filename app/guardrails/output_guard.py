@@ -28,6 +28,16 @@ FALSE_FAMILIARITY = ["as we discussed", "following up on our call", "great to me
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"(?<!\d)(?:\+?\d{1,2}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\d)")
+# Any figure a reader could take as a factual claim: percentages, money, multipliers, thousands separators,
+# or a bare count above 10. Years and small list numbers ("3 lessons") are not claims.
+_CLAIM_NUM = re.compile(
+    r"(?<![\w.,])(?:[$£€]\s?\d[\d,]*(?:\.\d+)?\s?(?:k|m|bn|million|billion)?"
+    r"|\d{1,3}(?:,\d{3})+(?:\.\d+)?"
+    r"|\d+(?:\.\d+)?\s?(?:%|percent|x\b|times\b|k\b|million|billion|bn\b)"
+    r"|\d{2,}(?:\.\d+)?)(?![\w,]*\d)", re.I)
+_STOP = set("a an the and or but of in on at to for from by with as is are was were be been being it its this that these those "
+            "we our you your i my me they their them he she his her not no so if than then too very just also more most "
+            "over into about up out how what when why who which can could would should will do does did has have had".split())
 _STAT = re.compile(r"(?:[$£€]\s?\d[\d,.]*\s?(?:k|m|bn|million|billion)?|\d[\d,.]*\s?(?:%|percent|x\b|times\b|k\b|million|billion))", re.I)
 
 
@@ -50,6 +60,24 @@ class GuardReport(BaseModel):
         return any(v.severity == "critical" for v in self.violations)
 
 
+def _stem(w: str) -> str:
+    for suf in ("ing", "ed", "es", "s"):
+        if len(w) > len(suf) + 2 and w.endswith(suf):
+            return w[: -len(suf)]
+    return w
+
+
+def _window_words(text: str, start: int, end: int, span: int = 3) -> set[str]:
+    """Content words within `span` words either side of a figure, stemmed. This is what the figure is *about*."""
+    before = re.findall(r"[a-z]+", text[:start].lower())[-span:]
+    after = re.findall(r"[a-z]+", text[end:].lower())[:span]
+    return {_stem(w) for w in before + after if w not in _STOP and len(w) > 1}
+
+
+def _flat(s: str) -> str:
+    return re.sub(r"\s+", " ", s.lower()).strip()
+
+
 @dataclass
 class PolicyContext:
     tenant_name: str
@@ -60,6 +88,9 @@ class PolicyContext:
     other_tenant_terms: list[str] = field(default_factory=list)  # names/founders/products of other clients
     source_texts: list[str] = field(default_factory=list)        # facts + fetched sources a stat may cite
     previous_posts: list[str] = field(default_factory=list)
+    source_docs: dict[str, str] = field(default_factory=dict)    # url -> full text, for claim-level checks
+    founder_samples: list[str] = field(default_factory=list)     # the founder's own posts: never to be copied
+    example_hooks: list[str] = field(default_factory=list)
 
 
 def _contains(text: str, term: str) -> bool:
@@ -117,8 +148,74 @@ def _split(violations: list[Violation]) -> GuardReport:
     return GuardReport(passed=not blocking, violations=blocking, warnings=warn)
 
 
-def check_post(text: str, hashtags: list[str], p: PolicyContext) -> GuardReport:
+def check_claims(text: str, claims: list, p: PolicyContext) -> list[Violation]:
+    """Claim-level grounding. Every figure in the post needs a claim with a verbatim quote from a known source,
+    and the figure must be used in the same sense as the quote (what it counts, not just that the number exists)."""
+    v: list[Violation] = []
+    by_num = {_norm_num(c.number): c for c in claims if _norm_num(c.number)}
+    flat_docs = {url: _flat(t) for url, t in p.source_docs.items()}
+    for m in _CLAIM_NUM.finditer(text):
+        raw = m.group(0).strip()
+        num = _norm_num(raw)
+        if not num or (len(num) == 4 and 1900 <= int(num.split(".")[0]) <= 2100 and not re.search(r"[%$£€]", raw)):
+            continue                                         # a year
+        claim = by_num.get(num)
+        if claim is None:
+            v.append(Violation(rule="unclaimed_stat", severity="high",
+                               detail=f"'{raw}' is used without a source quote; add it to claims or remove it"))
+            continue
+        quote = _flat(claim.source_quote)
+        doc = flat_docs.get(claim.source_url)
+        haystacks = [doc] if doc is not None else list(flat_docs.values())
+        if doc is None and claim.source_url not in flat_docs:
+            v.append(Violation(rule="claim_unknown_source", severity="high",
+                               detail=f"'{raw}' cites {claim.source_url or 'no source'}, which is not one of the provided sources"))
+            continue
+        if not quote or not any(quote in h for h in haystacks):
+            v.append(Violation(rule="claim_quote_not_in_source", severity="high",
+                               detail=f"the quote given for '{raw}' does not appear verbatim in {claim.source_url}"))
+            continue
+        qm = next((x for x in _CLAIM_NUM.finditer(quote) if _norm_num(x.group(0)) == num), None) or \
+            next((x for x in re.finditer(re.escape(raw.lower()), quote)), None)
+        if qm is None:
+            v.append(Violation(rule="claim_quote_missing_number", severity="high",
+                               detail=f"the quote given for '{raw}' does not contain that figure"))
+            continue
+        used, source = _window_words(text, m.start(), m.end()), _window_words(quote, qm.start(), qm.end(), span=5)
+        if used and len(used & source) / len(used) < 0.5:
+            v.append(Violation(rule="metric_misattributed", severity="high",
+                               detail=f"'{raw}' is used for \"{' '.join(sorted(used))}\" but the source says it measures "
+                                      f"\"{' '.join(sorted(source))}\". Use the figure only for what the source says"))
+    return v
+
+
+def check_copying(text: str, p: PolicyContext) -> list[Violation]:
+    """The founder's own sample posts and example hooks are style references, not material to reuse."""
+    from difflib import SequenceMatcher
+    v: list[Violation] = []
+    first = _flat(re.split(r"(?<=[.!?\n])\s", text.strip(), maxsplit=1)[0])
+    refs = [(re.split(r"(?<=[.!?\n])\s", s.strip(), maxsplit=1)[0], s) for s in p.founder_samples] + [(h, h) for h in p.example_hooks]
+    for hook, full in refs:
+        h = _flat(hook)
+        if len(h) > 15 and (SequenceMatcher(None, first, h).ratio() >= 0.75 or h in _flat(text)):
+            v.append(Violation(rule="copied_founder_hook", severity="high",
+                               detail="opens with a line taken from the founder's own sample posts; write a new hook"))
+            break
+    for full in p.founder_samples:
+        if jaccard(text, full) >= 0.3:
+            v.append(Violation(rule="copies_founder_sample", severity="high",
+                               detail="overlaps heavily with one of the founder's existing posts"))
+            break
+    return v
+
+
+def check_post(text: str, hashtags: list[str], p: PolicyContext, claims: list | None = None) -> GuardReport:
+    """`claims` is the writer's claim list for model drafts. None means a human edit: no claim bookkeeping is demanded
+    of the founder, but figures still have to exist in a source."""
     v = _common(text, p)
+    if claims is not None:
+        v += check_claims(text, claims, p)
+    v += check_copying(text, p)
     if not 300 <= len(text) <= 3000:
         v.append(Violation(rule="length", severity="medium", detail=f"{len(text)} chars (LinkedIn sweet spot 300-3000)"))
     if len(hashtags) > 5:

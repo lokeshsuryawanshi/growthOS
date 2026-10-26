@@ -11,10 +11,9 @@ from datetime import date, timedelta
 
 from sqlalchemy import delete, select
 
-from app.agents.blackboard import compact, latest, profile
+from app.agents.blackboard import compact, latest, primary_goal, profile, tenant_goals
 from app.agents.runtime.loop import AgentContext, AgentError, structured
 from app.agents.schemas import FORMATS, ICP, CalendarPlan, ContentStrategy
-from app.core.config import get_settings
 from app.core.tenancy import tenant_scope
 from app.db.models import CalendarSlot
 from app.db.session import get_db
@@ -25,14 +24,16 @@ DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 async def strategist(tenant_id: str, ctx: AgentContext) -> ContentStrategy:
     intake = (await profile(tenant_id)).intake
     inputs = {k: await latest(tenant_id, k) for k in ("voice_profile", "market_report", "competitor_matrix", "trend_report")}
-    user = (f"Client: {intake.get('company_name')}. Goals: {intake.get('goals', '')}. "
+    goals = tenant_goals(intake)
+    user = (f"Client: {intake.get('company_name')}. Primary goal: {primary_goal(intake)}. "
+            f"Brand tone: {intake.get('tone', '')}. "
             f"Topics to own: {intake.get('topics_to_own', [])}. Topics to avoid: {intake.get('topics_to_avoid', [])}.\n"
             f"Voice: {compact(inputs['voice_profile'], 900)}\nMarket: {compact(inputs['market_report'], 1500)}\n"
             f"Competitors: {compact(inputs['competitor_matrix'], 1500)}\nTrends: {compact(inputs['trend_report'], 1500)}")
     res = await structured("strategist", "big",
                            "You are a B2B content strategist for founder-led LinkedIn. Define positioning against the "
                            f"competitors' whitespace, 3-5 content pillars whose share_pct sums to 100, a format mix and a "
-                           f"cadence of at least {get_settings().posts_per_week_target} posts per week.",
+                           f"cadence of at least {goals['posts_per_week']} posts per week.",
                            user, ContentStrategy, ctx, max_tokens=3000, reasoning="medium",
                            metadata={"intake": intake, **inputs})
     return res.output
@@ -85,13 +86,12 @@ def validate_calendar(plan: CalendarPlan, weeks: list[int], pillars: dict[str, i
 
 async def calendar_planner(tenant_id: str, ctx: AgentContext, start: date, weeks: list[int]) -> int:
     """Plan the given weeks (1-based from `start`), replace unplanned slots there, return slots written."""
-    s = get_settings()
     strategy = await latest(tenant_id, "content_strategy")
     if not strategy:
         raise AgentError("no content strategy yet")
     trends = await latest(tenant_id, "trend_report")
     pillars = {p["name"]: p["share_pct"] for p in strategy["pillars"]}
-    per_week = max(s.posts_per_week_target, strategy.get("posts_per_week", 5))
+    per_week = tenant_goals((await profile(tenant_id)).intake)["posts_per_week"]   # the client's own target
     with tenant_scope(tenant_id):
         async with get_db().reader() as sess:
             used = [t for (t,) in (await sess.execute(select(CalendarSlot.topic)))]

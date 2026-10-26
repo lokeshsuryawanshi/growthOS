@@ -7,7 +7,7 @@ POST_TRANSITIONS: dict[str, set[str]] = {
     "pending_approval": {"approved", "changes_requested", "rejected"},
     "changes_requested": {"drafting", "pending_approval"},  # regenerate with the note, or edited by a human
     "approved": {"scheduled"},
-    "scheduled": {"published"},
+    "scheduled": {"published"},        # "published" = the founder confirmed they posted it; nothing posts automatically
     "published": set(),
     "rejected": set(),
 }
@@ -16,7 +16,8 @@ OUTREACH_TRANSITIONS: dict[str, set[str]] = {
     "blocked": {"pending_approval", "rejected"},
     "pending_approval": {"approved", "changes_requested", "rejected"},
     "changes_requested": {"pending_approval"},
-    "approved": {"sent"},
+    "approved": {"sending"},
+    "sending": {"sent", "approved"},   # 'sending' is a lock: a double click or a crash can never send twice
     "sent": {"replied"},
     "replied": set(),
     "rejected": set(),

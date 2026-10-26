@@ -31,7 +31,33 @@ async def latest(tenant_id: str, kind: str) -> dict[str, Any] | None:
         async with get_db().reader() as s:
             art = (await s.execute(select(Artifact).where(Artifact.kind == kind)
                                    .order_by(Artifact.version.desc()).limit(1))).scalars().first()
-    return art.data if art else None
+    return _public(art.data) if art else None
+
+
+def tenant_goals(intake: dict[str, Any]) -> dict[str, int]:
+    """Per-client targets from onboarding, bounded to sane ranges; defaults come from settings."""
+    from app.core.config import get_settings
+    st, g = get_settings(), (intake or {}).get("goals")
+    g = g if isinstance(g, dict) else {}
+
+    def num(key: str, default: int, lo: int, hi: int) -> int:
+        try:
+            return max(lo, min(hi, int(g.get(key, default))))
+        except (TypeError, ValueError):
+            return default
+    lo = num("leads_per_week_min", st.leads_per_week_min, 1, 40)
+    return {"posts_per_week": num("posts_per_week", st.posts_per_week_target, 3, 7),
+            "leads_min": lo, "leads_max": max(lo, num("leads_per_week_max", st.leads_per_week_max, 1, 60))}
+
+
+def primary_goal(intake: dict[str, Any]) -> str:
+    g = (intake or {}).get("goals")
+    return g.get("primary_goal", "") if isinstance(g, dict) else (g or "")
+
+
+def _public(data: dict[str, Any]) -> dict[str, Any]:
+    """Artifacts carry provenance under '_' keys for the UI; agents never see it."""
+    return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
 async def latest_meta(tenant_id: str, kind: str) -> Artifact | None:
@@ -45,6 +71,13 @@ async def profile(tenant_id: str) -> ClientProfile:
     with tenant_scope(tenant_id):
         async with get_db().reader() as s:
             return (await s.execute(select(ClientProfile))).scalars().one()
+
+
+async def intake_of(tenant_id: str) -> dict[str, Any]:
+    with tenant_scope(tenant_id):
+        async with get_db().reader() as s:
+            row = (await s.execute(select(ClientProfile))).scalars().first()
+    return dict(row.intake) if row else {}
 
 
 async def docs(tenant_id: str, kinds: list[str] | None = None, usable_only: bool = True) -> list[KnowledgeDoc]:
@@ -69,8 +102,8 @@ def compact(data: dict[str, Any] | None, limit: int = 2500) -> str:
 async def source_pack(tenant_id: str) -> list[dict[str, str]]:
     """Facts a post may cite: client-verified facts + cleaned, non-quarantined web pages."""
     pack = []
-    for d in await docs(tenant_id, ["intake_note", "web_page"]):
-        pack.append({"url": d.source if d.kind == "web_page" else "client:verified-facts",
+    for d in await docs(tenant_id, ["intake_note", "web_page", "website"]):
+        pack.append({"url": d.source if d.kind in ("web_page", "website") else "client:verified-facts",
                      "title": d.title, "text": d.content[:1500]})
     return pack
 
@@ -105,7 +138,14 @@ async def policy_context(tenant_id: str, include_previous_posts: bool = True) ->
     comp = await latest(tenant_id, "competitor_matrix")
     competitors = list(intake.get("known_competitors", [])) + [c["name"] for c in (comp or {}).get("competitors", [])]
     samples = [d.content for d in await docs(tenant_id, ["founder_sample"])]
-    sources = [p["text"] for p in await source_pack(tenant_id)] + samples
+    voice = await latest(tenant_id, "voice_profile") or {}
+    source_docs: dict[str, str] = {}
+    for d in await docs(tenant_id, ["intake_note", "web_page", "website"]):
+        key = d.source if d.kind in ("web_page", "website") else "client:verified-facts"
+        source_docs[key] = (source_docs.get(key, "") + "\n" + d.content).strip()
+    for i, smp in enumerate(samples, 1):
+        source_docs[f"founder:sample-{i}"] = smp
+    sources = list(source_docs.values())
     previous: list[str] = []
     if include_previous_posts:
         with tenant_scope(tenant_id):
@@ -116,4 +156,5 @@ async def policy_context(tenant_id: str, include_previous_posts: bool = True) ->
         tenant_name=intake.get("company_name", ""), competitors=sorted(set(competitors)),
         banned_topics=pol.get("banned_topics", []),
         banned_phrases=pol.get("banned_phrases", []), required_disclaimer=pol.get("required_disclaimer"),
-        other_tenant_terms=await other_tenant_terms(tenant_id), source_texts=sources, previous_posts=previous)
+        other_tenant_terms=await other_tenant_terms(tenant_id), source_texts=sources, previous_posts=previous,
+        source_docs=source_docs, founder_samples=samples, example_hooks=list(voice.get("example_hooks", [])))

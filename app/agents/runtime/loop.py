@@ -23,6 +23,7 @@ from pydantic import BaseModel, ValidationError
 from app.core.tenancy import tenant_scope
 from app.db.models import TraceEvent
 from app.db.session import get_db
+from app.integrations.errors import IntegrationError
 from app.llm.gateway import get_gateway
 from app.llm.types import CallContext, LLMRequest, Tier, ToolSpec
 
@@ -246,6 +247,11 @@ async def _execute_tool(agent: str, name: str, raw_args: str, registry: dict[str
         return f"Error: invalid arguments: {str(e)[:800]}"
     try:
         result = await tool.handler(args, ctx)
+    except IntegrationError as e:
+        if e.integration != "web_fetch":   # a missing/failed provider must stop the run, not become model input
+            raise
+        ctx.event(agent, "tool_error", tool=name, error=e.message)
+        return f"Error: tool failed: {e.message}"
     except Exception as e:  # tool failures are observations, not crashes
         ctx.event(agent, "tool_error", tool=name, error=str(e)[:400])
         return f"Error: tool failed: {str(e)[:400]}"

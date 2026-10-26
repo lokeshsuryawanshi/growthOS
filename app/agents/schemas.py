@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 class Sourced(BaseModel):
     claim: str
     source_url: str = Field(description="URL the claim came from; empty only for client-provided facts")
+    verified: bool = Field(default=False, description="Set by code: the URL was actually returned by a search or fetched")
 
 
 # ---------------- research ----------------------------------------------------
@@ -39,10 +40,11 @@ class Competitor(BaseModel):
     strengths: list[str] = Field(default_factory=list, max_length=4)
     weaknesses: list[str] = Field(default_factory=list, max_length=4)
     source_urls: list[str] = Field(default_factory=list)
+    verified: bool = False   # set by code: at least one source URL was actually seen
 
 
 class CompetitorMatrix(BaseModel):
-    competitors: list[Competitor] = Field(min_length=1, max_length=6)
+    competitors: list[Competitor] = Field(min_length=1, max_length=8)
     whitespace: list[str] = Field(min_length=1, max_length=6, description="Content angles competitors leave open")
 
 
@@ -50,6 +52,7 @@ class Trend(BaseModel):
     name: str
     summary: str
     evidence_url: str = ""
+    verified: bool = False   # set by code: the evidence URL was actually seen
     relevance: int = Field(default=3, ge=1, le=5)
     content_angle: str
 
@@ -70,7 +73,7 @@ class ContentStrategy(BaseModel):
     positioning: str
     pillars: list[Pillar] = Field(min_length=3, max_length=5)
     format_mix: dict[str, int] = Field(description="format -> share percent")
-    posts_per_week: int = Field(ge=4, le=7)
+    posts_per_week: int = Field(ge=3, le=7)
     goals: list[str] = Field(min_length=1, max_length=4)
 
     @field_validator("pillars")
@@ -124,10 +127,18 @@ class CalendarPlan(BaseModel):
 
 
 # ---------------- content -----------------------------------------------------
+class Claim(BaseModel):
+    number: str = Field(description="The figure exactly as written in the post, e.g. '83%' or '1,100'")
+    statement: str = Field(description="The sentence of the post that uses the figure")
+    source_url: str = Field(description="URL of the source (or 'client:verified-facts')")
+    source_quote: str = Field(description="Verbatim text copied from the source that contains this figure")
+
+
 class PostDraft(BaseModel):
     text: str = Field(description="The full LinkedIn post, plain text with line breaks")
     hashtags: list[str] = Field(default_factory=list, max_length=8)
     sources_used: list[str] = Field(default_factory=list, description="URLs of sources whose facts the post uses")
+    claims: list[Claim] = Field(default_factory=list, description="One entry for every figure used in the post")
     rationale: str = Field(description="One sentence: why this post, for this audience, now")
 
 
@@ -168,9 +179,22 @@ class LeadScores(BaseModel):
 
 
 class OutreachDraft(BaseModel):
+    subject: str = Field(default="", max_length=120)
     message: str
-    alt_message: str
-    personalization_hook: str
+    alt_message: str = ""
+    personalization_hook: str = ""
+
+
+class Candidate(BaseModel):
+    name: str
+    domain: str = Field(description="The company's own website domain, e.g. acme.com")
+    evidence_url: str = Field(description="A URL returned by the search that mentions this company")
+    signal: str = Field(default="", description="One concrete fact from that page showing why they are a fit now")
+    why_fit: str = ""
+
+
+class CompanyCandidates(BaseModel):
+    companies: list[Candidate] = Field(default_factory=list, max_length=25)
 
 
 class OutreachCritique(BaseModel):

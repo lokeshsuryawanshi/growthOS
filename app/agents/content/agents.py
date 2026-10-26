@@ -27,6 +27,10 @@ WRITER_SYSTEM = (
     "You are a ghostwriter for a founder's LinkedIn. Write in their voice exactly as described. "
     "Open with a hook line, keep paragraphs short, make one specific point, end with a natural question or takeaway. "
     "Use a number only if it appears in the provided sources, and list those sources' URLs in sources_used. "
+    "Every figure (a percentage, money, a multiplier, or any count above 10) needs an entry in claims: the figure exactly "
+    "as written, the sentence using it, the source URL, and a verbatim quote copied from that source. Use each figure only "
+    "for what the quote says it measures: a customer count is a customer count, never a market size or a problem statistic. "
+    "The founder's sample posts are style references: never reuse their hooks, sentences or stories. "
     "No hashtag spam (0-3 hashtags). Never mention other companies the agency works with."
 )
 CRITIC_SYSTEM = (
@@ -45,12 +49,13 @@ async def _slot(tenant_id: str, slot_id: str) -> CalendarSlot:
 async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str = "") -> Post:
     st = get_settings()
     slot = await _slot(tenant_id, slot_id)
-    voice = await latest(tenant_id, "voice_profile") or {}
+    voice_full = await latest(tenant_id, "voice_profile") or {}
+    voice = {k: v for k, v in voice_full.items() if k != "example_hooks"}   # hooks are style evidence, never wording to reuse
     strategy = await latest(tenant_id, "content_strategy") or {}
     sources = await source_pack(tenant_id)
     pillar = next((p for p in strategy.get("pillars", []) if p["name"] == slot.pillar), {})
     policy = await policy_context(tenant_id)
-    src_text = "\n".join(f"[{s['url']}] {s['title']}: {s['text'][:600]}" for s in sources[:8])
+    src_text = "\n".join(f"[{s['url']}] {s['title']}: {s['text'][:900]}" for s in sources[:8])
     brief = (f"Topic: {slot.topic}\nAngle: {slot.angle}\nFormat: {slot.format}\nPillar: {slot.pillar} - "
              f"{pillar.get('description', '')}\nTrend reference: {slot.trend_ref or 'none'}\n"
              f"Founder voice: {compact(voice, 1500)}\nSources you may cite:\n{src_text}")
@@ -81,20 +86,21 @@ async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str 
                                   max_tokens=1600,
                                   metadata={**meta, "round": rounds, "must_fix": critique.must_fix})).output
 
-    report = check_post(draft.text, draft.hashtags, policy)
+    report = check_post(draft.text, draft.hashtags, policy, draft.claims)
     if not report.passed and not report.critical:
         ctx.event("output_guard", "auto_fix", slot=slot.id, violations=[v.rule for v in report.violations])
         draft = (await structured("writer", "big", WRITER_SYSTEM,
                                   f"{brief}\n\nYour draft:\n{draft.text}\n\nIt failed these policy checks. Rewrite to fix all of "
-                                  f"them (remove any number that isn't in the sources):\n{report.instructions()}",
+                                  f"them (remove or correct any figure the source does not support, and fix the claims list):\n{report.instructions()}",
                                   PostDraft, ctx, temperature=0.4, max_tokens=1600,
                                   metadata={**meta, "round": 99, "violations": [v.model_dump() for v in report.violations]})).output
-        report = check_post(draft.text, draft.hashtags, policy)
+        report = check_post(draft.text, draft.hashtags, policy, draft.claims)
 
     with tenant_scope(tenant_id):
         async with get_db().session() as s:
             post = Post(slot_id=slot.id, run_id=ctx.call.run_id, pillar=slot.pillar, text=draft.text,
                         hashtags=draft.hashtags[:5], sources=[u for u in draft.sources_used if u][:6],
+                        claims=[c.model_dump() for c in draft.claims],
                         rationale=draft.rationale, critic_score=critique.overall if critique else 0.0,
                         critic_feedback=critique.model_dump() if critique else {}, rounds=rounds,
                         guardrail_report=report.model_dump(), status="drafting")
