@@ -155,3 +155,20 @@ def test_tmp_sqlite_is_flagged_as_ephemeral_storage():
     assert not Settings(app_env="test", database_url="sqlite+aiosqlite:////data/growthos.db").ephemeral_storage
     assert not Settings(app_env="test", database_url="postgres://u@h/db").ephemeral_storage
     assert Settings(app_env="test", database_url="sqlite+aiosqlite:////data/g.db", EPHEMERAL_STORAGE="true").ephemeral_storage
+
+
+def test_migrations_match_the_models(tmp_path):
+    """Production builds its schema only from Alembic migrations; they must produce exactly the models' schema."""
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+    from sqlalchemy import create_engine
+
+    from app.db.migrate import upgrade_sync
+    from app.db.models import Base
+    url = f"sqlite+aiosqlite:///{tmp_path}/drift.db"
+    upgrade_sync(url)
+    engine = create_engine(f"sqlite:///{tmp_path}/drift.db")
+    with engine.connect() as conn:
+        diff = compare_metadata(MigrationContext.configure(conn, opts={"compare_type": True}), Base.metadata)
+    engine.dispose()
+    assert diff == [], diff
