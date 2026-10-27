@@ -136,6 +136,21 @@ def verify_candidate(c, st: dict, known_text: str) -> tuple[dict | None, str]:
             "requires_contact": False, "one_per_company": True}, ""
 
 
+def screen_prospect(p: dict[str, Any], seen_keys: set[str], sup_email: set[str], sup_domain: set[str],
+                    sup_company: set[str], competitors: set[str]) -> str | None:
+    """Deterministic filters that run before any model sees a prospect. Returns the rejection reason, or None."""
+    domain = (p.get("company_domain") or "").lower()
+    if dedupe_key(p) in seen_keys:
+        return "duplicate"
+    if (p.get("email") or "").lower() in sup_email or domain in sup_domain or p["company"].lower() in sup_company:
+        return "suppressed"
+    if p["company"].lower() in competitors:
+        return "competitor"
+    if p.get("requires_contact") and not p.get("email") and not p.get("linkedin_url"):
+        return "missing_contact"
+    return None
+
+
 async def _attach_contacts(ctx: AgentContext, pool: list[dict], titles: list[str], stats: dict) -> None:
     """Find a decision-maker email for qualified companies only, within the Hunter.io quota left this month."""
     hunter = HunterClient()
@@ -385,16 +400,7 @@ async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date) -> dict[s
         for p in pool:
             seen.add(p["id"])
             key = dedupe_key(p)
-            domain = (p.get("company_domain") or "").lower()
-            reason = None
-            if key in existing_keys or key in batch_keys:
-                reason = "duplicate"
-            elif (p.get("email") or "").lower() in sup_email or domain in sup_domain or p["company"].lower() in sup_company:
-                reason = "suppressed"
-            elif p["company"].lower() in competitors:
-                reason = "competitor"
-            elif p.get("requires_contact") and not p.get("email") and not p.get("linkedin_url"):
-                reason = "missing_contact"
+            reason = screen_prospect(p, existing_keys | batch_keys, sup_email, sup_domain, sup_company, competitors)
             if reason:
                 stats[reason] += 1
                 rejections.append({"source_id": p["id"], "full_name": p.get("full_name", ""), "company": p["company"],
