@@ -95,7 +95,7 @@ Founder behaviour is the real quality metric: approval rate, first-pass approval
 
 The 100-client run made 7,622 model calls and absorbed 568 injected failures with retries (0 errors). API under 50 concurrent in-process requests on SQLite: about 116 requests/s, p95 about 615 ms. This proves orchestration, isolation and recovery, not provider speed; live timings are in [ECONOMICS.md](ECONOMICS.md).
 
-## 3. The test suite (223 tests)
+## 3. The test suite (224 tests)
 
 `.venv/bin/python -m pytest -q`. Also runs on Postgres: `TEST_DATABASE_URL=postgresql+asyncpg://... pytest`.
 
@@ -106,7 +106,7 @@ The 100-client run made 7,622 model calls and absorbed 568 injected failures wit
 | Accounts and onboarding | 20 | signup validation, clean empty workspace, profile persistence, rate limits, UI flow |
 | Guardrails | 20 | input (incl. batched classifier), output, state machines |
 | Grounding | 14 | claim checks, copied hooks, the misattributed-figure regression |
-| Production integrity | 13 | production refuses mock data and weak secrets, boots empty, Postgres URLs, ephemeral storage, migrations match the models |
+| Production integrity | 14 | production refuses mock data and weak secrets, boots empty, Postgres URLs, ephemeral storage, migrations match the models |
 | Gateway, runtime, routing | 21 | retries, breaker, budgets, cache, repair, spillover, oversized requests, daily quota, wait accounting |
 | Orchestration | 11 | retry, fail-fast, blocked dependents, checkpoints, crash resume, fairness, event-driven starts |
 | Send gate, manual leads | 15 | approval, verification, suppression, cap, double click, founder-confirmed addresses |

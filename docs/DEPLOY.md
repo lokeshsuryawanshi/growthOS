@@ -18,7 +18,7 @@ Live today: **https://growthos-b0t9.onrender.com** (Render, free plan, deploys a
 | **B. Free, hosted Postgres** (`render.free.yaml` + `DATABASE_URL`) | $0 | Kept across restarts and spin-downs | the interview link, a pilot |
 | **C. Paid instance + disk** (`render.yaml`) | about $7.25 a month | Kept on the disk; back it up | production with real clients |
 
-Option B works because the app runs on Postgres as well as SQLite: migrations, the whole test suite (218 tests) and a production-mode boot were run against PostgreSQL 15 locally. It has **not** been run against a specific hosted provider yet. Free Postgres options include Neon and Supabase (check their current free-plan limits); Render's own free Postgres is deleted after 30 days, so it is not a good fit. Paste the provider's connection string as given (`postgres://user:pass@host/db?sslmode=require`); the app converts it for its driver.
+Option B works because the app runs on Postgres as well as SQLite: migrations, the whole test suite (223 of 224 tests; one SQLite-only check is skipped) and a production-mode boot were run against PostgreSQL 15 locally. It has **not** been run against a specific hosted provider yet. Free Postgres options include Neon and Supabase (check their current free-plan limits); Render's own free Postgres is deleted after 30 days, so it is not a good fit. Paste the provider's connection string as given (`postgres://user:pass@host/db?sslmode=require`); the app converts it for its driver.
 
 ## Render, free plan (A or B)
 

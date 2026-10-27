@@ -98,6 +98,11 @@ class Settings(BaseSettings):
     content_time_budget_s: float = 270.0               # no new redraft attempt starts after this (in-flight ones finish)
     outreach_daily_send_cap: int = 25
 
+    @field_validator("ephemeral_storage_override", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v):
+        return None if isinstance(v, str) and not v.strip() else v   # "EPHEMERAL_STORAGE=" in a .env means "decide for me"
+
     @field_validator("database_url")
     @classmethod
     def _async_driver(cls, v: str) -> str:

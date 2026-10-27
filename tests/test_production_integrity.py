@@ -172,3 +172,8 @@ def test_migrations_match_the_models(tmp_path):
         diff = compare_metadata(MigrationContext.configure(conn, opts={"compare_type": True}), Base.metadata)
     engine.dispose()
     assert diff == [], diff
+
+
+def test_an_empty_optional_setting_in_env_does_not_stop_startup():
+    from app.core.config import Settings
+    assert Settings(app_env="test", EPHEMERAL_STORAGE="", database_url="sqlite+aiosqlite:////tmp/x.db").ephemeral_storage
