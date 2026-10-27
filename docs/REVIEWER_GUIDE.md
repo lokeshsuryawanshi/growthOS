@@ -62,6 +62,18 @@ Web search (Tavily or Google grounding), an SSRF-safe page fetcher, Hunter.io co
 
 ## 4. Cost, latency and unit economics
 
+### 4.0 Models in use
+
+| Model | Role | Provider |
+|---|---|---|
+| gpt-oss-120b | strategy, post writing, company extraction (the "big" tier) | Groq |
+| gpt-oss-20b | scoring, planning, extraction (the "small" tier) | Groq |
+| Llama Prompt Guard 2 (86M) | prompt-injection classifier on every fetched page | Groq |
+| Gemini 3.5 flash-lite | critic and judge (a different model family than the writer); Google Search grounding | Google |
+| Qwen3.8-27B | judge fallback if Gemini fails | Groq |
+
+Routing is by tier with a fallback chain, a circuit breaker and a per-model pacing bucket. The comparison with other paid models is in section 4.3.
+
 ### 4.1 Tokens per run (measured on a live run)
 
 | Step | Model calls | Input tokens | Output tokens |
@@ -132,6 +144,8 @@ Splitting a weekly cycle into content and leads is an estimate from the ledger, 
 
 ## 5. Evals
 
+**30 hand-written cases plus a 14-metric release gate.** 22 red-team cases (12 post, 3 outreach, 7 input-injection, including benign controls), 8 hand-scored drafts for judge calibration, and a pipeline eval that scores a full discovery plus weekly run for two clients against business rules and ground-truth labels. The 156 automated tests are separate (section 7).
+
 Principle: **the model proposes, code disposes.** What code can check is checked in code. The LLM judge covers only voice and hook quality, and is itself measured.
 
 | Eval | What it measures | Result |
@@ -146,6 +160,19 @@ Principle: **the model proposes, code disposes.** What code can check is checked
 `python -m evals.run_evals` compares every metric with `evals/baseline.json` and exits non-zero on a breach.
 
 ## 6. Guardrails (enforced in code, not prompts)
+
+**49 individual controls: 47 deterministic code, 2 model-based** (counted from the code; the grouping is a judgment).
+
+| Group | Count | Deterministic or model-based |
+|---|---|---|
+| Input (strip hidden text, regex checks, quarantine rule) | 3 | deterministic |
+| Input (Llama Prompt Guard classifier) | 1 | model-based |
+| Tool guards (allowlist, schema, call cap, no tenant choice, URL/SSRF) | 5 | deterministic |
+| Output rules (safety 7, facts 6, originality 3, quality 3, outreach 4) | 23 | deterministic |
+| Process (2 approval state machines, 7 send-gate checks) | 9 | deterministic |
+| Cost and access (3 budgets, kill switch, rate limits, breaker, RBAC, tenant isolation) | 8 | deterministic |
+
+The second model-based control is the critic, which scores voice and hook quality; it is a quality check, not a safety rule. What each layer does:
 
 | Layer | Controls |
 |---|---|
