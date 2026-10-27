@@ -2,7 +2,19 @@
 
 A done-for-you portal that runs **content marketing, personal branding and lead generation** for busy founders. Agents do the work end to end; the founder only **approves or edits** posts and outreach messages.
 
-**Status:** plan for review. Nothing is built yet.
+**Status:** this is the original plan, written before the build and kept as a record. The system is built; where it
+differs from this plan, the current state is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the reasons are in
+[DECISIONS.md](DECISIONS.md). The main changes:
+
+| Plan said | Built |
+|---|---|
+| Mock `Publisher` / `Sender` adapters | No LinkedIn integration: the founder copies an approved post and marks it posted. Outreach is **email**, sent from the founder's own Gmail (OAuth, `gmail.send` only) after approval, behind a send gate. No mock sender exists. |
+| LinkedIn DMs as outreach | Email outreach (subject, body, opt-out footer) to Hunter.io-verified addresses, or addresses the founder adds by hand and confirms |
+| Seeded prospect dataset + web search | Live: web search (Tavily, Gemini grounding as fallback) + Hunter.io contacts. The fictional dataset and corpus live in `app/fixtures/`, are used only by tests, the stress test and a labelled local demo, and production refuses to import them |
+| Gemini grounded research with a seeded fallback | No canned fallback anywhere: if no search provider answers, the step stops and shows the fix |
+| One weekly run | Separate `content` and `leads` runs (own buttons, may overlap); `weekly` kept for the agency console |
+| Research agents as tool loops | A decide-act research loop with compact observations and one structured extraction (much faster on per-minute token limits) |
+| Account managers invited by the platform | A founder's team page (viewers, co-owners) and an admin data view where the platform admin creates and assigns account managers |
 
 ---
 
@@ -19,8 +31,8 @@ A done-for-you portal that runs **content marketing, personal branding and lead 
 
 **Assumptions (change any of these before we build):**
 - LLM provider is **Groq** (`openai/gpt-oss-120b` in `.env`) for reasoning and writing. The `GOOGLE_API_KEY` is used for **Gemini with Google Search grounding** for live web research, and as an **independent judge model** in evals (a different model family than the writer reduces self-grading bias).
-- Real LinkedIn posting and real email sending are **out of scope**: they sit behind `Publisher` / `Sender` adapters with mock implementations. The approval flow, state machines and audit trail are fully real.
-- Lead discovery uses a `LeadSource` adapter. The prototype ships a seeded prospect dataset (deterministic for demos/tests) plus web-search discovery. Apollo / Sales Navigator / Clay plug in at the same interface in production.
+- Real LinkedIn posting and real email sending are **out of scope**: they sit behind `Publisher` / `Sender` adapters with mock implementations. The approval flow, state machines and audit trail are fully real. *(Built differently: see the table above.)*
+- Lead discovery uses a `LeadSource` adapter. The prototype ships a seeded prospect dataset (deterministic for demos/tests) plus web-search discovery. Apollo / Sales Navigator / Clay plug in at the same interface in production. *(Built: live web search + Hunter.io; the dataset is test-only.)*
 - Stack: **Python 3.13, FastAPI, SQLAlchemy, Pydantic v2, SQLite for local dev (Postgres + Row-Level Security in prod), pytest**. UI is server-rendered (Jinja + HTMX), no JS build step.
 
 ---
