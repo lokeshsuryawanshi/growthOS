@@ -105,12 +105,21 @@ async def main(args) -> int:
     s = get_settings()
     assert s.effective_llm_mode == "live", "needs a Groq key"
     await init_database(get_db())
-    profile = json.loads(Path(args.profile).read_text())
-    email = f"live-{int(time.time())}@example.com"
-    p = await accounts.signup(profile.get("founder_name", "Founder"), email, "live-run-password-123",
-                              s.signup_invite_code)
-    tenant = await accounts.create_workspace(p, accounts.OnboardingForm.from_form(profile))
     from app.core.security import Principal
+    if args.reuse:                          # run more steps for the workspace already in this database
+        from sqlalchemy import select
+        from app.db.models import Membership, Tenant, User
+        async with get_db().reader() as sess:
+            tenant = (await sess.execute(select(Tenant))).scalars().first()
+            user = (await sess.execute(select(User).join(Membership, Membership.user_id == User.id)
+                                       .where(Membership.tenant_id == tenant.id))).scalars().first()
+        p = Principal(user.id, user.name, user.role, frozenset([tenant.id]))
+    else:
+        profile = json.loads(Path(args.profile).read_text())
+        email = f"live-{int(time.time())}@example.com"
+        p = await accounts.signup(profile.get("founder_name", "Founder"), email, "live-run-password-123",
+                                  s.signup_invite_code)
+        tenant = await accounts.create_workspace(p, accounts.OnboardingForm.from_form(profile))
     me = Principal(p.user_id, p.name, p.role, frozenset([tenant.id]))
     orch = get_orchestrator()
     out: dict = {"started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "company": tenant.name,
@@ -154,7 +163,8 @@ async def main(args) -> int:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--profile", required=True)
+    ap.add_argument("--profile", default="")
+    ap.add_argument("--reuse", action="store_true", help="use the workspace already in --db (skip signup)")
     ap.add_argument("--db", default=f"data/live-{int(time.time())}.db")
     ap.add_argument("--groq-key-var", default="")
     ap.add_argument("--runs", default="discovery,content,leads")
