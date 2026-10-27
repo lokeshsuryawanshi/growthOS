@@ -1,0 +1,31 @@
+{
+  "mode": "a real run's data",
+  "guardrails": {},
+  "pipeline": {
+    "clients": {}
+  },
+  "quality": {
+    "quality_delivered_posts": 5,
+    "quality_posts_with_figures": 1,
+    "quality_ungrounded_figure_posts": 0,
+    "quality_banned_phrase_posts": 0,
+    "quality_avoided_word_posts": 0,
+    "quality_copied_sample_posts": 0,
+    "quality_safety_violations_delivered": 0,
+    "quality_near_duplicate_pairs": 0,
+    "quality_format_compliance": 1.0,
+    "quality_at_bar_share": 1.0,
+    "quality_mean_critic_score": 4.0,
+    "quality_blocked_attempts": 0,
+    "quality_blocked_by_rule": {},
+    "quality_research_claims": "10 / 0",
+    "quality_research_verified_share": 1.0,
+    "quality_outdated_flagged": 0,
+    "source_db": "live-run (2026-10-27)",
+    "tenants": 1
+  },
+  "gate": {
+    "passed": true,
+    "failures": []
+  }
+}

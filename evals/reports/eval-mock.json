@@ -16,7 +16,7 @@
           "succeeded",
           "succeeded"
         ],
-        "seconds": 1.1,
+        "seconds": 1.2,
         "calendar_valid": 1,
         "topics_unique": 1,
         "posts": 10,
@@ -38,10 +38,10 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 2,
         "artifact_contamination": 0,
-        "llm_calls": 146,
-        "tokens": 144360,
-        "cost_usd": 0.0254,
-        "cost_per_client_cycle_usd": 0.0085
+        "llm_calls": 147,
+        "tokens": 144805,
+        "cost_usd": 0.0252,
+        "cost_per_client_cycle_usd": 0.0084
       },
       "shiftwise": {
         "run_status": [
@@ -56,8 +56,8 @@
         "posts_ready": 10,
         "posts_ready_rate": 1.0,
         "avg_critic_score": 4.0,
-        "avg_critic_rounds": 1.4,
-        "guard_autofixes": 1,
+        "avg_critic_rounds": 1.7,
+        "guard_autofixes": 0,
         "pending_posts_with_violations": 0,
         "leads": 40,
         "leads_per_week": [
@@ -71,17 +71,17 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 1,
         "artifact_contamination": 0,
-        "llm_calls": 146,
-        "tokens": 145997,
-        "cost_usd": 0.0257,
-        "cost_per_client_cycle_usd": 0.0086
+        "llm_calls": 151,
+        "tokens": 152688,
+        "cost_usd": 0.0267,
+        "cost_per_client_cycle_usd": 0.0089
       }
     },
     "calendar_valid": 1,
     "posts_ready_rate": 1.0,
     "avg_critic_score": 4.0,
     "leads_week_in_range_rate": 1.0,
-    "cost_per_client_cycle_usd": 0.0086,
+    "cost_per_client_cycle_usd": 0.0089,
     "pending_posts_with_violations": 0,
     "lead_policy_violations": 0,
     "explicit_low_fit_kept": 0,
@@ -89,7 +89,7 @@
   },
   "quality": {
     "quality_delivered_posts": 20,
-    "quality_posts_with_figures": 18,
+    "quality_posts_with_figures": 15,
     "quality_ungrounded_figure_posts": 0,
     "quality_banned_phrase_posts": 0,
     "quality_avoided_word_posts": 0,

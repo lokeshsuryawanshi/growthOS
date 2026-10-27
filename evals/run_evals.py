@@ -311,7 +311,7 @@ async def main_async(args) -> int:
     ids = await seed(db)
     _EVAL_TENANT["id"] = ids["ledgerloop"]
 
-    report: dict = {"mode": "live" if args.live else "mock"}
+    report: dict = {"mode": "live" if args.live else ("a real run's data" if args.from_db else "mock")}
     sections = set(args.sections.split(",")) if args.sections else \
         ({"guardrails", "judge"} if args.live else {"guardrails", "pipeline", "quality", "rbac"})
     report["guardrails"] = await eval_guardrails() if "guardrails" in sections else {}
