@@ -118,7 +118,7 @@ async def _ingest(n: NodeCtx) -> dict:
             docs = (await s.execute(select(KnowledgeDoc).where(KnowledgeDoc.kind.in_(["founder_sample", "intake_note"])))).scalars().all()
     flagged = 0
     for d in docs:
-        v = await scan(d.content, n.agent.call)
+        v = await scan(d.content, n.agent.call, trusted=d.trusted)   # the client's own text: heuristics only
         if v.flagged:
             flagged += 1
             with tenant_scope(n.tenant_id):
@@ -130,7 +130,10 @@ async def _ingest(n: NodeCtx) -> dict:
 
 async def _artifact(n: NodeCtx, kind: str, fn) -> dict:
     out = await fn(n.tenant_id, n.agent)
-    data = {**out.model_dump(), "_provenance": provenance(n.agent)}
+    # "_" keys are for the UI only (agents never see them): where the research came from, and the claims that were
+    # flagged rather than shown as facts because their source did not support them.
+    data = {**out.model_dump(), "_provenance": provenance(n.agent),
+            "_unverified": n.agent.call.extra.get("unverified", [])}
     art = await put_artifact(n.tenant_id, kind, data, n.run_id)
     return {"artifact": kind, "version": art.version}
 

@@ -8,6 +8,7 @@ draft_slot():
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -43,6 +44,19 @@ CRITIC_SYSTEM = (
 )
 
 
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-z]{4,}", (text or "").lower()))
+
+
+def relevant_sources(sources: list[dict], slot: CalendarSlot, k: int = 4) -> list[dict]:
+    """The few sources that matter for this slot (the client's own facts first), instead of every page read."""
+    want = _words(f"{slot.topic} {slot.angle} {slot.pillar} {slot.trend_ref}")
+
+    def score(s: dict) -> int:
+        return len(want & _words(s["title"] + " " + s["text"])) + (100 if s["url"] == "client:verified-facts" else 0)
+    return sorted(sources, key=score, reverse=True)[:k]
+
+
 async def _slot(tenant_id: str, slot_id: str) -> CalendarSlot:
     with tenant_scope(tenant_id):
         async with get_db().reader() as s:
@@ -55,30 +69,30 @@ async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str 
     voice_full = await latest(tenant_id, "voice_profile") or {}
     voice = {k: v for k, v in voice_full.items() if k != "example_hooks"}   # hooks are style evidence, never wording to reuse
     strategy = await latest(tenant_id, "content_strategy") or {}
-    sources = await source_pack(tenant_id)
+    sources = relevant_sources(await source_pack(tenant_id), slot)
     pillar = next((p for p in strategy.get("pillars", []) if p["name"] == slot.pillar), {})
     policy = await policy_context(tenant_id)
-    src_text = "\n".join(f"[{s['url']}] {s['title']}: {s['text'][:900]}" for s in sources[:8])
+    src_text = "\n".join(f"[{s['url']}] {s['title']}: {s['text'][:800]}" for s in sources)
     brief = (f"Topic: {slot.topic}\nAngle: {slot.angle}\nFormat: {slot.format}\nPillar: {slot.pillar} - "
              f"{pillar.get('description', '')}\nTrend reference: {slot.trend_ref or 'none'}\n"
-             f"Founder voice: {compact(voice, 1500)}\nSources you may cite:\n{src_text}")
+             f"Founder voice: {compact(voice, 1200)}\nSources you may cite:\n{src_text}")
     recent = [t.split("\n")[0] for t in policy.previous_posts[:6]]
     if recent:
         brief += "\nRecent openings (don't reuse these hooks or structures): " + " | ".join(recent)
     if note:
         brief += f"\nReviewer's note to address: {note}"
     meta = {"slot": {"id": slot.id, "topic": slot.topic, "angle": slot.angle, "pillar": slot.pillar,
-                     "format": slot.format, "trend_ref": slot.trend_ref}, "voice": voice, "sources": sources[:8],
+                     "format": slot.format, "trend_ref": slot.trend_ref}, "voice": voice, "sources": sources,
             "note": note}
 
-    draft = (await structured("writer", "big", WRITER_SYSTEM, brief, PostDraft, ctx, temperature=0.7, max_tokens=1600,
+    draft = (await structured("writer", "big", WRITER_SYSTEM, brief, PostDraft, ctx, temperature=0.7, max_tokens=1200,
                               metadata={**meta, "round": 0})).output
     critique: Critique | None = None
     rounds = 0
     for rounds in range(1, st.critic_max_rounds + 1):
         critique = (await structured("critic", "judge", CRITIC_SYSTEM,
-                                     f"Founder voice: {compact(voice, 1200)}\nBrief: topic '{slot.topic}', angle '{slot.angle}'.\n"
-                                     f"Draft:\n{draft.text}", Critique, ctx, temperature=0.1, max_tokens=800,
+                                     f"Founder voice: {compact(voice, 700)}\nBrief: topic '{slot.topic}', angle '{slot.angle}'.\n"
+                                     f"Draft:\n{draft.text}", Critique, ctx, temperature=0.1, max_tokens=400,
                                      metadata={**meta, "round": rounds, "draft": draft.text})).output
         ctx.event("critic", "critic_round", slot=slot.id, round=rounds, score=critique.overall, must_fix=critique.must_fix)
         if critique.overall >= st.critic_pass_score or rounds == st.critic_max_rounds:
@@ -86,7 +100,7 @@ async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str 
         draft = (await structured("writer", "big", WRITER_SYSTEM,
                                   f"{brief}\n\nYour previous draft:\n{draft.text}\n\nEditor's required fixes:\n- " +
                                   "\n- ".join(critique.must_fix or [critique.verdict]), PostDraft, ctx, temperature=0.6,
-                                  max_tokens=1600,
+                                  max_tokens=1200,
                                   metadata={**meta, "round": rounds, "must_fix": critique.must_fix})).output
 
     report = check_post(draft.text, draft.hashtags, policy, draft.claims)
@@ -98,7 +112,7 @@ async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str 
                                   f"{brief}\n\nYour draft:\n{draft.text}\n\nIt failed these policy checks. Rewrite to fix all of "
                                   f"them. If a figure cannot be tied to a source quote, remove the figure and the sentence around it; "
                                   f"do not invent anecdotes. Fix the claims list too:\n{report.instructions()}",
-                                  PostDraft, ctx, temperature=0.4, max_tokens=1600,
+                                  PostDraft, ctx, temperature=0.4, max_tokens=1200,
                                   metadata={**meta, "round": 99, "violations": [v.model_dump() for v in report.violations]})).output
         report = check_post(draft.text, draft.hashtags, policy, draft.claims)
 
@@ -135,7 +149,7 @@ async def reflect_on_feedback(tenant_id: str, ctx: AgentContext) -> int:
         rules = (await structured("voice_reflector", "small",
                                   "Compare drafts with what the founder changed or said. Infer concrete writing rules for "
                                   "future drafts (e.g. 'never open with a question'). Ignore one-off factual fixes.",
-                                  f"Current rules: {voice.get('learned_rules', [])}\n\n{pairs}", LearnedRules, ctx, max_tokens=800,
+                                  f"Current rules: {voice.get('learned_rules', [])}\n\n{pairs}", LearnedRules, ctx, max_tokens=500,
                                   metadata={"feedback": [{"action": f.action, "note": f.note, "original": f.original,
                                                           "revised": f.revised} for f in useful]})).output
         merged = list(dict.fromkeys(voice.get("learned_rules", []) + rules.rules))[:15]

@@ -148,10 +148,10 @@ async def structured(agent: str, tier: Tier, system: str, user: str, out: type[T
         {"role": "system", "content": f"{BASE_POLICY}\n\n{system}\n\nRespond with one JSON object matching this JSON schema:\n{schema}"},
         {"role": "user", "content": user},
     ]
-    cost, repairs = 0.0, 0
+    cost, repairs, budget = 0.0, 0, max_tokens
     for attempt in range(max_repairs + 1):
         resp = await gw.complete(LLMRequest(agent=agent, tier=tier, messages=messages, json_mode=True,
-                                            temperature=temperature, max_tokens=max_tokens,
+                                            temperature=temperature, max_tokens=budget,
                                             cacheable=cacheable and attempt == 0, reasoning=reasoning,
                                             metadata={**(metadata or {}), "attempt": attempt}), ctx.call)
         cost += resp.cost_usd
@@ -162,6 +162,8 @@ async def structured(agent: str, tier: Tier, system: str, user: str, out: type[T
         except (ValueError, ValidationError) as e:
             repairs += 1
             err = str(e)[:1200]
+            if not isinstance(e, ValidationError):
+                budget = int(budget * 1.5)   # unparseable JSON is usually an answer cut off at max_tokens
             ctx.event(agent, "repair", attempt=attempt, error=err)
             messages += [{"role": "assistant", "content": resp.content or ""},
                          {"role": "user", "content": f"That output failed validation:\n{err}\nReturn the corrected JSON object only."}]
