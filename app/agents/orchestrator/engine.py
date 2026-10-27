@@ -180,10 +180,19 @@ def _feedback(n: NodeCtx, part: str) -> list[str]:
 @handler("calendar")
 async def _calendar(n: NodeCtx) -> dict:
     s = get_settings()
-    start = date.fromisoformat(n.params["start_date"]) if n.params.get("start_date") else next_monday(date.today())
-    written = await calendar_planner(n.tenant_id, n.agent, start, list(range(1, s.calendar_weeks + 1)))
+    meta = await latest(n.tenant_id, "calendar_meta")
+    start = date.fromisoformat(n.params["start_date"]) if n.params.get("start_date") else \
+        (date.fromisoformat(meta["start"]) if meta else next_monday(date.today()))
+    # Re-planning (e.g. after the founder suggested strategy changes) keeps weeks that already hold drafted, approved
+    # or posted slots; only weeks that are still just a plan are planned again.
+    with tenant_scope(n.tenant_id):
+        async with get_db().reader() as sess:
+            committed = {(d - start).days // 7 + 1 for (d,) in await sess.execute(
+                select(CalendarSlot.publish_date).where(CalendarSlot.status != "planned"))}
+    weeks = [w for w in range(1, s.calendar_weeks + 1) if w not in committed]
+    written = await calendar_planner(n.tenant_id, n.agent, start, weeks) if weeks else 0
     await put_artifact(n.tenant_id, "calendar_meta", {"start": start.isoformat(), "weeks": s.calendar_weeks}, n.run_id)
-    return {"slots": written, "start": start.isoformat()}
+    return {"slots": written, "start": start.isoformat(), "kept_weeks": sorted(w for w in committed if w >= 1)}
 
 
 @handler("trends_refresh")

@@ -84,3 +84,27 @@ async def test_suggestions_are_refused_while_a_run_is_busy_or_before_research(re
     from app.core.security import ForbiddenError
     with pytest.raises(ForbiddenError):
         await strategy_service.suggest_changes(viewer, tid, "Add a pillar on pricing transparency.", ["strategy"])
+
+
+async def test_suggested_changes_after_posts_were_drafted_keep_the_drafted_week(researched):
+    """Regression: re-planning the calendar after a content run counted week 1's drafted posts as clashing topics
+    and the revision failed; it would also have planned a second set of slots into week 1."""
+    db, tid, rid, orch, owner = researched
+    from app.db.models import CalendarSlot
+    await orch.approve_gate(tid, rid, "strategy_review", owner.user_id)
+    assert await orch._tasks[rid] == "succeeded"
+    assert await orch.execute(tid, await orch.create_run(tid, "content", {})) == "succeeded"
+    with tenant_scope(tid):
+        async with db.reader() as s:
+            before = {(sl.publish_date, sl.topic) for sl in (await s.execute(select(CalendarSlot))).scalars()
+                      if sl.status != "planned"}
+    await strategy_service.suggest_changes(owner, tid, "Add a pillar on cash forecasting for seasonal businesses.",
+                                           ["strategy", "icp"])
+    assert await orch._tasks[rid] == "waiting_human"
+    with tenant_scope(tid):
+        async with db.reader() as s:
+            slots = (await s.execute(select(CalendarSlot))).scalars().all()
+    kept = {(sl.publish_date, sl.topic) for sl in slots if sl.status != "planned"}
+    assert before and before <= kept                                  # drafted week untouched
+    week1 = min(d for d, _ in before)
+    assert len([sl for sl in slots if (sl.publish_date - week1).days < 7]) == len(before)   # no second set in week 1
