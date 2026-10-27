@@ -182,15 +182,16 @@ class Settings(BaseSettings):
         return warnings
 
 
-# USD per 1M tokens (input, output). Approximate list prices; verify against
-# provider pricing pages before relying on absolute numbers.
+# USD per 1M tokens (input, output), paid list prices checked on the providers' pages on 2026-10-27
+# (console.groq.com/docs/models, ai.google.dev/gemini-api/docs/pricing). Free tiers bill $0; the ledger records what
+# the same usage would cost on a paid plan.
 MODEL_PRICES: dict[str, tuple[float, float]] = {
     "openai/gpt-oss-120b": (0.15, 0.60),
     "openai/gpt-oss-20b": (0.075, 0.30),
     "meta-llama/llama-prompt-guard-2-86m": (0.04, 0.04),
-    "qwen/qwen3.8-27b": (0.29, 0.59),
+    "qwen/qwen3.8-27b": (0.80, 4.00),
     "meta-llama/llama-prompt-guard-2-22m": (0.03, 0.03),
-    "gemini-3.5-flash-lite": (0.10, 0.40),
+    "gemini-3.5-flash-lite": (0.30, 2.50),
     "mock-big": (0.15, 0.60),
     "mock-research": (0.075, 0.30),
     "mock-small": (0.075, 0.30),
@@ -200,14 +201,14 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
 }
 
 
-# Non-model services, USD per unit at pay-as-you-go list prices (verify before quoting; see docs/ECONOMICS.md).
-# Free tiers make the real cost $0 until they run out; the ledger records what the usage would cost on a paid plan.
+# Non-model services, USD per unit at list prices checked on 2026-10-27 (tavily.com/pricing + docs.tavily.com,
+# ai.google.dev pricing, hunter.io/pricing). Free tiers make the real cost $0 until they run out.
 EXTERNAL_PRICES: dict[tuple[str, str], tuple[float, float]] = {
     # (provider, operation): (credits per call, USD per credit)
-    ("tavily", "search"): (1.0, 0.008),               # basic search = 1 credit
-    ("gemini_search", "search"): (1.0, 0.035),         # Google Search grounding, per grounded request
-    ("hunter", "domain_search"): (1.0, 0.098),         # Starter plan: $49 / 500 searches
-    ("hunter", "verify"): (0.5, 0.098),                # a verification costs half a search credit
+    ("tavily", "search"): (1.0, 0.008),               # basic search = 1 credit; pay-as-you-go $0.008/credit
+    ("gemini_search", "search"): (1.0, 0.014),         # grounding: $14 per 1,000 requests after 5,000 free a month
+    ("hunter", "domain_search"): (1.0, 0.0245),        # Starter $49 / 2,000 credits; one credit per query with results
+    ("hunter", "verify"): (0.5, 0.0245),               # a verification is half a credit
     ("gmail", "send"): (1.0, 0.0),
 }
 
