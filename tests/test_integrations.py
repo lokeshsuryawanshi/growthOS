@@ -236,3 +236,15 @@ async def test_an_empty_result_is_an_answer_not_an_outage(monkeypatch):
     transport(lambda r: httpx.Response(200, json={"answer": "", "results": []}))
     res = await ws.search("very niche query")
     assert res.provider == "tavily" and res.hits == [] and ws._usable("tavily")     # still usable for the next query
+
+
+def test_any_encryption_key_value_works_and_round_trips(monkeypatch):
+    """Regression: a non-Fernet ENCRYPTION_KEY (e.g. a passphrase) crashed Gmail connect with ValueError."""
+    from app.integrations.crypto import decrypt, encrypt
+    for key in ("not-a-fernet-key-just-words", "", "q0x6pUm8wuh9cUQBF1uqnrLKF0UQiS2Mfeg2rKeVc0s="):
+        monkeypatch.setattr(get_settings(), "encryption_key", key)
+        assert decrypt(encrypt('{"refresh_token": "rt"}')) == '{"refresh_token": "rt"}'
+    monkeypatch.setattr(get_settings(), "encryption_key", "passphrase-one")
+    token = encrypt("secret")
+    monkeypatch.setattr(get_settings(), "encryption_key", "passphrase-two")
+    assert decrypt(token) is None                       # a changed key is detected, never mis-decrypted

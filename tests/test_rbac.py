@@ -314,3 +314,19 @@ async def test_admin_data_view_is_searchable_and_never_shows_secrets(client, tea
     page = await client.get("/admin?tab=users&q=viewer")
     assert page.status_code == 200 and "viewer@a.example" in page.text and "owner@b.example" not in page.text
     assert "$2b$" not in page.text
+
+
+# ---------------------------------------------------------------- CSRF: cookie writes must come from this site
+async def test_cross_site_form_posts_are_refused_but_same_site_ones_work(client, team):
+    await ui_login(client, "owner@a.example")
+    tid = team["tid"]
+    evil = await client.post(f"/ui/{tid}/settings", data=FORM, headers={"Origin": "https://evil.example"})
+    assert evil.status_code == 403 and "Cross-site" in evil.text
+    assert (await client.post(f"/ui/{tid}/settings", data=FORM, headers={"Origin": "null"})).status_code == 403
+    assert (await client.post(f"/ui/{tid}/settings", data=FORM,
+                              headers={"Referer": "https://evil.example/page"})).status_code == 403
+    ok = await client.post(f"/ui/{tid}/settings", data=FORM, headers={"Origin": "http://test"})
+    assert ok.status_code == 303                                       # this site: allowed
+    # a bearer-token API call has no ambient credentials, so no Origin is required or checked
+    r = await client.put(f"/api/tenants/{tid}/profile", json=FORM, headers={**team["owner"], "Origin": "https://evil.example"})
+    assert r.status_code == 200

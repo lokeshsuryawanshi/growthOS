@@ -9,11 +9,21 @@ from cryptography.fernet import Fernet, InvalidToken
 from app.core.config import get_settings
 
 
+def _derive(passphrase: str) -> bytes:
+    return base64.urlsafe_b64encode(hashlib.sha256(("growthos-enc:" + passphrase).encode()).digest())
+
+
 def _fernet() -> Fernet:
+    """ENCRYPTION_KEY may be a Fernet key or any passphrase (hashed into one); without it, JWT_SECRET is used.
+
+    Regression: a non-Fernet ENCRYPTION_KEY used to raise ValueError the moment a founder connected Gmail."""
     s = get_settings()
     if s.encryption_key:
-        return Fernet(s.encryption_key.encode())
-    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(("growthos-enc:" + s.jwt_secret).encode()).digest()))
+        try:
+            return Fernet(s.encryption_key.encode())
+        except (ValueError, TypeError):
+            return Fernet(_derive("key:" + s.encryption_key))
+    return Fernet(_derive(s.jwt_secret))
 
 
 def encrypt(text: str) -> str:

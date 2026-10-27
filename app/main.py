@@ -42,6 +42,28 @@ app.include_router(api_router)
 app.include_router(web_router)
 
 
+UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@app.middleware("http")
+async def same_origin_writes(request: Request, call_next):
+    """CSRF defence for cookie sessions: a state-changing browser request must come from this site.
+
+    Browsers send Origin on every cross-site POST (Referer as a fallback). If either is present and names another
+    site (or 'null'), the request is refused before any route runs. Bearer-token API calls carry no ambient
+    credentials, so they are not subject to CSRF and skip the check. SameSite=Lax cookies are the second layer."""
+    if request.method in UNSAFE and not request.headers.get("authorization", "").lower().startswith("bearer "):
+        source = request.headers.get("origin") or request.headers.get("referer") or ""
+        if source:
+            from urllib.parse import urlparse
+            host = urlparse(source).netloc if source != "null" else "null"
+            allowed = {request.url.netloc, urlparse(get_settings().app_base_url).netloc}
+            if host not in allowed:
+                log.warning("refused cross-site %s %s from %s", request.method, request.url.path, host)
+                return JSONResponse({"detail": "Cross-site request refused."}, status_code=403)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     resp = await call_next(request)
