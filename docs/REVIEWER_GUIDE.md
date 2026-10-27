@@ -4,7 +4,7 @@ A done-for-you growth portal for busy founders: content marketing, personal bran
 
 Deeper documents: [Architecture](ARCHITECTURE.md) · [Evals and guardrails](EVALS_AND_GUARDRAILS.md) · [Cost and run time](ECONOMICS.md) · [Known issues and handoff](../HANDOFF.md)
 
-**Status in one line.** Built and tested (156 automated tests passing); research, strategy, drafting and lead discovery were run end to end on real providers (Groq, Gemini, Tavily, Hunter.io). Not yet exercised live: Gmail sending. Run time is slow today because of free-tier model limits (section 4).
+**Status in one line.** Built and tested (161 automated tests passing); research, strategy, drafting and lead discovery were run end to end on real providers (Groq, Gemini, Tavily, Hunter.io). Not yet exercised live: Gmail sending. Run time is slow today because of free-tier model limits (section 4).
 
 ## 1. Requirements and where they live
 
@@ -144,7 +144,7 @@ Splitting a weekly cycle into content and leads is an estimate from the ledger, 
 
 ## 5. Evals
 
-**30 hand-written cases plus a 14-metric release gate.** 22 red-team cases (12 post, 3 outreach, 7 input-injection, including benign controls), 8 hand-scored drafts for judge calibration, and a pipeline eval that scores a full discovery plus weekly run for two clients against business rules and ground-truth labels. The 156 automated tests are separate (section 7).
+**30 hand-written cases plus a 14-metric release gate.** 22 red-team cases (12 post, 3 outreach, 7 input-injection, including benign controls), 8 hand-scored drafts for judge calibration, and a pipeline eval that scores a full discovery plus weekly run for two clients against business rules and ground-truth labels. The 161 automated tests are separate (section 7).
 
 Principle: **the model proposes, code disposes.** What code can check is checked in code. The LLM judge covers only voice and hook quality, and is itself measured.
 
@@ -187,7 +187,7 @@ The second model-based control is the critic, which scores voice and hook qualit
 
 **A real bug found by a live run:** a customer count ("1,100 SMB customers") was reused as a market statistic. It is now a claim-level check with a regression test. The same runs also exposed an invented "$2,000" figure and invented anecdote, which the guardrails blocked, and the agency name leaking into an email, now a high-severity rule.
 
-## 7. Tests: 156 passing
+## 7. Tests: 161 passing
 
 | Area | Tests | Covers |
 |---|---|---|
@@ -199,6 +199,7 @@ The second model-based control is the critic, which scores voice and hook qualit
 | Orchestration | 10 | retry, fail-fast, blocked dependents, checkpoint reuse, crash resume, fairness, budget stop |
 | Send gate | 10 | unapproved, unverified, suppressed, wrong role, double click sends once, daily cap |
 | Production integrity | 10 | production refuses mock and weak secrets; boots the real app on an empty database with no demo data |
+| Session validity (token vs database) | 5 | wiped database, deactivation, role change and membership removal take effect immediately |
 | Separate content and lead workflows | 6 | independent runs, overlap rules, refusal before research, agency name never in client voice |
 | Pipeline, API security, research integrity, tenancy, evals | 31 | end-to-end cycles, RBAC matrix, cross-tenant probes, fabricated sources dropped, ORM interceptor |
 

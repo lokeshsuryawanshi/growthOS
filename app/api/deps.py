@@ -5,13 +5,14 @@ from sqlalchemy import select
 
 from app.core.security import AuthError, ForbiddenError, Principal, authorize, decode_token
 from app.core.tenancy import system_scope
-from app.db.models import Tenant
+from app.db.models import Membership, Tenant, User
 from app.db.session import get_db
 
 COOKIE = "growthos_token"
 
 
-def principal_from_request(request: Request) -> Principal | None:
+def token_principal(request: Request) -> Principal | None:
+    """What the signed token claims. Never trusted on its own: see principal_from_request."""
     token = request.cookies.get(COOKIE)
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):
@@ -24,8 +25,27 @@ def principal_from_request(request: Request) -> Principal | None:
         return None
 
 
-def current_principal(request: Request) -> Principal:
-    p = principal_from_request(request)
+async def refresh_principal(claimed: Principal) -> Principal | None:
+    """Re-read the user, role and workspace memberships from the database.
+
+    Tokens are stateless and last 12 hours, so they can outlive the user (database reset, deactivation, removal) or carry a
+    stale role. The database is the source of truth: a missing or inactive user is logged out, and a changed role or removed
+    membership takes effect on the very next request."""
+    async with get_db().reader() as s:
+        user = (await s.execute(select(User).where(User.id == claimed.user_id))).scalars().first()
+        if user is None or not user.active:
+            return None
+        tids = (await s.execute(select(Membership.tenant_id).where(Membership.user_id == user.id))).scalars().all()
+    return Principal(user.id, user.name, user.role, frozenset(tids))
+
+
+async def principal_from_request(request: Request) -> Principal | None:
+    claimed = token_principal(request)
+    return await refresh_principal(claimed) if claimed else None
+
+
+async def current_principal(request: Request) -> Principal:
+    p = await principal_from_request(request)
     if p is None:
         raise HTTPException(401, "not authenticated")
     return p

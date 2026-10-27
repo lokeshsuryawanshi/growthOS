@@ -74,8 +74,8 @@ async def render(request: Request, name: str, me: Principal | None, status_code:
     return resp
 
 
-def need_login(request: Request) -> Principal:
-    me = principal_from_request(request)
+async def need_login(request: Request) -> Principal:
+    me = await principal_from_request(request)
     if me is None:
         raise HTTPException(303, headers={"Location": "/login"})
     return me
@@ -101,7 +101,7 @@ async def _gmail_connected(tid: str) -> bool:
 # ------------------------------------------------------------------ auth
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    if principal_from_request(request):
+    if await principal_from_request(request):
         return RedirectResponse("/", status_code=303)
     return await render(request, "auth/login.html", None)
 
@@ -120,7 +120,7 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
 
 @router.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request):
-    if principal_from_request(request):
+    if await principal_from_request(request):
         return RedirectResponse("/", status_code=303)
     return await render(request, "auth/signup.html", None, invite_required=bool(get_settings().signup_invite_code))
 
@@ -148,7 +148,7 @@ async def logout():
 
 @router.get("/")
 async def home(request: Request):
-    me = need_login(request)
+    me = await need_login(request)
     if me.is_agency:
         return RedirectResponse("/ops", status_code=303)
     tenants = await visible_tenants(me)
@@ -167,7 +167,7 @@ def _blank() -> dict:
 
 @router.get("/onboarding", response_class=HTMLResponse)
 async def onboarding_page(request: Request):
-    me = need_login(request)
+    me = await need_login(request)
     if me.is_agency or await accounts.my_tenant_ids(me.user_id):
         return RedirectResponse("/", status_code=303)
     return await render(request, "onboarding.html", me, bare=True, v=_blank())
@@ -175,7 +175,7 @@ async def onboarding_page(request: Request):
 
 @router.post("/onboarding")
 async def onboarding_submit(request: Request):
-    me = need_login(request)
+    me = await need_login(request)
     form = {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
     try:
         t = await accounts.create_workspace(me, accounts.OnboardingForm.from_form(form))
@@ -272,7 +272,7 @@ async def workspace_state(tid: str, me: Principal, k: dict) -> dict:
 
 @router.get("/portal/{tid}", response_class=HTMLResponse)
 async def portal(request: Request, tid: str, tab: str = "overview", run: str | None = None, saved: int = 0):
-    me = need_login(request)
+    me = await need_login(request)
     tenant = await tenant_or_404(me, tid, "content:view")
     if tab not in ("overview", "content", "calendar", "leads", "research", "integrations", "settings", "activity"):
         tab = "overview"
@@ -314,7 +314,7 @@ async def portal(request: Request, tid: str, tab: str = "overview", run: str | N
 
 @router.get("/ui/{tid}/runs/{rid}/progress", response_class=HTMLResponse)
 async def run_progress(request: Request, tid: str, rid: str):
-    me = need_login(request)
+    me = await need_login(request)
     tenant = await tenant_or_404(me, tid, "run:status")
     d = await queries.run_detail(tid, rid)
     if d is None:
@@ -337,7 +337,7 @@ async def _post_card(request, me, tenant, post_id, msg="", bad=False):
 @router.post("/ui/{tid}/posts/{pid}", response_class=HTMLResponse)
 async def ui_post_decision(request: Request, tid: str, pid: str, action: str = Form(...),
                            text: str | None = Form(None), note: str = Form("")):
-    me = need_login(request)
+    me = await need_login(request)
     tenant = await tenant_or_404(me, tid, "content:view")
     msg, bad = {"approve": "Approved. Copy it to LinkedIn when you are ready to post.", "reject": "Rejected. The slot stays open.",
                 "request_changes": "Got it. A new draft is being written.", "edit": "Edit saved."}.get(action, ""), False
@@ -356,7 +356,7 @@ async def ui_post_decision(request: Request, tid: str, pid: str, action: str = F
 
 @router.post("/ui/{tid}/posts/{pid}/posted", response_class=HTMLResponse)
 async def ui_post_posted(request: Request, tid: str, pid: str):
-    me = need_login(request)
+    me = await need_login(request)
     tenant = await tenant_or_404(me, tid, "content:view")
     msg, bad = "Marked as posted.", False
     try:
@@ -379,7 +379,7 @@ async def _dm_card(request, me, tenant, mid, msg="", bad=False):
 @router.post("/ui/{tid}/outreach/{mid}", response_class=HTMLResponse)
 async def ui_dm_decision(request: Request, tid: str, mid: str, action: str = Form(...), text: str | None = Form(None),
                          subject: str | None = Form(None)):
-    me = need_login(request)
+    me = await need_login(request)
     tenant = await tenant_or_404(me, tid, "lead:view")
     msg, bad = {"approve": "Approved. Send it when you're ready.", "reject": "Removed from your list.",
                 "edit": "Edit saved."}.get(action, ""), False
@@ -394,7 +394,7 @@ async def ui_dm_decision(request: Request, tid: str, mid: str, action: str = For
 
 @router.post("/ui/{tid}/outreach/{mid}/send", response_class=HTMLResponse)
 async def ui_dm_send(request: Request, tid: str, mid: str):
-    me = need_login(request)
+    me = await need_login(request)
     tenant = await tenant_or_404(me, tid, "lead:view")
     msg, bad = "Sent from your Gmail.", False
     try:
@@ -408,7 +408,7 @@ async def ui_dm_send(request: Request, tid: str, mid: str):
 
 @router.post("/ui/{tid}/settings")
 async def ui_settings(request: Request, tid: str):
-    me = need_login(request)
+    me = await need_login(request)
     tenant = await tenant_or_404(me, tid, "onboarding:edit")
     form = {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
     try:
@@ -426,7 +426,7 @@ async def ui_settings(request: Request, tid: str):
 # ------------------------------------------------------------------ runs
 @router.post("/ui/{tid}/runs")
 async def ui_start_run(request: Request, tid: str, kind: str = Form(None)):
-    me = need_login(request)
+    me = await need_login(request)
     await tenant_or_404(me, tid, "run:start")
     kind = kind or request.query_params.get("kind", "discovery")
     back = f"/ops/{tid}" if me.is_agency else f"/portal/{tid}?tab=activity"
@@ -442,7 +442,7 @@ async def ui_start_run(request: Request, tid: str, kind: str = Form(None)):
 
 @router.post("/ui/{tid}/runs/{rid}/approve/{key}")
 async def ui_gate(request: Request, tid: str, rid: str, key: str):
-    me = need_login(request)
+    me = await need_login(request)
     await tenant_or_404(me, tid, "strategy:review")
     msg, kind = "Strategy approved. You can now generate content and leads.", "ok"
     try:
@@ -455,7 +455,7 @@ async def ui_gate(request: Request, tid: str, rid: str, key: str):
 
 @router.post("/ui/{tid}/runs/{rid}/rerun/{key}")
 async def ui_rerun(request: Request, tid: str, rid: str, key: str):
-    me = need_login(request)
+    me = await need_login(request)
     await tenant_or_404(me, tid, "run:start")
     dest = f"/ops/{tid}/runs/{rid}" if me.is_agency else f"/portal/{tid}?tab=activity&run={rid}"
     try:
@@ -469,7 +469,7 @@ async def ui_rerun(request: Request, tid: str, rid: str, key: str):
 # ------------------------------------------------------------------ Gmail OAuth
 @router.get("/oauth/google/start")
 async def gmail_start(request: Request, tid: str):
-    me = need_login(request)
+    me = await need_login(request)
     await tenant_or_404(me, tid, "integration:manage")
     try:
         return RedirectResponse(gmail.authorize_url(tid, me.user_id), status_code=303)
@@ -480,7 +480,7 @@ async def gmail_start(request: Request, tid: str):
 @router.get("/oauth/google/callback")
 @router.get("/auth/gmail/callback")     # alias: matches the redirect URI already registered in Google Cloud
 async def gmail_callback(request: Request, code: str = "", state: str = "", error: str = ""):
-    me = need_login(request)
+    me = await need_login(request)
     try:
         st = gmail.read_state(state)
     except IntegrationError as e:
@@ -504,7 +504,7 @@ async def gmail_callback(request: Request, code: str = "", state: str = "", erro
 
 @router.post("/ui/{tid}/integrations/gmail/disconnect")
 async def gmail_disconnect(request: Request, tid: str):
-    me = need_login(request)
+    me = await need_login(request)
     await tenant_or_404(me, tid, "integration:manage")
     await gmail.disconnect(tid)
     with tenant_scope(tid):
@@ -516,7 +516,7 @@ async def gmail_disconnect(request: Request, tid: str):
 # ------------------------------------------------------------------ ops (agency)
 @router.get("/ops", response_class=HTMLResponse)
 async def ops_index(request: Request):
-    me = need_login(request)
+    me = await need_login(request)
     if not me.is_agency:
         raise HTTPException(404)
     rows = await queries.portfolio([t.id for t in await visible_tenants(me)])
@@ -525,7 +525,7 @@ async def ops_index(request: Request):
 
 @router.get("/ops/{tid}", response_class=HTMLResponse)
 async def ops_client(request: Request, tid: str, tab: str = "brief"):
-    me = need_login(request)
+    me = await need_login(request)
     tenant = await tenant_or_404(me, tid, "run:view")
     ctx: dict = {"tenant": tenant, "tab": tab, "k": await tenant_kpis(tid), "founder": await _founder(tenant), "section": "ops"}
     if tab == "brief":
@@ -551,7 +551,7 @@ async def ops_client(request: Request, tid: str, tab: str = "brief"):
 
 @router.get("/ops/{tid}/runs/{rid}", response_class=HTMLResponse)
 async def ops_run(request: Request, tid: str, rid: str):
-    me = need_login(request)
+    me = await need_login(request)
     tenant = await tenant_or_404(me, tid, "run:view")
     d = await queries.run_detail(tid, rid)
     if d is None:
@@ -561,7 +561,7 @@ async def ops_run(request: Request, tid: str, rid: str):
 
 @router.post("/ui/ops/weekly")
 async def ui_weekly_all(request: Request):
-    me = need_login(request)
+    me = await need_login(request)
     check(me, "run:start")
     if not me.is_agency:
         raise HTTPException(403)
@@ -579,7 +579,7 @@ async def ui_weekly_all(request: Request):
 
 @router.post("/ui/{tid}/kill")
 async def ui_kill(request: Request, tid: str, on: str = Form(...)):
-    me = need_login(request)
+    me = await need_login(request)
     await tenant_or_404(me, tid, "tenant:kill_switch")
     async with get_db().session() as s:
         (await s.get(Tenant, tid)).kill_switch = on == "1"

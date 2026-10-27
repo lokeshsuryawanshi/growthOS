@@ -37,7 +37,7 @@ Severity rule: critical and high violations block the draft; one automatic rewri
 
 The red-team set (`evals/datasets/redteam.json`) includes benign controls so the gate measures false positives as well as recall.
 
-### Test suite (156 tests)
+### Test suite (161 tests)
 Grounding regressions (the "1,100 SMBs" misattributed-number bug and copied founder hooks have their own tests), integration failures (quota, bad key, outage, retries), orchestration (retry, fail-fast, blocked dependents, checkpoint reuse, crash resume, fairness, budget stop), the send gate (double click sends once, unverified or suppressed recipient refused), tenant isolation, RBAC, and a production-mode boot audit (no demo data, no mock output).
 
 ### LLM judge (live only)

@@ -57,7 +57,11 @@ async def security_headers(request: Request, call_next):
 @app.exception_handler(HTTPException)
 async def http_errors(request: Request, exc: HTTPException):
     if exc.status_code == 303 and exc.headers and "Location" in exc.headers:
-        return RedirectResponse(exc.headers["Location"], status_code=303)
+        resp = RedirectResponse(exc.headers["Location"], status_code=303)
+        if exc.headers["Location"] == "/login":
+            from app.api.deps import COOKIE
+            resp.delete_cookie(COOKIE)       # a stale or revoked session must not linger and loop
+        return resp
     from fastapi.exception_handlers import http_exception_handler
     return await http_exception_handler(request, exc)
 
