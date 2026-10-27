@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     calendar_weeks: int = 8
     leads_per_week_min: int = 10
     leads_per_week_max: int = 20
-    lead_fit_threshold: int = 60
+    lead_fit_threshold: int = 70                      # below this a lead is dropped (and reported)
     critic_pass_score: float = 4.0
     critic_max_rounds: int = 3
     outreach_daily_send_cap: int = 25

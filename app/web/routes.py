@@ -242,7 +242,7 @@ async def workspace_state(tid: str, me: Principal, k: dict) -> dict:
     elif active_content:
         steps.append({"title": "Review your posts", "detail": "Drafting now.", "state": "active", "cta": "Watch progress",
                       "href": f"/portal/{tid}?tab=activity&run={active_content.id}"})
-    elif k["posts_approved_total"] or (last_content and last_content.status == "succeeded"):
+    elif k["posts_approved_total"] or (last_content and last_content.status in ("succeeded", "succeeded_with_shortfall")):
         steps.append({"title": "Review your posts", "detail": f"{k['posts_approved_total']} approved so far.", "state": "done",
                       "cta": "Open content", "href": f"/portal/{tid}?tab=content"})
     else:

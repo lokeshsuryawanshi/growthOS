@@ -1,14 +1,16 @@
-"""Content engine: writer <-> critic loop, guardrail gate, and learning from founder edits.
+"""Content engine: writer <-> critic loop, guardrail gate, bounded redrafts, and learning from founder edits.
 
-draft_slot():
+compose_post(): one attempt
   writer drafts -> critic (judge model, different family) scores against a rubric
   -> revise with must_fix until score >= threshold or max rounds (early exit saves cost)
-  -> output guard -> one automatic fix for high-severity issues (never for critical)
-  -> Post row in pending_approval (founder sees it) or blocked (ops sees it).
+  -> output guard -> up to two automatic fixes for high-severity issues (never for critical)
+draft_slot(): up to 3 attempts per slot until one passes the guardrails and the editor's bar, each redraft told why
+  the last one fell short -> Post row in pending_approval (founder sees it) or blocked (ops sees it).
 """
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -21,7 +23,7 @@ from app.core.tenancy import tenant_scope
 from app.db.audit import audit, incident
 from app.db.models import CalendarSlot, Feedback, Post
 from app.db.session import get_db
-from app.guardrails.output_guard import check_post
+from app.guardrails.output_guard import GuardReport, Violation, check_post
 from app.guardrails.state import POST_TRANSITIONS, transition
 
 WRITER_SYSTEM = (
@@ -63,7 +65,66 @@ async def _slot(tenant_id: str, slot_id: str) -> CalendarSlot:
             return (await s.execute(select(CalendarSlot).where(CalendarSlot.id == slot_id))).scalars().one()
 
 
-async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str = "") -> Post:
+@dataclass
+class Composed:
+    """One finished attempt at a slot: the final draft, the editor's last verdict and the guardrail report."""
+    draft: PostDraft
+    critique: Critique | None
+    rounds: int
+    report: GuardReport
+
+    @property
+    def score(self) -> float:
+        return self.critique.overall if self.critique else 0.0
+
+    def ready(self, bar: float) -> bool:
+        return self.report.passed and self.score >= bar
+
+    def rank(self, bar: float) -> tuple:
+        return (self.report.passed, self.score >= bar, self.score)
+
+    def why_not(self, bar: float) -> str:
+        if not self.report.passed:
+            return "blocked by guardrails (" + ", ".join(sorted({v.rule for v in self.report.violations})) + ")"
+        return f"editor score {self.score:.1f} below {bar:.1f}"
+
+
+def redraft_note(c: Composed, bar: float) -> str:
+    if not c.report.passed:
+        rules = "; ".join(f"{v.rule}: {v.detail}" for v in c.report.violations)[:600]
+        return (f"The previous draft was blocked ({rules}). Write a new post: no statistics unless quoted from a source, "
+                f"no invented stories, customers or results.")
+    fixes = "; ".join(c.critique.must_fix or [c.critique.verdict]) if c.critique else ""
+    return f"An editor scored the previous draft {c.score:.1f}/5 (bar {bar:.1f}). Write a stronger post. Fix: {fixes}"[:600]
+
+
+async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str = "", attempts: int = 3) -> Post:
+    """Bounded redraft loop for one calendar slot.
+
+    Up to `attempts` fresh drafts, each told why the previous one fell short, until one passes the guardrails and the
+    editor's bar. Blocked attempts are kept (agency-only) for the audit trail. If no attempt clears the bar, the best
+    guardrail-passing draft still reaches the founder, labelled as below the editor's bar; a draft that never passed
+    the guardrails never does."""
+    bar = get_settings().critic_pass_score
+    best: Composed | None = None
+    for attempt in range(1, attempts + 1):
+        c = await compose_post(tenant_id, slot_id, ctx, note=note, max_rounds=None if attempt == 1 else 2)
+        if c.ready(bar):
+            return await save_post(tenant_id, slot_id, c, ctx, final=True)
+        ctx.event("writer", "attempt_fell_short", slot=slot_id, attempt=attempt, reason=c.why_not(bar), score=c.score)
+        if not c.report.passed:
+            await save_post(tenant_id, slot_id, c, ctx, final=False)        # audit trail: what the guardrails stopped
+        if best is None or c.rank(bar) > best.rank(bar):
+            best = c
+        note = redraft_note(c, bar)
+    assert best is not None
+    if not best.report.passed:                 # nothing passed the guardrails: the last blocked attempt is the record
+        return await _mark_slot_blocked(tenant_id, slot_id, ctx)
+    return await save_post(tenant_id, slot_id, best, ctx, final=True)
+
+
+async def compose_post(tenant_id: str, slot_id: str, ctx: AgentContext, note: str = "",
+                       max_rounds: int | None = None) -> Composed:
     st = get_settings()
     slot = await _slot(tenant_id, slot_id)
     voice_full = await latest(tenant_id, "voice_profile") or {}
@@ -89,13 +150,14 @@ async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str 
                               metadata={**meta, "round": 0})).output
     critique: Critique | None = None
     rounds = 0
-    for rounds in range(1, st.critic_max_rounds + 1):
+    max_rounds = max_rounds or st.critic_max_rounds
+    for rounds in range(1, max_rounds + 1):
         critique = (await structured("critic", "judge", CRITIC_SYSTEM,
                                      f"Founder voice: {compact(voice, 700)}\nBrief: topic '{slot.topic}', angle '{slot.angle}'.\n"
                                      f"Draft:\n{draft.text}", Critique, ctx, temperature=0.1, max_tokens=400,
                                      metadata={**meta, "round": rounds, "draft": draft.text})).output
         ctx.event("critic", "critic_round", slot=slot.id, round=rounds, score=critique.overall, must_fix=critique.must_fix)
-        if critique.overall >= st.critic_pass_score or rounds == st.critic_max_rounds:
+        if critique.overall >= st.critic_pass_score or rounds == max_rounds:
             break
         draft = (await structured("writer", "big", WRITER_SYSTEM,
                                   f"{brief}\n\nYour previous draft:\n{draft.text}\n\nEditor's required fixes:\n- " +
@@ -115,23 +177,47 @@ async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str 
                                   PostDraft, ctx, temperature=0.4, max_tokens=1200,
                                   metadata={**meta, "round": 99, "violations": [v.model_dump() for v in report.violations]})).output
         report = check_post(draft.text, draft.hashtags, policy, draft.claims)
+    return Composed(draft, critique, rounds, report)
 
+
+async def save_post(tenant_id: str, slot_id: str, c: Composed, ctx: AgentContext, final: bool) -> Post:
+    """Persist an attempt. `final` links it to the slot; blocked intermediate attempts are stored for the audit trail."""
+    bar = get_settings().critic_pass_score
+    report = c.report
+    if report.passed and c.score < bar:       # the founder sees it, clearly labelled; it does not count toward the target
+        report = GuardReport(passed=True, violations=[], warnings=report.warnings + [Violation(
+            rule="below_quality_bar", severity="medium",
+            detail=f"the editor scored this {c.score:.1f}/5, below the {bar:.1f} bar, after every redraft attempt")])
+    slot = await _slot(tenant_id, slot_id)
     with tenant_scope(tenant_id):
         async with get_db().session() as s:
-            post = Post(slot_id=slot.id, run_id=ctx.call.run_id, pillar=slot.pillar, text=draft.text,
-                        hashtags=draft.hashtags[:5], sources=[u for u in draft.sources_used if u][:6],
-                        claims=[c.model_dump() for c in draft.claims],
-                        rationale=draft.rationale, critic_score=critique.overall if critique else 0.0,
-                        critic_feedback=critique.model_dump() if critique else {}, rounds=rounds,
+            post = Post(slot_id=slot.id, run_id=ctx.call.run_id, pillar=slot.pillar, text=c.draft.text,
+                        hashtags=c.draft.hashtags[:5], sources=[u for u in c.draft.sources_used if u][:6],
+                        claims=[x.model_dump() for x in c.draft.claims],
+                        rationale=c.draft.rationale, critic_score=c.score,
+                        critic_feedback=c.critique.model_dump() if c.critique else {}, rounds=c.rounds,
                         guardrail_report=report.model_dump(), status="drafting")
             s.add(post)
             await s.flush()
             transition(post, "pending_approval" if report.passed else "blocked", POST_TRANSITIONS)
             for v in report.violations:
                 incident(s, "output", v.rule, v.severity, v.detail, "post", post.id, run_id=ctx.call.run_id)
-            db_slot = (await s.execute(select(CalendarSlot).where(CalendarSlot.id == slot.id))).scalars().one()
+            if final:
+                db_slot = (await s.execute(select(CalendarSlot).where(CalendarSlot.id == slot.id))).scalars().one()
+                db_slot.status, db_slot.post_id = "drafted", post.id
+            audit(s, "system:writer", "post.drafted", "post", post.id, status=post.status, score=post.critic_score,
+                  final=final)
+    return post
+
+
+async def _mark_slot_blocked(tenant_id: str, slot_id: str, ctx: AgentContext) -> Post:
+    """Every attempt was blocked: point the slot at the last blocked attempt so ops can see why."""
+    with tenant_scope(tenant_id):
+        async with get_db().session() as s:
+            post = (await s.execute(select(Post).where(Post.slot_id == slot_id, Post.status == "blocked")
+                                    .order_by(Post.created_at.desc()))).scalars().first()
+            db_slot = (await s.execute(select(CalendarSlot).where(CalendarSlot.id == slot_id))).scalars().one()
             db_slot.status, db_slot.post_id = "drafted", post.id
-            audit(s, "system:writer", "post.drafted", "post", post.id, status=post.status, score=post.critic_score)
     return post
 
 
