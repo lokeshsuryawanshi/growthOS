@@ -12,14 +12,14 @@ from fastapi import Request
 from app.agents.orchestrator.engine import DAGS, get_orchestrator
 from app.api.deps import check, current_principal, tenant_or_404, visible_tenants
 from app.core.ratelimit import client_ip, limiter
-from app.core.security import ForbiddenError, Principal, issue_token, verify_password
+from app.core.security import ForbiddenError, NoTenantAccess, Principal, issue_token, verify_password
 from app.core.tenancy import tenant_scope
 from app.db.audit import audit
 from app.db.models import Membership, Tenant, User
 from app.db.session import get_db
 from app.guardrails.state import IllegalTransition
 from app.integrations.status import integration_status
-from app.services import accounts, approvals, queries, runs as run_service
+from app.services import accounts, admin, approvals, leads as lead_service, queries, runs as run_service, strategy, team
 from app.services.kpis import tenant_kpis
 
 router = APIRouter(prefix="/api")
@@ -162,13 +162,21 @@ class DecisionIn(BaseModel):
 
 
 def _domain_errors(fn):
+    """403 = your role may not do this; 404 = not yours (or does not exist); 409 = allowed in principle but not in this
+    state (send gate, last owner); 422 = invalid input."""
     async def wrapper(*a, **kw):
         try:
             return await fn(*a, **kw)
+        except NoTenantAccess:
+            raise HTTPException(404, "not found")
+        except (approvals.SendRefused, team.TeamConflict, lead_service.LeadRefused, strategy.SuggestionRefused) as e:
+            raise HTTPException(409, str(e))
         except ForbiddenError as e:
             raise HTTPException(403, str(e))
-        except approvals.NotFound:
+        except (approvals.NotFound, team.MemberNotFound, LookupError):
             raise HTTPException(404, "not found")
+        except accounts.AccountError as e:
+            raise HTTPException(422, str(e))
         except IllegalTransition as e:
             raise HTTPException(409, str(e))
         except approvals.GuardrailRefusal as e:
@@ -323,3 +331,118 @@ async def weekly_cycle(p: Principal = Depends(current_principal)):
             continue
         started.append({"tenant": t.slug, "run_id": rid})
     return {"started": started}
+
+
+# ---------------------------------------------------------------- team (founder manages their own workspace)
+class MemberIn(BaseModel):
+    email: str
+    name: str
+    password: str
+    role: Literal["client_viewer", "client_owner"] | str
+
+
+class MemberPatch(BaseModel):
+    role: str | None = None
+    active: bool | None = None
+    password: str | None = None
+
+
+@router.get("/tenants/{tid}/members")
+async def members(tid: str, p: Principal = Depends(current_principal)):
+    await tenant_or_404(p, tid, "team:view")
+    return await team.list_members(p, tid)
+
+
+@router.post("/tenants/{tid}/members", status_code=201)
+async def add_member(tid: str, body: MemberIn, p: Principal = Depends(current_principal)):
+    await tenant_or_404(p, tid, "team:manage")
+    return await _domain_errors(team.add_member)(p, tid, body.email, body.name, body.password, body.role)
+
+
+@router.patch("/tenants/{tid}/members/{uid}")
+async def update_member(tid: str, uid: str, body: MemberPatch, p: Principal = Depends(current_principal)):
+    await tenant_or_404(p, tid, "team:manage")
+    return await _domain_errors(team.update_member)(p, tid, uid, role=body.role, active=body.active,
+                                                    password=body.password)
+
+
+@router.delete("/tenants/{tid}/members/{uid}", status_code=204)
+async def remove_member(tid: str, uid: str, p: Principal = Depends(current_principal)):
+    await tenant_or_404(p, tid, "team:manage")
+    await _domain_errors(team.remove_member)(p, tid, uid)
+
+
+# ---------------------------------------------------------------- platform admin
+@router.get("/admin/overview")
+async def admin_overview(q: str = "", p: Principal = Depends(current_principal)):
+    check(p, "admin:view")
+    return await admin.overview(p, q)
+
+
+class AccountManagerIn(BaseModel):
+    email: str
+    name: str
+    password: str
+
+
+@router.post("/admin/account-managers", status_code=201)
+async def create_account_manager(body: AccountManagerIn, p: Principal = Depends(current_principal)):
+    check(p, "agency:manage")
+    return await _domain_errors(admin.create_account_manager)(p, body.email, body.name, body.password)
+
+
+class AssignIn(BaseModel):
+    user_id: str
+    tenant_id: str
+    on: bool = True
+
+
+@router.post("/admin/assignments")
+async def assign(body: AssignIn, p: Principal = Depends(current_principal)):
+    check(p, "agency:manage")
+    await _domain_errors(admin.assign)(p, body.user_id, body.tenant_id, body.on)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- leads added by hand, email drafts
+class ManualLeadIn(BaseModel):
+    full_name: str
+    email: str
+    company: str
+    title: str = ""
+    company_domain: str = ""
+    note: str = ""
+    confirm_unverified: bool = False
+
+
+@router.post("/tenants/{tid}/leads", status_code=201)
+async def add_lead(tid: str, body: ManualLeadIn, p: Principal = Depends(current_principal)):
+    await tenant_or_404(p, tid, "lead:add")
+    lead = await _domain_errors(lead_service.add_manual_lead)(p, tid, **body.model_dump())
+    return {"id": lead.id, "email": lead.email, "email_status": lead.email_status, "status": lead.status}
+
+
+@router.post("/tenants/{tid}/leads/{lid}/draft", status_code=202)
+async def draft_lead_email(tid: str, lid: str, p: Principal = Depends(current_principal)):
+    await tenant_or_404(p, tid, "outreach:edit")
+    await _domain_errors(lead_service.request_draft)(p, tid, lid)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- strategy: the founder suggests changes
+class SuggestionIn(BaseModel):
+    note: str
+    parts: list[str] = ["strategy"]
+
+
+@router.post("/tenants/{tid}/strategy/suggestions", status_code=202)
+async def suggest_strategy_changes(tid: str, body: SuggestionIn, p: Principal = Depends(current_principal)):
+    await tenant_or_404(p, tid, "strategy:review")
+    rid = await _domain_errors(strategy.suggest_changes)(p, tid, body.note, body.parts)
+    return {"run_id": rid}
+
+
+@router.get("/tenants/{tid}/strategy/suggestions")
+async def strategy_suggestions(tid: str, p: Principal = Depends(current_principal)):
+    await tenant_or_404(p, tid, "strategy:view")
+    return await strategy.suggestion_history(tid)

@@ -194,6 +194,16 @@ async def hunter_searches_left(hunter: HunterClient | None = None, max_age_s: fl
     return left
 
 
+async def hunter_quota(hunter: HunterClient | None = None) -> dict | None:
+    """Plan and remaining searches/verifications this month (cached with hunter_searches_left)."""
+    await hunter_searches_left(hunter)
+    acc = _HUNTER_QUOTA.get("account")
+    if acc is None:
+        return None
+    left = _HUNTER_QUOTA.get("searches_left")
+    return {**acc, "searches": {**acc.get("searches", {}), "remaining": left}}
+
+
 def _spend_hunter_search() -> None:
     if _HUNTER_QUOTA.get("searches_left") is not None:
         _HUNTER_QUOTA["searches_left"] = max(0, _HUNTER_QUOTA["searches_left"] - 1)
@@ -216,8 +226,9 @@ async def web_prospector(tenant_id: str, ctx: AgentContext, icp: dict, need: int
     broaden = "" if round_no == 1 else " Earlier rounds came up short: broaden industries, size and regions."
     plan = (await structured(
         "company_scout_plan", "small",
-        "Write web search queries that surface COMPANIES matching an ideal customer profile and showing a buying trigger "
-        "(funding, hiring, expansion, new leadership). Mix industry, role being hired, region and a growth signal. "
+        "Write web search queries that surface COMPANIES matching an ideal customer profile: some queries that find lists "
+        "or directories of such companies (e.g. 'top co-living operators Bangalore'), some that find a buying trigger "
+        "(funding, hiring, expansion, new leadership). Mix industry, region and growth signal. "
         "Each query is 3 to 8 plain words, the way a person types into a search engine: no quotes, no boolean "
         "operators, no site: filters. If the client sells to consumers, look for the businesses that serve or partner "
         "with those consumers at scale (e.g. employers, property managers, relocation firms).",
@@ -254,9 +265,11 @@ async def web_prospector(tenant_id: str, ctx: AgentContext, icp: dict, need: int
             blocks.append("SUMMARY: " + r["answer"][:900])
     res = await structured(
         "company_scout", "extract",
-        "From these web search results, list real companies that fit the ICP and show a buying trigger. Only include a company "
-        "if a result names it. domain must be the company's own website; evidence_url must be one of the result URLs above; "
-        "signal must be one concrete fact from that result, in its words. Return companies, not people or articles.",
+        "From these web search results, list real companies that fit the ICP. Only include a company if a result names it; "
+        "lists of companies are good sources. Prefer companies with a buying trigger, but include fitting companies without "
+        "one (leave signal empty). domain must be the company's own website; evidence_url must be one of the result URLs "
+        "above; signal, if any, must be one concrete fact from that result, in its words. Return companies, not people, "
+        "publishers or articles.",
         f"ICP: {compact(icp, 1800)}\nSkip these domains: {sorted(seen_domains)[:30]}\n\n<untrusted_data source=\"search\">\n"
         + "\n".join(blocks)[:9000] + "\n</untrusted_data>\nReturn about " + str(need * 2) + " candidates.",
         CompanyCandidates, ctx, temperature=0.1, max_tokens=1800, metadata={"icp": icp, "round": round_no})

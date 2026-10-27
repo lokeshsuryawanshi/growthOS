@@ -8,8 +8,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;650&display=swap">
-<link rel="stylesheet" href="/static/app.css?v=3">
+<link rel="stylesheet" href="/static/app.css?v=4">
 <script src="/static/htmx.min.js" defer></script>
+<script>
+// A refused action (403/409/422) answers with a short notice; show it where the action was taken.
+document.addEventListener('htmx:responseError', function (e) {
+  var box = document.createElement('div');
+  box.innerHTML = e.detail.xhr.responseText || '<div class="flash bad">That did not work.</div>';
+  var target = e.detail.target || document.querySelector('main');
+  target.insertAdjacentElement('afterbegin', box.firstElementChild || box);
+});
+</script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -40,6 +49,7 @@
     {% if me.is_agency %}
     <nav class="navgroup"><div class="navlabel">Agency</div>
       <a class="navlink {{ 'on' if section == 'ops' }}" href="/ops">{{ icon('building') }}<span class="lbl">Clients</span></a>
+      {% if me.can('admin:view') %}<a class="navlink {{ 'on' if section == 'admin' }}" href="/admin">{{ icon('shield') }}<span class="lbl">Data view</span></a>{% endif %}
       {% if tenant %}<a class="navlink" href="/portal/{{ tenant.id }}">{{ icon('home') }}<span class="lbl">Founder view</span></a>{% endif %}
     </nav>
     {% elif tenant %}
@@ -53,6 +63,7 @@
     <nav class="navgroup"><div class="navlabel">Setup</div>
       <a class="navlink {{ 'on' if tab == 'integrations' }}" href="/portal/{{ tenant.id }}?tab=integrations">{{ icon('plug') }}<span class="lbl">Integrations</span></a>
       <a class="navlink {{ 'on' if tab == 'settings' }}" href="/portal/{{ tenant.id }}?tab=settings">{{ icon('settings') }}<span class="lbl">Profile &amp; brand</span></a>
+      {% if me.can('team:view') %}<a class="navlink {{ 'on' if tab == 'team' }}" href="/portal/{{ tenant.id }}?tab=team">{{ icon('users') }}<span class="lbl">Team</span></a>{% endif %}
     </nav>
     {% endif %}
     <div class="side-foot">

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Data view · Growth OS{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div><h1>Platform data view</h1><div class="sub">Read-only. Password hashes, OAuth tokens and API keys are never shown here.</div></div>
+  <form method="get" action="/admin" class="row"><input type="hidden" name="tab" value="{{ tab }}">
+    <input type="search" name="q" value="{{ d.q }}" placeholder="Search email, name, workspace, action" aria-label="Search" style="min-width:280px">
+    <button>Search</button>{% if d.q %}<a class="btn" href="/admin?tab={{ tab }}">Clear</a>{% endif %}</form>
+</div>
+<div class="metrics">
+  <div class="metric"><div class="label">Users</div><div class="value num">{{ d.users | length }}</div></div>
+  <div class="metric"><div class="label">Workspaces</div><div class="value num">{{ d.workspaces | length }}</div></div>
+  <div class="metric"><div class="label">Account managers</div><div class="value num">{{ d.account_managers | length }}</div></div>
+  <div class="metric"><div class="label">AI spend this month</div><div class="value num">${{ '%.2f' % d.spend_month_total }}</div></div>
+</div>
+<nav class="tabs">
+  {% for key, label in [('users', 'Users'), ('workspaces', 'Workspaces'), ('memberships', 'Memberships'), ('runs', 'Runs'), ('audit', 'Audit log'), ('agency', 'Account managers')] %}
+  <a href="?tab={{ key }}{{ '&q=' ~ d.q if d.q }}" class="{{ 'on' if tab == key }}">{{ label }}</a>{% endfor %}
+</nav>
+{% if tab == 'users' %}
+<section class="panel"><div class="tablewrap"><table>
+  <tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th>Workspaces</th><th>Since</th></tr>
+  {% for u in d.users %}<tr><td class="mono">{{ u.email }}</td><td>{{ u.name }}</td><td><span class="pill {{ 'accent' if u.role in ('platform_admin', 'account_manager') }}">{{ u.role.replace('_', ' ') }}</span></td>
+    <td><span class="pill {{ 'ok' if u.active else 'bad' }}">{{ 'active' if u.active else 'deactivated' }}</span></td>
+    <td>{{ u.workspaces | join(', ') or '—' }}</td><td class="num sub">{{ u.created_at.strftime('%d %b %Y') if u.created_at }}</td></tr>
+  {% else %}<tr><td colspan="6" class="sub">No users match.</td></tr>{% endfor %}</table></div></section>
+{% elif tab == 'workspaces' %}
+<section class="panel"><div class="tablewrap"><table>
+  <tr><th>Workspace</th><th>Status</th><th class="n">Members</th><th class="n">Spend this month</th><th class="n">Budget</th><th>Created</th><th></th></tr>
+  {% for w in d.workspaces %}<tr><td><b>{{ w.name }}</b><br><span class="sub mono">{{ w.slug }}</span></td><td><span class="pill {{ 'bad' if w.status == 'paused' else 'ok' }}">{{ w.status }}</span></td>
+    <td class="n">{{ w.members }}</td><td class="n num">${{ '%.4f' % w.spend_month }}</td><td class="n num">${{ '%.0f' % w.budget }}</td>
+    <td class="num sub">{{ w.created_at.strftime('%d %b %Y') if w.created_at }}</td><td><a href="/ops/{{ w.id }}">Open</a></td></tr>
+  {% else %}<tr><td colspan="7" class="sub">No workspaces match.</td></tr>{% endfor %}</table></div></section>
+{% elif tab == 'memberships' %}
+<section class="panel"><div class="tablewrap"><table>
+  <tr><th>User</th><th>Workspace</th><th>Added by</th><th>Since</th></tr>
+  {% for m in d.memberships %}<tr><td class="mono">{{ m.user }}</td><td>{{ m.workspace }}</td><td class="sub">{{ m.added_by }}</td><td class="num sub">{{ m.since.strftime('%d %b %Y %H:%M') if m.since }}</td></tr>
+  {% else %}<tr><td colspan="4" class="sub">No memberships match.</td></tr>{% endfor %}</table></div></section>
+{% elif tab == 'runs' %}
+<section class="panel"><div class="tablewrap"><table>
+  <tr><th>Started</th><th>Workspace</th><th>Run</th><th>Status</th><th class="n">Cost</th><th>Note</th></tr>
+  {% for r in d.runs %}<tr><td class="num">{{ r.created_at.strftime('%d %b %H:%M') }}</td><td>{{ r.workspace }}</td><td>{{ r.kind }}</td>
+    <td><span class="pill {{ r.status }}">{{ r.status.replace('_', ' ') }}</span></td><td class="n num">${{ '%.4f' % r.cost }}</td><td class="sub">{{ r.error }}</td></tr>
+  {% else %}<tr><td colspan="6" class="sub">No runs match.</td></tr>{% endfor %}</table></div></section>
+{% elif tab == 'audit' %}
+<section class="panel"><div class="tablewrap"><table>
+  <tr><th>When</th><th>Where</th><th>Who</th><th>Action</th><th>Object</th><th>Detail</th></tr>
+  {% for a in d.audit %}<tr><td class="num">{{ a.at.strftime('%d %b %H:%M:%S') if a.at }}</td><td>{{ a.workspace }}</td><td class="mono">{{ a.actor }}</td><td>{{ a.action }}</td>
+    <td class="mono sub">{{ a.object }}</td><td class="mono sub" style="word-break:break-word">{{ a.detail | tojson | truncate(160) }}</td></tr>
+  {% else %}<tr><td colspan="6" class="sub">No audit entries match.</td></tr>{% endfor %}</table></div></section>
+{% elif tab == 'agency' %}
+<div class="grid2">
+<section class="panel stack"><h2>Account managers</h2>
+  {% for u in d.account_managers %}
+  <div class="kv stack-sm" style="border-bottom:1px solid var(--line);padding-bottom:12px">
+    <div class="row"><b>{{ u.name }}</b><span class="sub mono">{{ u.email }}</span><span class="pill {{ 'ok' if u.active else 'bad' }}">{{ 'active' if u.active else 'deactivated' }}</span></div>
+    <div class="sub">Clients: {{ u.workspaces | join(', ') or 'none yet' }}</div>
+    <div class="row">
+      <form method="post" action="/ui/admin/assign" class="row"><input type="hidden" name="user_id" value="{{ u.id }}"><input type="hidden" name="on" value="1">
+        <select name="tenant_id" aria-label="Workspace to assign">{% for w in d.all_workspaces %}{% if w.name not in u.workspaces %}<option value="{{ w.id }}">{{ w.name }}</option>{% endif %}{% endfor %}</select>
+        <button class="sm">Assign</button></form>
+      {% if u.workspaces %}<form method="post" action="/ui/admin/assign" class="row"><input type="hidden" name="user_id" value="{{ u.id }}"><input type="hidden" name="on" value="0">
+        <select name="tenant_id" aria-label="Workspace to unassign">{% for w in d.all_workspaces %}{% if w.name in u.workspaces %}<option value="{{ w.id }}">{{ w.name }}</option>{% endif %}{% endfor %}</select>
+        <button class="sm">Unassign</button></form>{% endif %}
+      <form method="post" action="/ui/admin/users/{{ u.id }}/active"><input type="hidden" name="on" value="{{ '0' if u.active else '1' }}"><button class="sm {{ 'danger' if u.active }}">{{ 'Deactivate' if u.active else 'Reactivate' }}</button></form>
+    </div>
+  </div>
+  {% else %}<p class="sub">No account managers yet.</p>{% endfor %}
+</section>
+<section class="panel stack"><h2>Create an account manager</h2>
+  <p class="sub">Account managers run research and drafts for the clients you assign them. They cannot approve or send on a founder's behalf.</p>
+  <form method="post" action="/ui/admin/account-managers" class="stack">
+    <label>Name<input name="name" required maxlength="100" autocomplete="off"></label>
+    <label>Email<input name="email" type="email" required autocomplete="off"></label>
+    <label>Password<input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
+    <div><button class="primary">{{ icon('users') }} Create account manager</button></div>
+  </form>
+</section>
+</div>
+{% endif %}
+{% endblock %}

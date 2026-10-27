@@ -46,12 +46,15 @@ async def strategist(tenant_id: str, ctx: AgentContext) -> ContentStrategy:
             f"Topics to own: {intake.get('topics_to_own', [])}. Topics to avoid: {intake.get('topics_to_avoid', [])}.\n"
             f"Voice: {compact(inputs['voice_profile'], 900)}\nMarket: {compact(inputs['market_report'], 1500)}\n"
             f"Competitors: {compact(inputs['competitor_matrix'], 1500)}\nTrends: {compact(inputs['trend_report'], 1500)}")
+    feedback = ctx.call.extra.get("feedback") or []
+    if feedback:
+        user += _revision_brief(await latest(tenant_id, "content_strategy"), feedback)
     res = await structured("strategist", "big",
                            "You are a B2B content strategist for founder-led LinkedIn. Define positioning against the "
                            f"competitors' whitespace, 3-5 content pillars whose share_pct sums to 100, a format mix and a "
                            f"cadence of at least {goals['posts_per_week']} posts per week.",
                            user, ContentStrategy, ctx, max_tokens=1800, reasoning="medium",
-                           metadata={"intake": intake, **inputs})
+                           metadata={"intake": intake, **inputs, "feedback": feedback})
     out = res.output
     for p in out.pillars:
         p.name = plain(p.name)
@@ -64,6 +67,9 @@ async def icp_builder(tenant_id: str, ctx: AgentContext) -> ICP:
     user = (f"Client: {intake.get('company_name')}: {intake.get('company')}\nOfferings: {intake.get('offerings', [])}\n"
             f"Stated target customers: {intake.get('target_customers')}\nMarket: {compact(market, 1500)}\n"
             f"Competitors: {compact(comp, 800)}")
+    feedback = ctx.call.extra.get("feedback") or []
+    if feedback:
+        user += _revision_brief(await latest(tenant_id, "icp"), feedback)
     res = await structured("icp_builder", "big",
                            "Define the ideal customer profile for outbound prospecting: 1-3 segments with job titles, "
                            "industries, company size and geography, their pains and buying triggers. Outbound email reaches "
@@ -72,6 +78,13 @@ async def icp_builder(tenant_id: str, ctx: AgentContext) -> ICP:
                            "consumers (for example employers, property managers, co-living operators, relocation firms, "
                            "universities). Exclude the client's competitors and their staff.", user, ICP, ctx, max_tokens=1300, metadata={"intake": intake})
     return res.output
+
+
+def _revision_brief(current: dict | None, feedback: list[str]) -> str:
+    """A revision is the current version plus the founder's requested changes, applied and nothing else changed."""
+    return (f"\n\nCurrent version: {compact(current, 2000)}\n\nThe founder reviewed it and asked for these changes "
+            f"(additions, edits or removals). Apply every one of them and keep everything else that still fits:\n- "
+            + "\n- ".join(feedback))
 
 
 def next_monday(d: date) -> date:

@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Not allowed' if code == 403 else 'Not found' }} · Growth OS{% endblock %}
+{% block content %}{% include "partials/error_body.html" %}{% endblock %}
+{% block content_bare %}<main class="content" style="max-width:640px;margin:64px auto">{% include "partials/error_body.html" %}</main>{% endblock %}

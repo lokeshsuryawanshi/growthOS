@@ -159,11 +159,22 @@ async def _trends(n): return await _artifact(n, "trend_report", trend_scout)
 
 
 @handler("strategy")
-async def _strategy(n): return await _artifact(n, "content_strategy", strategist)
+async def _strategy(n):
+    n.agent.call.extra["feedback"] = _feedback(n, "strategy")
+    return await _artifact(n, "content_strategy", strategist)
 
 
 @handler("icp")
-async def _icp(n): return await _artifact(n, "icp", icp_builder)
+async def _icp(n):
+    n.agent.call.extra["feedback"] = _feedback(n, "icp")
+    return await _artifact(n, "icp", icp_builder)
+
+
+def _feedback(n: NodeCtx, part: str) -> list[str]:
+    """The founder's latest requested change ('Suggest changes' on the strategy page), if it applies to this step.
+    Earlier requests are already part of the current version, which the agent revises."""
+    history = n.params.get("strategy_feedback", [])
+    return [history[-1]["note"]] if history and part in history[-1].get("parts", []) else []
 
 
 @handler("calendar")
@@ -484,14 +495,20 @@ class Orchestrator:
                 audit(s, actor, "run.gate_approved", "run", run_id, node=key)
         self.start(tenant_id, run_id)
 
-    async def rerun_from(self, tenant_id: str, run_id: str, key: str, actor: str) -> None:
-        """Invalidate a node and everything downstream of it, then resume."""
-        dag = None
+    async def rerun_from(self, tenant_id: str, run_id: str, key: str | list[str], actor: str,
+                         params: dict | None = None) -> None:
+        """Invalidate node(s) and everything downstream of them, then resume. `params` are merged into the run's
+        parameters first (e.g. the founder's requested strategy changes)."""
+        keys = [key] if isinstance(key, str) else list(key)
         with tenant_scope(tenant_id):
             async with get_db().session() as s:
                 run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().one()
                 dag = DAGS[run.kind]
-                stale, frontier = {key}, [key]
+                if any(k not in dag for k in keys):
+                    raise ValueError(f"unknown step {keys}")
+                if params:
+                    run.params = {**(run.params or {}), **params}
+                stale, frontier = set(keys), list(keys)
                 while frontier:
                     k = frontier.pop()
                     for child, deps in dag.items():
@@ -502,7 +519,7 @@ class Orchestrator:
                     if node.key in stale:
                         node.status, node.output, node.error = "pending", {}, ""
                 run.status, run.finished_at = "pending", None
-                audit(s, actor, "run.rerun_from", "run", run_id, node=key, stale=sorted(stale))
+                audit(s, actor, "run.rerun_from", "run", run_id, node=keys, stale=sorted(stale))
         self.start(tenant_id, run_id)
 
     async def resume_incomplete(self) -> int:

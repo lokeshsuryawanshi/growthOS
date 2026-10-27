@@ -99,7 +99,7 @@ async def test_send_requires_approval_and_owner(api):
     am = await token(client, "am.sam@growthos.example")
     lead = next(l for l in (await client.get(f"/api/tenants/{tid}/leads", headers=priya)).json() if l["message_id"])
     mid = lead["message_id"]
-    assert (await client.post(f"/api/tenants/{tid}/outreach/{mid}/send", headers=priya)).status_code == 403  # not approved
+    assert (await client.post(f"/api/tenants/{tid}/outreach/{mid}/send", headers=priya)).status_code == 409  # not approved yet
     assert (await client.post(f"/api/tenants/{tid}/outreach/{mid}/decision", json={"action": "approve"}, headers=priya)).status_code == 200
     assert (await client.post(f"/api/tenants/{tid}/outreach/{mid}/send", headers=am)).status_code == 403  # AM can't send as founder
     from tests.helpers import FakeGoogle, connect_fake_gmail, make_sendable
@@ -107,7 +107,7 @@ async def test_send_requires_approval_and_owner(api):
     FakeGoogle().install()
     await connect_fake_gmail(get_db(), tid)
     r = await client.post(f"/api/tenants/{tid}/outreach/{mid}/send", headers=priya)
-    assert r.status_code == 403 and "synthetic" in r.text                # fixture leads can never be emailed
+    assert r.status_code == 409 and "synthetic" in r.text                # fixture leads can never be emailed
     await make_sendable(get_db(), tid)
     r = await client.post(f"/api/tenants/{tid}/outreach/{mid}/send", headers=priya)
     assert r.status_code == 200 and r.json()["status"] == "sent"

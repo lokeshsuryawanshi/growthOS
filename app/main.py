@@ -62,8 +62,24 @@ async def http_errors(request: Request, exc: HTTPException):
             from app.api.deps import COOKIE
             resp.delete_cookie(COOKIE)       # a stale or revoked session must not linger and loop
         return resp
+    if exc.status_code in (403, 404) and not request.url.path.startswith("/api/"):
+        return await friendly_error(request, exc)
     from fastapi.exception_handlers import http_exception_handler
     return await http_exception_handler(request, exc)
+
+
+async def friendly_error(request: Request, exc: HTTPException):
+    """Browser pages get a page that says what is missing; HTMX requests get a notice the page shows in place."""
+    from fastapi.responses import HTMLResponse
+    from markupsafe import escape
+    detail = str(exc.detail or ("You don't have access to this." if exc.status_code == 403 else "Not found."))
+    if request.headers.get("hx-request"):
+        return HTMLResponse(f'<div class="flash bad">{escape(detail)}</div>', status_code=exc.status_code)
+    from app.api.deps import principal_from_request
+    from app.web.routes import render
+    me = await principal_from_request(request)
+    return await render(request, "error.html", me, status_code=exc.status_code, code=exc.status_code, detail=detail,
+                        bare=me is None)
 
 
 @app.exception_handler(IntegrationError)

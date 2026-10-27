@@ -69,6 +69,20 @@ class Membership(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    added_by: Mapped[str] = mapped_column(String(32), default="")      # user id; "" = created with the workspace
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PlatformAudit(Base):
+    """Audit trail for actions that are not about one workspace (account managers created, users deactivated)."""
+    __tablename__ = "platform_audit"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    actor: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(64))
+    target_user: Mapped[str] = mapped_column(String(32), default="")
+    tenant_id: Mapped[str] = mapped_column(String(32), default="")
+    detail: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
 # --------------------------------------------------------------------------

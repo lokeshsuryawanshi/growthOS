@@ -27,7 +27,8 @@ from app.integrations import gmail
 from app.integrations.errors import IntegrationError
 from app.integrations.hunter import HunterClient
 from app.integrations.status import integration_status
-from app.services import accounts, approvals, queries, runs as run_service
+from app.services import (accounts, admin as admin_service, approvals, leads as lead_service, queries,
+                          runs as run_service, strategy, team)
 from app.services.kpis import tenant_kpis
 
 router = APIRouter()
@@ -274,8 +275,10 @@ async def workspace_state(tid: str, me: Principal, k: dict) -> dict:
 async def portal(request: Request, tid: str, tab: str = "overview", run: str | None = None, saved: int = 0):
     me = await need_login(request)
     tenant = await tenant_or_404(me, tid, "content:view")
-    if tab not in ("overview", "content", "calendar", "leads", "research", "integrations", "settings", "activity"):
+    if tab not in ("overview", "content", "calendar", "leads", "research", "integrations", "settings", "activity", "team"):
         tab = "overview"
+    if tab == "team":
+        check(me, "team:view", tid)
     k = await tenant_kpis(tid)
     pending = await queries.posts(tid, ["pending_approval"])
     dms = await queries.outreach(tid, ["pending_approval", "approved", "sending"])
@@ -294,13 +297,15 @@ async def portal(request: Request, tid: str, tab: str = "overview", run: str | N
         ctx["weeks"] = [{"week": w["week"], "by_day": {s.publish_date.weekday(): s for s in w["slots"]}} for w in weeks]
     elif tab == "leads":
         ctx.update(leads=await queries.leads(tid), dms=dms, gmail_connected=await _gmail_connected(tid),
-                   integ={"hunter_ok": HunterClient().configured})
+                   integ={"hunter_ok": HunterClient().configured}, rejections=await queries.rejections(tid, 100))
     elif tab == "research":
-        ctx["arts"] = ws["arts"]
+        ctx.update(arts=ws["arts"], suggestions=await strategy.suggestion_history(tid), parts=strategy.PARTS)
     elif tab == "integrations":
         ctx.update(integrations=await integration_status(tid), gmail_ready=gmail.configured())
     elif tab == "settings":
         ctx.update(v=await accounts.profile_as_form_values(tid), saved=bool(saved), steps=False)
+    elif tab == "team":
+        ctx.update(members=await team.list_members(me, tid), role_labels=team.ROLE_LABELS)
     elif tab == "activity":
         ctx["runs"], ctx["run_titles"] = ws["runs"], RUN_TITLES
         rid = run or (ws["active"].id if ws["active"] else (ws["runs"][0].id if ws["runs"] else None))
@@ -338,7 +343,9 @@ async def _post_card(request, me, tenant, post_id, msg="", bad=False):
 async def ui_post_decision(request: Request, tid: str, pid: str, action: str = Form(...),
                            text: str | None = Form(None), note: str = Form("")):
     me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "content:view")
+    if action not in approvals.POST_ACTION_PERMS:
+        raise HTTPException(400, "unknown action")
+    tenant = await tenant_or_404(me, tid, approvals.POST_ACTION_PERMS[action])     # 403 for viewers, before anything runs
     msg, bad = {"approve": "Approved. Copy it to LinkedIn when you are ready to post.", "reject": "Rejected. The slot stays open.",
                 "request_changes": "Got it. A new draft is being written.", "edit": "Edit saved."}.get(action, ""), False
     try:
@@ -357,7 +364,7 @@ async def ui_post_decision(request: Request, tid: str, pid: str, action: str = F
 @router.post("/ui/{tid}/posts/{pid}/posted", response_class=HTMLResponse)
 async def ui_post_posted(request: Request, tid: str, pid: str):
     me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "content:view")
+    tenant = await tenant_or_404(me, tid, "content:approve")
     msg, bad = "Marked as posted.", False
     try:
         await approvals.mark_posted(me, tid, pid)
@@ -380,7 +387,9 @@ async def _dm_card(request, me, tenant, mid, msg="", bad=False):
 async def ui_dm_decision(request: Request, tid: str, mid: str, action: str = Form(...), text: str | None = Form(None),
                          subject: str | None = Form(None)):
     me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "lead:view")
+    if action not in approvals.OUTREACH_ACTION_PERMS:
+        raise HTTPException(400, "unknown action")
+    tenant = await tenant_or_404(me, tid, approvals.OUTREACH_ACTION_PERMS[action])
     msg, bad = {"approve": "Approved. Send it when you're ready.", "reject": "Removed from your list.",
                 "edit": "Edit saved."}.get(action, ""), False
     try:
@@ -395,7 +404,7 @@ async def ui_dm_decision(request: Request, tid: str, mid: str, action: str = For
 @router.post("/ui/{tid}/outreach/{mid}/send", response_class=HTMLResponse)
 async def ui_dm_send(request: Request, tid: str, mid: str):
     me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "lead:view")
+    tenant = await tenant_or_404(me, tid, "outreach:send")
     msg, bad = "Sent from your Gmail.", False
     try:
         await approvals.send_outreach(me, tid, mid)
@@ -511,6 +520,149 @@ async def gmail_disconnect(request: Request, tid: str):
         async with get_db().session() as s:
             audit(s, me.user_id, "integration.gmail_disconnected", "tenant", tid)
     return _flash_out(RedirectResponse(f"/portal/{tid}?tab=integrations", status_code=303), "Gmail disconnected.", "ok")
+
+
+# ------------------------------------------------------------------ leads added by hand; strategy changes
+@router.post("/ui/{tid}/leads")
+async def ui_add_lead(request: Request, tid: str, full_name: str = Form(""), email: str = Form(""), company: str = Form(""),
+                      title: str = Form(""), company_domain: str = Form(""), note: str = Form(""),
+                      confirm_unverified: str = Form("")):
+    me = await need_login(request)
+    await tenant_or_404(me, tid, "lead:add")
+    back = RedirectResponse(f"/portal/{tid}?tab=leads", status_code=303)
+    try:
+        lead = await lead_service.add_manual_lead(me, tid, full_name, email, company, title, company_domain, note,
+                                                  confirm_unverified=confirm_unverified == "1")
+    except (lead_service.LeadRefused, accounts.AccountError) as e:
+        return _flash_out(back, f"Not added: {e}", "bad")
+    label = "verified by Hunter.io" if lead.email_status == "valid" else "unverified, confirmed by you"
+    return _flash_out(back, f"Added {lead.full_name} ({label}). An email draft will appear here in a moment.", "ok")
+
+
+@router.post("/ui/{tid}/leads/{lid}/draft")
+async def ui_draft_lead_email(request: Request, tid: str, lid: str):
+    me = await need_login(request)
+    await tenant_or_404(me, tid, "outreach:edit")
+    back = RedirectResponse(f"/portal/{tid}?tab=leads", status_code=303)
+    try:
+        await lead_service.request_draft(me, tid, lid)
+    except LookupError:
+        raise HTTPException(404, "not found")
+    except lead_service.LeadRefused as e:
+        return _flash_out(back, str(e), "bad")
+    except IntegrationError as e:
+        return _flash_out(back, f"{e.message}. {e.recovery}".strip(), "bad")
+    return _flash_out(back, "Drafting the email. Refresh in a moment.", "ok")
+
+
+@router.post("/ui/{tid}/strategy/suggestions")
+async def ui_suggest_changes(request: Request, tid: str):
+    me = await need_login(request)
+    await tenant_or_404(me, tid, "strategy:review")
+    form = await request.form()
+    back = RedirectResponse(f"/portal/{tid}?tab=research", status_code=303)
+    try:
+        rid = await strategy.suggest_changes(me, tid, str(form.get("note", "")), [str(x) for x in form.getlist("parts")])
+    except (strategy.SuggestionRefused, accounts.AccountError) as e:
+        return _flash_out(back, str(e), "bad")
+    except IntegrationError as e:
+        return _flash_out(back, f"{e.message}. {e.recovery}".strip(), "bad")
+    return _flash_out(RedirectResponse(f"/portal/{tid}?tab=activity&run={rid}", status_code=303),
+                      "Revising the strategy with your changes. You approve the new version when it is ready.", "ok")
+
+
+# ------------------------------------------------------------------ team (founder)
+def _team_back(tid: str, msg: str, kind: str = "ok"):
+    return _flash_out(RedirectResponse(f"/portal/{tid}?tab=team", status_code=303), msg, kind)
+
+
+async def _team_action(request: Request, tid: str, fn, ok: str):
+    me = await need_login(request)
+    await tenant_or_404(me, tid, "team:manage")
+    try:
+        await fn(me)
+    except team.MemberNotFound:
+        raise HTTPException(404, "not found")
+    except (team.TeamConflict, accounts.AccountError) as e:
+        return _team_back(tid, str(e), "bad")
+    except ForbiddenError as e:
+        raise HTTPException(403, str(e))
+    return _team_back(tid, ok)
+
+
+@router.post("/ui/{tid}/team")
+async def ui_team_add(request: Request, tid: str, email: str = Form(""), name: str = Form(""), password: str = Form(""),
+                      role: str = Form("client_viewer")):
+    return await _team_action(request, tid, lambda me: team.add_member(me, tid, email, name, password, role),
+                              f"Added {email.strip()}. They can sign in now with the password you set.")
+
+
+@router.post("/ui/{tid}/team/{uid}/role")
+async def ui_team_role(request: Request, tid: str, uid: str, role: str = Form(...)):
+    return await _team_action(request, tid, lambda me: team.update_member(me, tid, uid, role=role), "Role changed.")
+
+
+@router.post("/ui/{tid}/team/{uid}/password")
+async def ui_team_password(request: Request, tid: str, uid: str, password: str = Form("")):
+    return await _team_action(request, tid, lambda me: team.update_member(me, tid, uid, password=password),
+                              "Password reset. Share the new one with them directly.")
+
+
+@router.post("/ui/{tid}/team/{uid}/active")
+async def ui_team_active(request: Request, tid: str, uid: str, on: str = Form(...)):
+    return await _team_action(request, tid, lambda me: team.update_member(me, tid, uid, active=on == "1"),
+                              "Reactivated." if on == "1" else "Deactivated. They are signed out on their next click.")
+
+
+@router.post("/ui/{tid}/team/{uid}/remove")
+async def ui_team_remove(request: Request, tid: str, uid: str):
+    return await _team_action(request, tid, lambda me: team.remove_member(me, tid, uid), "Removed from the workspace.")
+
+
+# ------------------------------------------------------------------ platform admin
+@router.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request, q: str = "", tab: str = "users"):
+    me = await need_login(request)
+    check(me, "admin:view")
+    if tab not in ("users", "workspaces", "memberships", "runs", "audit", "agency"):
+        tab = "users"
+    return await render(request, "admin.html", me, section="admin", tab=tab, d=await admin_service.overview(me, q))
+
+
+def _admin_back(msg: str, kind: str = "ok"):
+    return _flash_out(RedirectResponse("/admin?tab=agency", status_code=303), msg, kind)
+
+
+async def _admin_action(request: Request, fn, ok: str):
+    me = await need_login(request)
+    check(me, "agency:manage")
+    try:
+        await fn(me)
+    except team.MemberNotFound:
+        raise HTTPException(404, "not found")
+    except (team.TeamConflict, accounts.AccountError) as e:
+        return _admin_back(str(e), "bad")
+    except ForbiddenError as e:
+        raise HTTPException(403, str(e))
+    return _admin_back(ok)
+
+
+@router.post("/ui/admin/account-managers")
+async def ui_admin_create_am(request: Request, email: str = Form(""), name: str = Form(""), password: str = Form("")):
+    return await _admin_action(request, lambda me: admin_service.create_account_manager(me, email, name, password),
+                               f"Account manager {email.strip()} created.")
+
+
+@router.post("/ui/admin/assign")
+async def ui_admin_assign(request: Request, user_id: str = Form(...), tenant_id: str = Form(...), on: str = Form("1")):
+    return await _admin_action(request, lambda me: admin_service.assign(me, user_id, tenant_id, on == "1"),
+                               "Assigned." if on == "1" else "Unassigned.")
+
+
+@router.post("/ui/admin/users/{uid}/active")
+async def ui_admin_active(request: Request, uid: str, on: str = Form(...)):
+    return await _admin_action(request, lambda me: admin_service.set_active(me, uid, on == "1"),
+                               "Reactivated." if on == "1" else "Deactivated.")
 
 
 # ------------------------------------------------------------------ ops (agency)

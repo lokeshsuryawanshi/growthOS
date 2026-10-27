@@ -22,3 +22,9 @@
   {% for f in pv.fallbacks %}<div class="flash warn" style="padding:6px 10px">Fallback used: {{ f }}</div>{% endfor %}
 </div>{% endif %}
 {%- endmacro %}
+{% macro unverified(art) -%}
+{% set un = art.data.get('_unverified') if art else none %}
+{% if un %}<details class="prov"><summary><b>Not verified ({{ un | length }})</b>: claims the agents made that their sources did not support. They are not used anywhere.</summary>
+  {% for u in un %}<div class="fact" style="margin-top:6px">{{ u.claim }}<div class="sub" style="color:var(--warn)">{{ u.reason }}</div>{% if u.source_url %}{{ srclink(u.source_url) }}{% endif %}</div>{% endfor %}
+</details>{% endif %}
+{%- endmacro %}

@@ -30,7 +30,7 @@
         {% endif %}
       </div>
       <div class="row">
-        {% if n.status == 'waiting_human' %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ run.id }}/approve/{{ n.key }}"><button class="primary sm">Approve</button></form>{% endif %}
+        {% if n.status == 'waiting_human' and me.can('strategy:review') %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ run.id }}/approve/{{ n.key }}"><button class="primary sm">Approve</button></form>{% endif %}
         {% if n.status == 'failed' and can_retry %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ run.id }}/rerun/{{ n.key }}"><button class="sm primary">Retry this step</button></form>{% endif %}
       </div>
     </div>
