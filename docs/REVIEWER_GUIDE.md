@@ -74,15 +74,15 @@ Web search (Tavily or Google grounding), an SSRF-safe page fetcher, Hunter.io co
 
 Routing is by tier with a fallback chain, a circuit breaker and a per-model pacing bucket. The comparison with other paid models is in section 4.3.
 
-### 4.1 Tokens per run (measured on a live run)
+### 4.1 Tokens and external calls per run (measured on live runs)
 
-| Step | Model calls | Input tokens | Output tokens |
-|---|---|---|---|
-| Research and strategy (once per client) | 54 | 64,140 | 7,953 |
-| Weekly work (content plus leads), planning figure | about 40 | about 100,000 | about 10,000 |
-| Whole test client, everything including retries | 181 | 242,050 | 25,798 |
+| Run | Model calls | Input tokens | Output tokens | Web searches | Page fetches | Hunter lookups |
+|---|---|---|---|---|---|---|
+| Research and strategy (once per client) | 58 | 70,032 | 9,565 | 8 | 7 | 0 |
+| Content run (planning figure) | about 40 | about 50,000 | about 8,000 | 0 to 2 | 0 | 0 |
+| Lead run (planning figure) | about 40 | about 50,000 | about 7,000 | about 8 | 0 | about 12 to 15 |
 
-One client per month is one research run plus four weekly cycles: **about 464,000 input and 48,000 output tokens.** Input dominates (about 10 to 1) because agents read search results. About 40% of calls are tiny safety-scanner calls on fetched pages.
+The research row is measured. A combined weekly run measured 83 calls, 92,439 input and 14,999 output tokens, 16 candidate companies and 11 Hunter lookups. **Splitting it into content and leads is an estimate**, because the two workflows were separated after that run. One client per month is one research run, four content runs and four lead runs: **about 470,000 input and 70,000 output tokens.** Input dominates because agents read search results. About 40% of calls are tiny safety-scanner calls on fetched pages.
 
 ### 4.2 Where the time goes today (measured, Groq free tier)
 
@@ -104,34 +104,69 @@ One client per month is one research run plus four weekly cycles: **about 464,00
 
 **Why it is slow:** the model is not. Groq's free tier allows 8,000 tokens per minute per model and 200,000 per day per model. The big writer model used about 73,000 tokens in one research run, which needs more than 9 minutes at 8,000 per minute, so our pacing code (`TokenBucket`) makes calls wait. Groq also counts the reserved output size, not the actual output. In one test the daily cap was reached and Groq answered "429 too many requests" until the window freed. This is a provider limit, not agent logic.
 
-### 4.3 Projection on paid APIs
+### 4.3 AI-only cost on paid APIs (tokens only)
 
-Prices are list prices per million tokens as I know them; **verify on each provider's pricing page before quoting.** Cost formula: `(input tokens x price_in + output tokens x price_out) / 1,000,000`.
+Prices are list prices per million tokens as I know them; **verify on each provider's pricing page before quoting.** Formula: `(input tokens x price_in + output tokens x price_out) / 1,000,000`.
 
-| Model tier | $ in / out per 1M | Research run | Weekly cycle | Per client per month | 12 clients | 100 clients | Est. time: research / weekly |
+| Model tier | $ in / out per 1M | Research run | Content run | Lead run | Per client per month | 12 clients | 100 clients | Est. time: research / weekly run |
+|---|---|---|---|---|---|---|---|---|
+| Groq gpt-oss-120b (current writer) | 0.15 / 0.60 | $0.016 | $0.012 | $0.012 | **$0.11** | $1.4 | $11 | 2-3 min / 3-4 min |
+| Groq gpt-oss-20b (current scorer) | 0.075 / 0.30 | $0.008 | $0.006 | $0.006 | $0.06 | $0.7 | $5.6 | 2-3 min / 3-4 min |
+| Gemini 3.5 flash-lite | 0.10 / 0.40 | $0.011 | $0.008 | $0.008 | $0.08 | $0.9 | $7.5 | 2-3 min / 3-4 min |
+| OpenAI mini-class | 0.15 / 0.60 | $0.016 | $0.012 | $0.012 | $0.11 | $1.4 | $11 | 3-4 min / 4-5 min |
+| OpenAI GPT-4o-class | 2.50 / 10.00 | $0.27 | $0.21 | $0.20 | **$1.88** | $22.5 | $187 | 4-6 min / 5-7 min |
+| Claude Haiku-class | 1.00 / 5.00 | $0.12 | $0.09 | $0.09 | $0.82 | $9.8 | $82 | 3-5 min / 4-6 min |
+| Claude Sonnet-class | 3.00 / 15.00 | $0.35 | $0.27 | $0.26 | **$2.46** | $29.5 | $245 | 5-8 min / 6-9 min |
+
+**The time column is an estimate, not a measurement.** It is the number of sequential calls on the critical path (about 20 to 25 for research, 15 to 20 for a content or lead run) times typical per-call latency: about 3 s measured on Groq, 5 to 12 s assumed for larger models. With no rate limits, expect roughly 4 to 5 times faster than today.
+
+### 4.4 Cost per single run, all-in (tokens plus every other service)
+
+"One query" here means one run the founder starts from the UI. Assumptions (all to be verified, and the main reason to check prices): Tavily about $0.008 per credit with 1 credit per search; Hunter about $0.10 per lookup on an entry paid plan (a larger plan can bring this to about $0.04); hosting on Render Starter plus a 1 GB disk, about $7.25 a month, shared across 108 runs a month (12 clients), about $0.07 per run.
+
+| Run | AI (Groq 120b) | Tavily | Hunter | Hosting share | **All-in on Groq** | All-in with GPT-4o-class | All-in with Claude Sonnet-class |
 |---|---|---|---|---|---|---|---|
-| Groq gpt-oss-120b (current writer) | 0.15 / 0.60 | $0.014 | $0.021 | **$0.10** | $1.2 | $9.8 | 2-3 min / 3-4 min |
-| Groq gpt-oss-20b (current scorer) | 0.075 / 0.30 | $0.007 | $0.011 | $0.05 | $0.6 | $4.9 | 2-3 min / 3-4 min |
-| Gemini 3.5 flash-lite | 0.10 / 0.40 | $0.010 | $0.014 | $0.07 | $0.8 | $6.6 | 2-3 min / 3-4 min |
-| OpenAI mini-class | 0.15 / 0.60 | $0.014 | $0.021 | $0.10 | $1.2 | $9.8 | 3-4 min / 4-5 min |
-| OpenAI GPT-4o-class | 2.50 / 10.00 | $0.24 | $0.35 | **$1.64** | $19.7 | $164 | 4-6 min / 5-7 min |
-| Claude Haiku-class | 1.00 / 5.00 | $0.10 | $0.15 | $0.70 | $8.5 | $70 | 3-5 min / 4-6 min |
-| Claude Sonnet-class | 3.00 / 15.00 | $0.31 | $0.45 | **$2.11** | $25.3 | $211 | 5-8 min / 6-9 min |
+| Research and strategy (8 searches) | $0.016 | $0.064 | $0 | $0.067 | **$0.15** | $0.40 | $0.49 |
+| Content run | $0.012 | $0.008 | $0 | $0.067 | **$0.09** | $0.28 | $0.35 |
+| Lead run (about 8 searches, about 15 lookups) | $0.012 | $0.064 | $1.50 | $0.067 | **$1.64** | $1.83 | $1.89 |
 
-**The time column is an estimate, not a measurement.** It is the number of sequential calls on the critical path (about 20 to 25 for research, 15 to 20 for a weekly cycle) times typical per-call latency: about 3 s measured on Groq, 5 to 12 s assumed for larger models. With no rate limits, expect roughly 4 to 5 times faster than today.
+Unit cost, all-in (including the shared hosting cost):
 
-### 4.4 Unit economics (planning figures)
-
-| Unit | Groq 120b | GPT-4o-class | Claude Sonnet-class |
+| Unit | Groq | GPT-4o-class | Claude Sonnet-class |
 |---|---|---|---|
-| AI cost per ready post (about 40k in / 6k out per 5 posts) | $0.002 | $0.03 | $0.04 |
-| AI cost per lead drafted (about 60k in / 4k out per 15 leads) | $0.001 | $0.012 | $0.016 |
-| AI cost per client per month | $0.10 | $1.64 | $2.11 |
-| Margin if a client pays an illustrative $500 a month (AI only) | 99.98% | 99.7% | 99.6% |
+| Per ready post (a content run of 5 posts) | $0.02 | $0.06 | $0.07 |
+| Per lead found (about 10 kept per lead run, with a contact lookup) | $0.16 | $0.18 | $0.19 |
+| Per client per month (1 research + 4 content + 4 lead runs) | **$7.07** | **$8.83** | **$9.41** |
+| Margin if a client pays an illustrative $500 a month | 98.6% | 98.2% | 98.1% |
 
-Splitting a weekly cycle into content and leads is an estimate from the ledger, not a separate measurement. **The AI is not the cost driver.** What costs money is Hunter.io (the free plan allows about 25 searches a month, so 10 to 20 leads a week per client needs a paid plan), Tavily searches (2 credits each, free tier 1,000 credits a month), hosting (free Render instance, about $7 a month for a persistent disk), and human support time. Check each provider's current pricing.
+The $500 price is an illustration, not a real price.
 
-### 4.5 How cost is controlled
+**Hunter.io is the biggest variable cost, not the AI.** Without Hunter, leads are found as companies with no contact person, and a lead run costs about $0.15.
+
+### 4.5 Platform cost at zero users, and the projection
+
+| Item | At 0 users | What it depends on |
+|---|---|---|
+| Hosting (Render) | **$0** on the free instance (database resets on redeploy); about $7.25 a month with a persistent disk | Starter instance about $7, disk about $0.25 per GB |
+| AI models (Groq, Gemini) | $0 | free tier, or pay per token |
+| Web search (Tavily) | $0 | free tier of 1,000 credits a month |
+| Contact emails (Hunter.io) | $0 | free plan about 25 searches a month; an entry paid plan is a fixed monthly fee (assumed about $49) if you choose to buy it |
+| Gmail sending, Google Cloud OAuth, GitHub | $0 | no charge for this volume |
+| Domain name (optional) | about $1 a month | about $10 to $15 a year |
+| **Total at 0 users** | **$0** (about $7 to $8 with a disk, about $56 if you also buy a Hunter plan up front) | |
+
+Monthly cost projection (variable cost per client per month on the Groq mix: AI $0.11 + Tavily $0.35 + Hunter $6.00 = **$6.46**, or **$0.46** without Hunter):
+
+| Clients | Hosting | AI on Groq | AI on GPT-4o-class | AI on Claude Sonnet-class | Tavily | Hunter | **Total (Groq)** | **Total (GPT-4o)** | **Total (Sonnet)** |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | $0 to $7 | $0 | $0 | $0 | $0 | $0 | **$0 to $7** | $0 to $7 | $0 to $7 |
+| 1 | $7 | $0.11 | $1.88 | $2.46 | $0.35 | $6.00 | **$13.7** | $15.5 | $16.1 |
+| 12 | $7 | $1.4 | $22.5 | $29.5 | $4.2 | $72 | **$85** | $106 | $113 |
+| 100 | larger hosting, not priced | $11 | $187 | $245 | $35 | $600 | **$646 + hosting** | $822 + hosting | $880 + hosting |
+
+Read this as order-of-magnitude, not a quote. Tavily and Hunter plans are sold in tiers, so real cost steps up in jumps; the free Tavily tier covers about 24 clients a month (1,000 credits at about 42 per client). At 100 clients the single worker and SQLite need replacing (Postgres, a job queue), which this table does not price.
+
+### 4.6 How cost is controlled
 
 | Lever | How |
 |---|---|

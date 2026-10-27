@@ -35,7 +35,7 @@ Formula: `(464k x price_in + 48k x price_out) / 1M`. Even at frontier prices the
 
 | Item | Basis | Status |
 |---|---|---|
-| Web search (Tavily) | 2 credits per search on this account; free tier 1,000 credits/month | search count per cycle is not yet logged: measure before promising a number |
+| Web search (Tavily) | about 1 credit per basic search (one test prompt used 2 credits); free tier 1,000 credits/month | search count per cycle is not yet logged: measure before promising a number |
 | Hunter.io | one domain search per lead company, plus verifications | free plan is about 25 searches/month, so 10-20 leads/week per client needs a paid plan: check pricing |
 | Hosting | Render starter instance plus 1 GB disk | about $7 to $8 a month: verify |
 | Human time | approvals take the founder minutes per week | not a cost to us, but the real product constraint |
