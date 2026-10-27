@@ -14,9 +14,10 @@ from app.llm.types import LLMRequest, ToolCall
 
 
 class RateLimited(Exception):
-    def __init__(self, msg: str, retry_after: float | None = None):
+    def __init__(self, msg: str, retry_after: float | None = None, daily: bool = False):
         super().__init__(msg)
         self.retry_after = retry_after
+        self.daily = daily      # a per-day quota (Groq TPD/RPD): waiting a minute cannot help, use another model
 
 
 class TransientError(Exception):
@@ -33,41 +34,96 @@ class RawResponse:
     tool_calls: list[ToolCall]
     prompt_tokens: int
     completion_tokens: int
+    # Provider rate-limit state after this call, when the provider reports it (Groq headers).
+    remaining_tokens: float | None = None
+    reset_tokens_s: float | None = None
 
 
 def retry_hint(message: str) -> float | None:
-    """Groq puts the wait in the message: 'Please try again in 10.14s' / '450ms'."""
-    m = re.search(r"try again in (?:(\d+)m)?([\d.]+)(ms|s)", message)
+    """Groq puts the wait in the message: 'Please try again in 10.14s' / '450ms'; Gemini says 'retry in 32s'."""
+    m = re.search(r"(?:try again|retry) in (?:(\d+)m)?([\d.]+)(ms|s)", message)
     if not m:
         return None
     secs = float(m.group(2)) / (1000 if m.group(3) == "ms" else 1)
     return secs + 60 * int(m.group(1) or 0)
 
 
-class TokenBucket:
-    """Client-side tokens-per-minute pacing so we queue instead of collecting 429s."""
+def parse_duration(text: str | None) -> float | None:
+    """Groq reset headers: '600ms', '7.66s', '1m26.4s', '2h3m1s'."""
+    if not text:
+        return None
+    total, found = 0.0, False
+    for num, unit in re.findall(r"([\d.]+)(ms|h|m|s)", text):
+        found = True
+        total += float(num) * {"ms": 0.001, "s": 1, "m": 60, "h": 3600}[unit]
+    return total if found else None
 
-    def __init__(self, tokens_per_minute: int):
+
+def is_daily_limit(message: str) -> bool:
+    """Groq names the exhausted window in the 429 text: 'tokens per day (TPD)' / 'requests per day (RPD)'."""
+    m = message.lower()
+    return "per day" in m or "(tpd)" in m or "(rpd)" in m
+
+
+class TokenBucket:
+    """Client-side pacing per model: tokens per minute and requests per minute, so we queue instead of collecting 429s.
+
+    Debt-based: a request takes its tokens immediately and sleeps until the debt is repaid, so callers are served in
+    arrival order without holding a lock while they sleep, and anyone can ask how long a new request would wait
+    (`estimate_wait`), which is what the gateway uses to route around a congested model. The provider's own view,
+    when it reports one (Groq's x-ratelimit headers), overrides ours via `sync`."""
+
+    def __init__(self, tokens_per_minute: int, requests_per_minute: int | None = None):
         self.capacity = float(tokens_per_minute)
         self.tokens = float(tokens_per_minute)
         self.rate = tokens_per_minute / 60.0
+        self.req_capacity = float(requests_per_minute or 0)
+        self.reqs = self.req_capacity
+        self.req_rate = (requests_per_minute or 0) / 60.0
+        self.blocked_until = 0.0          # set after a 429 that names a wait
         self.updated = time.monotonic()
-        self.lock = asyncio.Lock()
+
+    def _refill(self) -> float:
+        now = time.monotonic()
+        dt = now - self.updated
+        self.tokens = min(self.capacity, self.tokens + dt * self.rate)
+        if self.req_rate:
+            self.reqs = min(self.req_capacity, self.reqs + dt * self.req_rate)
+        self.updated = now
+        return now
+
+    def estimate_wait(self, amount: int) -> float:
+        now = self._refill()
+        amount = min(float(amount), self.capacity)
+        wait = max(0.0, (amount - self.tokens) / self.rate)
+        if self.req_rate:
+            wait = max(wait, (1 - self.reqs) / self.req_rate)
+        return max(wait, self.blocked_until - now)
 
     async def acquire(self, amount: int) -> float:
+        """Reserve `amount` tokens and one request; returns the seconds spent waiting."""
+        now = self._refill()
         amount = min(float(amount), self.capacity)
-        waited = 0.0
-        async with self.lock:  # FIFO: one waiter refills at a time
-            while True:
-                now = time.monotonic()
-                self.tokens = min(self.capacity, self.tokens + (now - self.updated) * self.rate)
-                self.updated = now
-                if self.tokens >= amount:
-                    self.tokens -= amount
-                    return waited
-                need = (amount - self.tokens) / self.rate
-                waited += need
-                await asyncio.sleep(need)
+        self.tokens -= amount
+        wait = max(0.0, -self.tokens / self.rate)
+        if self.req_rate:
+            self.reqs -= 1
+            wait = max(wait, -self.reqs / self.req_rate)
+        wait = max(wait, self.blocked_until - now)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        return wait
+
+    def sync(self, remaining: float | None, reset_s: float | None) -> None:
+        """Adopt the provider's count when it is lower than ours (it also counts work we did not pace)."""
+        if remaining is None:
+            return
+        self._refill()
+        if remaining < self.tokens:
+            self.tokens = float(remaining)
+
+    def block(self, seconds: float) -> None:
+        self.blocked_until = max(self.blocked_until, time.monotonic() + seconds)
 
 
 class Provider:
@@ -101,10 +157,11 @@ class GroqProvider(Provider):
         elif req.json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         try:
-            r = await self.client.chat.completions.create(**kwargs)
+            raw = await self.client.chat.completions.with_raw_response.create(**kwargs)
+            r = raw.parse()
         except groq.RateLimitError as e:
             ra = e.response.headers.get("retry-after") if e.response is not None else None
-            raise RateLimited(str(e), float(ra) if ra else retry_hint(str(e))) from e
+            raise RateLimited(str(e), float(ra) if ra else retry_hint(str(e)), daily=is_daily_limit(str(e))) from e
         except (groq.APIConnectionError, groq.APITimeoutError, groq.InternalServerError) as e:
             raise TransientError(str(e)) from e
         except groq.BadRequestError as e:
@@ -115,12 +172,15 @@ class GroqProvider(Provider):
         except groq.APIStatusError as e:
             if e.status_code >= 500:
                 raise TransientError(str(e)) from e
-            raise FatalError(str(e)) from e
+            raise FatalError(str(e)) from e      # includes 413: prompt + max_tokens above the model's per-minute limit
         msg = r.choices[0].message
         calls = [ToolCall(id=c.id, name=c.function.name, arguments=c.function.arguments or "{}")
                  for c in (msg.tool_calls or [])]
         u = r.usage
-        return RawResponse(msg.content, calls, u.prompt_tokens if u else 0, u.completion_tokens if u else 0)
+        rem = raw.headers.get("x-ratelimit-remaining-tokens")
+        return RawResponse(msg.content, calls, u.prompt_tokens if u else 0, u.completion_tokens if u else 0,
+                           remaining_tokens=float(rem) if rem else None,
+                           reset_tokens_s=parse_duration(raw.headers.get("x-ratelimit-reset-tokens")))
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +210,7 @@ class GeminiProvider(Provider):
             raise TransientError("gemini timeout") from e
         except errors.ClientError as e:
             if e.code == 429:
-                raise RateLimited(str(e)[:300]) from e
+                raise RateLimited(str(e)[:300], retry_hint(str(e)), daily="perday" in str(e).lower().replace(" ", "")) from e
             raise FatalError(str(e)[:300]) from e
         except errors.ServerError as e:
             raise TransientError(str(e)[:300]) from e

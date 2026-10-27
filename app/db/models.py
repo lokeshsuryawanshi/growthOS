@@ -151,7 +151,10 @@ class LLMCall(TenantScoped, Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
-    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)       # provider response time
+    pace_wait_ms: Mapped[int] = mapped_column(Integer, default=0)     # waiting in our per-model pacing before the call
+    retry_wait_ms: Mapped[int] = mapped_column(Integer, default=0)    # sleeping after 429s / transient errors
+    route_note: Mapped[str] = mapped_column(String(300), default="")  # spillover or skipped models, if any
     retries: Mapped[int] = mapped_column(Integer, default=0)
     cached: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(16), default="ok")  # ok|error|fallback

@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-Tier = Literal["big", "small", "judge", "guard"]
+Tier = Literal["big", "research", "small", "extract", "judge", "guard"]
 
 
 class ToolSpec(BaseModel):
@@ -45,10 +45,13 @@ class LLMResponse(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cost_usd: float = 0.0
-    latency_ms: int = 0
+    latency_ms: int = 0            # time the provider took to answer
+    pace_wait_ms: int = 0          # time spent in our own per-model pacing (tokens/requests per minute)
+    retry_wait_ms: int = 0         # time spent sleeping after 429s and transient errors
     retries: int = 0
     cached: bool = False
     fallback_used: bool = False
+    route_note: str = ""           # why this model was chosen when it was not the first in the chain
 
 
 class BudgetExceeded(Exception):

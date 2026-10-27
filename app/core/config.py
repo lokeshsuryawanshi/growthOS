@@ -46,7 +46,18 @@ class Settings(BaseSettings):
     guard_model: str = "meta-llama/llama-prompt-guard-2-86m"  # injection classifier
     judge_model: str = "gemini-3.5-flash-lite"       # judge (Gemini), falls back to judge_fallback_model
     judge_fallback_model: str = "qwen/qwen3.8-27b"
-    research_model: str = "gemini-3.5-flash-lite"    # grounded web search; falls back to seeded corpus
+    research_model: str = "gemini-3.5-flash-lite"    # Google Search grounding (web search provider)
+    # Tier -> fallback chain, "provider:model" comma-separated. Empty = the default chain built from the models above
+    # (see Settings.route_chain). Free-tier limits are per model, so each tier leads with a different model and spills
+    # over to the next one when its own limit would make the call wait (route_spill_wait_s).
+    route_big: str = ""          # posts, outreach, strategy, calendar, voice
+    route_research: str = ""     # research steps: choose searches and pages to read
+    route_small: str = ""        # scoring, query planning, reflection
+    route_extract: str = ""      # one structured extraction from a large evidence pack
+    route_judge: str = ""        # critic: a different model family than the writer
+    route_guard: str = ""        # prompt-injection classifier
+    route_spill_wait_s: float = 4.0
+    model_limits_json: str = ""  # override MODEL_LIMITS, e.g. {"gemini-3.5-flash-lite": {"tpm": 250000, "rpm": 15}}
 
     # --- storage -----------------------------------------------------------
     database_url: str = "sqlite+aiosqlite:///./growthos.db"
@@ -102,6 +113,24 @@ class Settings(BaseSettings):
             return "mock"
         return "unconfigured"
 
+    def route_chain(self, tier: str) -> list[tuple[str, str]]:
+        """The ordered (provider, model) fallback chain for a tier: env override or the default."""
+        raw = getattr(self, f"route_{tier}", "") or ",".join(DEFAULT_ROUTES[tier](self))
+        out = []
+        for item in raw.split(","):
+            provider, _, model = item.strip().partition(":")
+            if provider and model:
+                out.append((provider.strip(), model.strip()))
+        return out
+
+    def model_limits(self) -> dict[str, dict[str, int]]:
+        import json
+        limits = {m: dict(v) for m, v in MODEL_LIMITS.items()}
+        if self.model_limits_json:
+            for m, v in json.loads(self.model_limits_json).items():
+                limits.setdefault(m, {}).update(v)
+        return limits
+
     @property
     def uses_fixture_sources(self) -> bool:
         """Seeded research/prospects are used if and only if the models are mocked too."""
@@ -130,21 +159,38 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
     "openai/gpt-oss-20b": (0.075, 0.30),
     "meta-llama/llama-prompt-guard-2-86m": (0.04, 0.04),
     "qwen/qwen3.8-27b": (0.29, 0.59),
+    "meta-llama/llama-prompt-guard-2-22m": (0.03, 0.03),
     "gemini-3.5-flash-lite": (0.10, 0.40),
     "mock-big": (0.15, 0.60),
+    "mock-research": (0.075, 0.30),
     "mock-small": (0.075, 0.30),
+    "mock-extract": (0.10, 0.40),
     "mock-judge": (0.10, 0.40),
     "mock-guard": (0.04, 0.04),
 }
 
 
-# Tokens-per-minute per model, from the provider's x-ratelimit-limit-tokens header
-# (Groq on-demand tier). The gateway paces requests with a token bucket per model.
-MODEL_TPM: dict[str, int] = {
-    "openai/gpt-oss-120b": 8000,
-    "openai/gpt-oss-20b": 8000,
-    "qwen/qwen3.8-27b": 8000,
-    "meta-llama/llama-prompt-guard-2-86m": 15000,
+# Free-tier limits per model. Groq values were read from the x-ratelimit-limit-* headers on 2026-10-27 (tokens per
+# minute; Groq also caps 1,000 requests and about 200k tokens per day per model, enforced by 429s). A request whose
+# prompt + max_tokens exceeds a Groq model's TPM is rejected outright, so the gateway skips that model for it.
+# Gemini's free tier is not reported in headers: the values are conservative and can be raised via MODEL_LIMITS_JSON.
+MODEL_LIMITS: dict[str, dict[str, int]] = {
+    "openai/gpt-oss-120b": {"tpm": 8000, "rpm": 30, "max_request": 8000},
+    "openai/gpt-oss-20b": {"tpm": 8000, "rpm": 30, "max_request": 8000},
+    "qwen/qwen3.8-27b": {"tpm": 8000, "rpm": 30, "max_request": 8000},
+    "meta-llama/llama-prompt-guard-2-86m": {"tpm": 15000, "rpm": 30},
+    "meta-llama/llama-prompt-guard-2-22m": {"tpm": 15000, "rpm": 30},
+    "gemini-3.5-flash-lite": {"tpm": 250000, "rpm": 15},
+}
+MODEL_TPM: dict[str, int] = {m: v["tpm"] for m, v in MODEL_LIMITS.items()}   # kept for callers that only need TPM
+
+DEFAULT_ROUTES = {
+    "big": lambda s: [f"groq:{s.groq_model}", f"groq:{s.judge_fallback_model}"],
+    "research": lambda s: [f"groq:{s.small_model}", f"groq:{s.judge_fallback_model}", f"gemini:{s.judge_model}"],
+    "small": lambda s: [f"groq:{s.small_model}", f"groq:{s.judge_fallback_model}", f"gemini:{s.judge_model}"],
+    "extract": lambda s: [f"gemini:{s.judge_model}", f"groq:{s.groq_model}", f"groq:{s.judge_fallback_model}"],
+    "judge": lambda s: [f"gemini:{s.judge_model}", f"groq:{s.judge_fallback_model}"],
+    "guard": lambda s: [f"groq:{s.guard_model}", "groq:meta-llama/llama-prompt-guard-2-22m"],
 }
 
 
