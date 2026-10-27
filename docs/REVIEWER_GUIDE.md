@@ -1,32 +1,33 @@
 # Growth OS: reviewer guide
 
-A done-for-you growth portal for busy founders: content marketing, personal branding and lead generation. Agents research the founder's market, plan an 8-week LinkedIn calendar, draft at least 5 posts a week in the founder's voice, find 10 to 20 leads a week and draft outreach emails. **A human approves everything before it is posted or sent.** Built for 12 clients onboarding next month, with a path to 100+.
+A done-for-you growth portal for busy founders: content marketing, personal branding and lead generation. Agents research the founder's market and competitors, plan an 8-week LinkedIn calendar, write at least 5 posts a week in the founder's voice, find 10 to 20 leads a week and draft outreach emails. **A human approves everything before it is posted or sent.** Designed for 12 clients onboarding next month, with a path to 100+.
 
-Deeper documents: [Architecture](ARCHITECTURE.md) · [Evals and guardrails](EVALS_AND_GUARDRAILS.md) · [Cost and run time](ECONOMICS.md) · [Handoff and known issues](../HANDOFF.md)
+Deeper documents: [Architecture](ARCHITECTURE.md) · [Evals and guardrails](EVALS_AND_GUARDRAILS.md) · [Cost and run time](ECONOMICS.md) · [Known issues and handoff](../HANDOFF.md)
 
-## 1. What the reviewer asked for, and where it lives
+**Status in one line.** Built and tested (156 automated tests passing); research, strategy, drafting and lead discovery were run end to end on real providers (Groq, Gemini, Tavily, Hunter.io). Not yet exercised live: Gmail sending. Run time is slow today because of free-tier model limits (section 4).
+
+## 1. Requirements and where they live
 
 | Requirement | Where |
 |---|---|
-| Agentic loops | `app/agents/runtime/loop.py` (bounded tool loop), writer and critic in `app/agents/content/`, lead discovery in `app/agents/leads/` |
-| Coordination, long-horizon planning | `app/agents/orchestrator/` (DAGs, checkpoints, retries, human gate, fair scheduler); 8-week calendar planner with code validation |
+| Agentic loops | `app/agents/runtime/loop.py` (bounded tool loop); writer and critic in `app/agents/content/`; lead engine in `app/agents/leads/` |
+| Coordination and long-horizon planning | `app/agents/orchestrator/` (DAGs, checkpoints, retries, human gate, fair scheduler); 8-week calendar planner validated by code |
 | Founder voice, competitors, trends, strategy | `app/agents/research/`, `app/agents/strategy/` |
-| Leads, templated outreach, human edit | `app/agents/leads/`, approvals in `app/services/approvals.py` |
-| Content preview and approval | portal UI (`app/web/`) |
-| Evals | `evals/` (gate, red-team set, judge calibration) |
-| Cost strategy | `app/llm/gateway.py`, [ECONOMICS.md](ECONOMICS.md) |
-| Guardrails | `app/guardrails/` |
+| Leads and templated outreach with human edit | `app/agents/leads/`, `app/services/approvals.py` |
+| Content preview and final approval | portal UI, `app/web/` |
+| Evals, guardrails | `evals/`, `app/guardrails/` |
+| Cost strategy | `app/llm/gateway.py`, section 4 |
 | RBAC and tenant isolation | `app/core/security.py`, `app/db/session.py` |
-| Stress and performance | `loadtest/stress.py`, `loadtest/reports/` |
-| Production practice | Alembic migrations, rate limits, budgets, env-based secrets, honest failure handling |
+| Stress and performance testing | `loadtest/` |
+| Production practice | Alembic migrations, budgets, rate limits, secrets in environment variables, honest failure handling, no demo data in production |
 
-## 2. Architecture in one page
+## 2. Architecture
 
 ```mermaid
 flowchart TB
   U[Founder / agency user] --> W[FastAPI: auth, RBAC, rate limits]
   W --> DB[(SQLite WAL, tenant-isolated)]
-  W --> O[Orchestrator: DAG, checkpoints, retries, human gates]
+  W --> O[Orchestrator: DAGs, checkpoints, retries, human gates]
   O --> A[Agents: researchers, planners, writer + critic, lead engine]
   A --> G[LLM gateway: routing, pacing, budgets, cache, cost ledger]
   G --> M[Groq models, Gemini judge]
@@ -36,65 +37,130 @@ flowchart TB
   H --> X[Founder posts to LinkedIn / Gmail sends approved email]
 ```
 
-**Design choice:** a fixed workflow with real agents inside each step. Order, checkpoints, budgets and approvals are deterministic code, so cost is predictable, runs resume after a crash and every gate is testable. Agents decide how to research and write.
+**Design choice: a fixed workflow with real agents inside each step.** Order, checkpoints, budgets and approvals are deterministic code, so cost is predictable, runs resume after a crash, and every gate is testable. Agents decide how to research and write.
 
-- **Three independent workflows.** Discovery (once per client): ingest, voice, market, competitors, trends, strategy, ICP, calendar, then a human gate. Content (weekly): learn from edits, refresh trends, draft posts, extend the calendar. Leads (weekly): find companies, attach verified contacts, draft outreach emails. Content and lead runs are separate buttons, can run at the same time, and never depend on each other.
-- **Loops.** Researchers choose their own searches within step caps. Writer and critic revise until a 4.0 score (max 3 rounds). Guard failures trigger rewrites. The calendar planner is repaired against rules. Founder edits become learned voice rules.
-- **Real data only.** Web search (Tavily or Google grounding), SSRF-safe page fetch, Hunter.io contacts, Gmail OAuth for sending. If a provider is missing or failing, the step stops with the fix shown. Mock models and demo data exist only for tests.
+| Workflow | Steps | Runs |
+|---|---|---|
+| Discovery | ingest, voice, market, competitors, trends, strategy, ICP, 8-week calendar, then **human approval gate** | once per client |
+| Content and calendar | learn from founder edits, refresh trends, draft the week's posts, extend the calendar | weekly, own button |
+| Leads | search for companies, verify, attach Hunter.io contacts, score, draft outreach emails | weekly, own button |
 
-## 3. Cost and timing
+Content and lead runs are independent: separate buttons, no shared steps, and they may run at the same time. Each step is a database checkpoint; a succeeded step never re-runs, and a failed step blocks only its dependents.
 
-Measured on a live run (real Groq, Gemini, Tavily and Hunter calls): **research and strategy 64k input / 8k output tokens; a weekly cycle about 100k / 10k.** One client per month is one research run plus four weekly cycles: about **464k input and 48k output tokens**. Input dominates because agents read search results.
+| Agent loop | What it does | Bounds |
+|---|---|---|
+| Research agents | choose their own searches, open pages, return a typed result | step and tool-call caps, URL allowlist, budget check per call |
+| Writer and critic | draft, score with a different model family, revise | pass score 4.0, 3 rounds, early exit |
+| Guard auto-fix | rewrite a draft that broke a rule | two attempts, never for critical violations |
+| Calendar planner | propose weeks, code validates, violations fed back | 3 repairs |
+| Lead engine | plan queries, search (code), extract, verify against results, attach contacts, score | 3 rounds |
+| Learning loop | founder edits become durable voice rules | 15 rules |
 
-Prices are list prices per million tokens as I know them. **Verify before quoting.** Cost formula: `(input tokens x price_in + output tokens x price_out) / 1,000,000`.
+## 3. Real data only
 
-| Model tier | $ in / out per 1M | Research run | Weekly cycle | Per client / month | 12 clients | 100 clients | Est. time: research / weekly |
+Web search (Tavily or Google grounding), an SSRF-safe page fetcher, Hunter.io contacts and Gmail OAuth are real integrations. If a key is missing or a provider fails, the step stops and shows the fix; nothing is replaced by canned output. Mock models and fictional data exist only in tests and a labelled local demo, and production refuses to start with them.
+
+## 4. Cost, latency and unit economics
+
+### 4.1 Tokens per run (measured on a live run)
+
+| Step | Model calls | Input tokens | Output tokens |
+|---|---|---|---|
+| Research and strategy (once per client) | 54 | 64,140 | 7,953 |
+| Weekly work (content plus leads), planning figure | about 40 | about 100,000 | about 10,000 |
+| Whole test client, everything including retries | 181 | 242,050 | 25,798 |
+
+One client per month is one research run plus four weekly cycles: **about 464,000 input and 48,000 output tokens.** Input dominates (about 10 to 1) because agents read search results. About 40% of calls are tiny safety-scanner calls on fetched pages.
+
+### 4.2 Where the time goes today (measured, Groq free tier)
+
+| Research and strategy step | Wall time |
+|---|---|
+| ingest, voice | 10 s, 2 s |
+| competitors (runs in parallel) | 516 s |
+| market (runs in parallel) | 228 s |
+| trends (after market) | 172 s |
+| ICP, strategy, calendar | 27 s, 37 s, 86 s |
+| **Whole run** | **about 14 min** |
+| Weekly cycle (content plus leads) | 20 to 35 min |
+
+| Measure | Value |
+|---|---|
+| Average model response time | gpt-oss-120b 3.1 s, gpt-oss-20b 2.8 s, Gemini flash-lite 1.5 s, Prompt Guard 0.3 s |
+| Total model response time in a whole run | about 2.5 min |
+| Retries that failed outright | 0 |
+
+**Why it is slow:** the model is not. Groq's free tier allows 8,000 tokens per minute per model and 200,000 per day per model. The big writer model used about 73,000 tokens in one research run, which needs more than 9 minutes at 8,000 per minute, so our pacing code (`TokenBucket`) makes calls wait. Groq also counts the reserved output size, not the actual output. In one test the daily cap was reached and Groq answered "429 too many requests" until the window freed. This is a provider limit, not agent logic.
+
+### 4.3 Projection on paid APIs
+
+Prices are list prices per million tokens as I know them; **verify on each provider's pricing page before quoting.** Cost formula: `(input tokens x price_in + output tokens x price_out) / 1,000,000`.
+
+| Model tier | $ in / out per 1M | Research run | Weekly cycle | Per client per month | 12 clients | 100 clients | Est. time: research / weekly |
 |---|---|---|---|---|---|---|---|
 | Groq gpt-oss-120b (current writer) | 0.15 / 0.60 | $0.014 | $0.021 | **$0.10** | $1.2 | $9.8 | 2-3 min / 3-4 min |
 | Groq gpt-oss-20b (current scorer) | 0.075 / 0.30 | $0.007 | $0.011 | $0.05 | $0.6 | $4.9 | 2-3 min / 3-4 min |
-| Gemini 3.5 flash-lite (judge) | 0.10 / 0.40 | $0.010 | $0.014 | $0.07 | $0.8 | $6.6 | 2-3 min / 3-4 min |
+| Gemini 3.5 flash-lite | 0.10 / 0.40 | $0.010 | $0.014 | $0.07 | $0.8 | $6.6 | 2-3 min / 3-4 min |
 | OpenAI mini-class | 0.15 / 0.60 | $0.014 | $0.021 | $0.10 | $1.2 | $9.8 | 3-4 min / 4-5 min |
 | OpenAI GPT-4o-class | 2.50 / 10.00 | $0.24 | $0.35 | **$1.64** | $19.7 | $164 | 4-6 min / 5-7 min |
 | Claude Haiku-class | 1.00 / 5.00 | $0.10 | $0.15 | $0.70 | $8.5 | $70 | 3-5 min / 4-6 min |
 | Claude Sonnet-class | 3.00 / 15.00 | $0.31 | $0.45 | **$2.11** | $25.3 | $211 | 5-8 min / 6-9 min |
 
-**Timing, honestly.** Today, on Groq's free tier, research takes about 14 minutes and a weekly cycle 20 to 35. The cost ledger shows only about 2.5 minutes of real model response time; the rest is our own pacing and 429 waits against Groq's free limits (8,000 tokens per minute and 200,000 per day per model). The "est. time" column is **an estimate** from the number of sequential calls on the critical path (about 20 to 25 for research, 15 to 20 for a weekly cycle) multiplied by typical per-call latency (about 3 s measured on Groq, 5 to 12 s assumed for larger models). It is not measured on those providers.
+**The time column is an estimate, not a measurement.** It is the number of sequential calls on the critical path (about 20 to 25 for research, 15 to 20 for a weekly cycle) times typical per-call latency: about 3 s measured on Groq, 5 to 12 s assumed for larger models. With no rate limits, expect roughly 4 to 5 times faster than today.
 
-Other costs: Tavily searches (2 credits each; free tier 1,000 credits a month), Hunter.io (free plan about 25 searches a month, so 10 to 20 leads a week needs a paid plan), hosting (free Render instance, or about $7 a month for a persistent disk). Check each provider's current pricing page.
+### 4.4 Unit economics (planning figures)
 
-**Cost controls.** Tiered routing (small model for scoring and extraction, large only for strategy and writing), research done once and trends reused for 6 days, per-run, per-client monthly and service-wide daily budgets, a per-client kill switch, response cache, and a ledger row for every call. The Activity page shows live tokens and cost.
+| Unit | Groq 120b | GPT-4o-class | Claude Sonnet-class |
+|---|---|---|---|
+| AI cost per ready post (about 40k in / 6k out per 5 posts) | $0.002 | $0.03 | $0.04 |
+| AI cost per lead drafted (about 60k in / 4k out per 15 leads) | $0.001 | $0.012 | $0.016 |
+| AI cost per client per month | $0.10 | $1.64 | $2.11 |
+| Margin if a client pays an illustrative $500 a month (AI only) | 99.98% | 99.7% | 99.6% |
 
-## 4. Evals
+Splitting a weekly cycle into content and leads is an estimate from the ledger, not a separate measurement. **The AI is not the cost driver.** What costs money is Hunter.io (the free plan allows about 25 searches a month, so 10 to 20 leads a week per client needs a paid plan), Tavily searches (2 credits each, free tier 1,000 credits a month), hosting (free Render instance, about $7 a month for a persistent disk), and human support time. Check each provider's current pricing.
 
-Principle: **the model proposes, code disposes.** What code can check is checked in code; the LLM judge covers only voice and hook quality, and is itself measured against hand-scored drafts.
+### 4.5 How cost is controlled
+
+| Lever | How |
+|---|---|
+| Tiered routing | small model for scoring and extraction, large model only for strategy and writing |
+| Do expensive work once | research once per client; trends reused for 6 days |
+| Budgets | per run, per client per month (80% alert, 100% stop), service-wide per day |
+| Kill switch | per client, checked by the gateway, orchestrator and send gate |
+| Cache and compaction | response cache; compact summaries instead of raw documents in prompts |
+| Visibility | every call in the ledger; live tokens and cost on the Activity page |
+
+## 5. Evals
+
+Principle: **the model proposes, code disposes.** What code can check is checked in code. The LLM judge covers only voice and hook quality, and is itself measured.
 
 | Eval | What it measures | Result |
 |---|---|---|
-| Red-team gate (`evals/datasets/redteam.json`) | Does the right guardrail fire on attacks; benign controls measure false positives | block recall 1.0, false-positive rate 0.0 |
-| Input-injection recall | Hidden and visible prompt injection in pages and lead data | 0.8 (the miss is an obfuscated case meant for the live classifier) |
-| Pipeline eval | 8-week calendar valid, 5+ posts a week, drafts reaching the founder, lead rules (no suppressed or competitor leads), no injected text in any output | all pass |
-| Judge calibration (live only) | Critic within one point of a human, Spearman 0.6 or better | gate defined; not re-run since the refactor |
-| Online signals | Approval rate, first-pass approval, edit distance between draft and approved text | computed per client |
-| Stress test | 100 clients, mock models with injected 429/5xx: 200/200 runs succeeded, 0 failed steps, 0 database lock errors, 0 cross-tenant violations, about 67 s, API p95 under 400 ms | pass (mock models, so it proves orchestration and isolation, not provider speed) |
+| Red-team gate | the right guardrail fires on attacks; benign controls measure false positives | block recall 1.0, false positives 0.0 |
+| Input-injection recall | hidden and visible prompt injection in pages and lead data | 0.8 (the miss is an obfuscated case meant for the live classifier) |
+| Pipeline eval | valid 8-week calendar, 5+ posts a week, drafts reach the founder, no suppressed or competitor leads, no injected text in outputs | all pass |
+| Judge calibration (live only) | critic within one point of a human, Spearman 0.6 or better | gate defined; not re-run since the refactor |
+| Online signals | approval rate, first-pass approval, edit distance between draft and approved text | computed per client |
+| Stress test (mock models, injected 429/5xx) | 100 clients: 200/200 runs, 0 failed steps, 0 database lock errors, 0 cross-tenant violations, about 67 s, API p95 under 400 ms | pass; proves orchestration and isolation, not provider speed |
 
 `python -m evals.run_evals` compares every metric with `evals/baseline.json` and exits non-zero on a breach.
 
-## 5. Guardrails (enforced in code, not prompts)
+## 6. Guardrails (enforced in code, not prompts)
 
 | Layer | Controls |
 |---|---|
-| Input | Strip hidden markup and zero-width text; heuristics plus Llama Prompt Guard; visible injection quarantined, hidden injection stripped and logged |
-| Untrusted data | Web content wrapped in `<untrusted_data>`; canary string detects prompt leakage |
-| Tools | Per-agent allowlist, schema validation, call caps, models can never choose a tenant, URL allowlist, SSRF-safe fetch |
-| Output: safety | Cross-tenant leakage, PII, banned topics, competitor disparagement |
-| Output: facts | Claim-level grounding: every figure needs a verbatim source quote and must be used for what the source says; cited research URLs must have actually been seen or the claim is dropped |
-| Output: originality | Near-duplicates and copying of the founder's own sample posts |
-| Process | State machines (nothing is approved without a human; email is approved, sending, sent with a lock so it cannot send twice); send gate checks role, approval, verified recipient, do-not-contact list, daily cap, kill switch |
-| Cost and access | Budgets and kill switch; deny-by-default RBAC; tenant interceptor; foreign tenants get 404 |
+| Input | strip hidden markup and zero-width text; heuristics plus Llama Prompt Guard; visible injection quarantined, hidden injection stripped and logged |
+| Untrusted data | web content wrapped in `<untrusted_data>`; canary string detects prompt leakage |
+| Tools | per-agent allowlist, schema validation, call caps, models can never choose a tenant, URL allowlist, SSRF-safe fetch |
+| Output: safety | cross-tenant leakage, PII, banned topics, competitor disparagement, agency name leaking into client voice |
+| Output: facts | **claim-level grounding:** every figure needs a verbatim source quote and must be used for what the source says; cited research URLs must have actually been seen or the claim is dropped |
+| Output: originality | near-duplicates and copying of the founder's sample posts |
+| Process | state machines (nothing is approved without a human; email goes approved, sending, sent with a lock so it cannot send twice); send gate checks role, approval, verified recipient, do-not-contact list, daily cap, kill switch |
+| Cost and access | budgets and kill switch; deny-by-default RBAC; tenant interceptor; foreign tenants get 404 |
 
-A real bug found by a live run: a customer count ("1,100 SMB customers") was reused as a market statistic. That is now a claim-level check with a regression test.
+**A real bug found by a live run:** a customer count ("1,100 SMB customers") was reused as a market statistic. It is now a claim-level check with a regression test. The same runs also exposed an invented "$2,000" figure and invented anecdote, which the guardrails blocked, and the agency name leaking into an email, now a high-severity rule.
 
-## 6. Tests: 156 passing
+## 7. Tests: 156 passing
 
 | Area | Tests | Covers |
 |---|---|---|
@@ -109,26 +175,28 @@ A real bug found by a live run: a customer count ("1,100 SMB customers") was reu
 | Separate content and lead workflows | 6 | independent runs, overlap rules, refusal before research, agency name never in client voice |
 | Pipeline, API security, research integrity, tenancy, evals | 31 | end-to-end cycles, RBAC matrix, cross-tenant probes, fabricated sources dropped, ORM interceptor |
 
-Run: `.venv/bin/python -m pytest -q` (about a minute).
+## 8. Security and tenancy
 
-## 7. Security and tenancy
+Four roles (admin, account manager, founder, read-only viewer) in one deny-by-default permission table; workspace membership is a second, independent check. A SQLAlchemy interceptor adds the tenant filter to every query and refuses unscoped ones; writes are checked before flush. Passwords use bcrypt, sessions are signed cookies, Gmail tokens are encrypted at rest, secrets live only in environment variables, and foreign workspaces return 404.
 
-Four roles (admin, account manager, founder, read-only viewer) in one deny-by-default permission table; workspace membership is a second, independent check. A SQLAlchemy interceptor adds the tenant filter to every query and refuses unscoped ones; writes are checked before flush. Passwords use bcrypt, sessions are signed cookies, Gmail tokens are encrypted at rest, and secrets live only in environment variables.
+## 9. Known limitations and next steps
 
-## 8. Known limitations
+| Limitation | Plan |
+|---|---|
+| Free-tier model limits make runs slow | paid tier, or route different steps to different models (limits are per model) |
+| No screen for inviting teammates or managing roles; no email verification or password reset | team page, invites, admin UI |
+| Orchestrator and rate limiter are in-process on SQLite (single worker) | Postgres (row-level-security migration included), job queue, Redis |
+| Gmail sending is code-complete but tested only against mock HTTP; Google test mode sends only to the owner | live test, then Google verification |
+| LinkedIn publishing not integrated by design | founder copies an approved post and marks it posted |
+| Stress results use mock models | re-measure on a paid tier |
+| Search credits not in the cost ledger | add Tavily and Hunter usage to the ledger |
 
-- Free-tier model limits make runs slow today; a paid tier or routing across several models is the fix.
-- Orchestrator and rate limiter run in-process on SQLite (single worker). Path to scale: Postgres (row-level-security migration included), a job queue, Redis rate limits.
-- No team-invite or role-management screen yet, no email verification or password reset.
-- Gmail sending is code-complete and tested against mock HTTP; Google test mode only allows sending to the owner. LinkedIn publishing is intentionally not integrated: the founder copies an approved post and marks it posted.
-- Stress results use mock models; live provider speed is as described in section 3.
-
-## 9. Run it
+## 10. Run it
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env   # fill in keys; use a NEW database file for DATABASE_URL
+cp .env.example .env     # fill in keys; use a NEW database file for DATABASE_URL
 .venv/bin/uvicorn app.main:app --port 8000
 .venv/bin/python -m pytest -q && .venv/bin/python -m evals.run_evals
 ```
-Deployment notes are in [DEPLOY.md](DEPLOY.md).
+Deployment notes: [DEPLOY.md](DEPLOY.md).
