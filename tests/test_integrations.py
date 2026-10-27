@@ -221,3 +221,18 @@ async def test_gmail_not_configured_on_server(monkeypatch):
     with pytest.raises(IntegrationError) as e:
         gmail.authorize_url("t", "u")
     assert e.value.code == NOT_CONFIGURED and "GOOGLE_OAUTH_CLIENT_ID" in e.value.recovery
+
+
+def test_search_queries_are_reduced_to_plain_words():
+    from app.integrations.search import clean_query
+    assert clean_query('"student housing" "new lease" site:linkedin.com') == "student housing new lease"
+    assert clean_query('"ecommerce" AND hiring OR Mumbai (expansion)') == "ecommerce hiring Mumbai expansion"
+
+
+async def test_an_empty_result_is_an_answer_not_an_outage(monkeypatch):
+    monkeypatch.setattr(get_settings(), "tavily_api_key", "tv-key")
+    monkeypatch.setattr(get_settings(), "google_api_key", "")
+    ws = WebSearch()
+    transport(lambda r: httpx.Response(200, json={"answer": "", "results": []}))
+    res = await ws.search("very niche query")
+    assert res.provider == "tavily" and res.hits == [] and ws._usable("tavily")     # still usable for the next query

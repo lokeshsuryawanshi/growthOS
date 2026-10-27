@@ -217,9 +217,14 @@ async def web_prospector(tenant_id: str, ctx: AgentContext, icp: dict, need: int
     plan = (await structured(
         "company_scout_plan", "small",
         "Write web search queries that surface COMPANIES matching an ideal customer profile and showing a buying trigger "
-        "(funding, hiring, expansion, new leadership). Mix industry, role being hired, region and a growth signal.",
+        "(funding, hiring, expansion, new leadership). Mix industry, role being hired, region and a growth signal. "
+        "Each query is 3 to 8 plain words, the way a person types into a search engine: no quotes, no boolean "
+        "operators, no site: filters. If the client sells to consumers, look for the businesses that serve or partner "
+        "with those consumers at scale (e.g. employers, property managers, relocation firms).",
         f"ICP: {compact(icp, 2000)}\nAlready seen (skip): {sorted(seen_domains)[:30]}\nRound {round_no}.{broaden}",
         SearchPlan, ctx, max_tokens=500, metadata={"icp": icp, "round": round_no})).output
+
+    failures: list[IntegrationError] = []
 
     async def one(q: str):
         try:
@@ -227,13 +232,18 @@ async def web_prospector(tenant_id: str, ctx: AgentContext, icp: dict, need: int
         except IntegrationError as e:
             if e.code in ("not_configured", "auth_failed"):
                 raise
+            failures.append(e)
             ctx.event("company_scout", "search_failed", query=q, error=e.message)
             return None
 
     results = [r for r in await asyncio.gather(*[one(q) for q in plan.queries]) if r]
-    if not results:
-        raise IntegrationError("web_search", "unavailable", "none of the lead searches returned results",
+    if not results:                     # every search errored: a provider problem, not an empty market
+        raise IntegrationError("web_search", "unavailable", "every lead search failed: " + failures[0].message,
                                "Check the Integrations page (web search) and retry.")
+    stats["searches"] = stats.get("searches", 0) + len(results)
+    if not any(r["results"] for r in results):
+        ctx.event("company_scout", "no_results", queries=plan.queries)
+        return []                       # an empty round: the next one broadens the queries
     blocks = []
     for r in results:                       # _web_search already recorded snippets and answers for verification
         for h in r["results"]:

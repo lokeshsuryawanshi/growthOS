@@ -181,7 +181,8 @@ STEP_SYSTEM = (
     "Each step you get what has been found so far. Choose up to 4 new searches and up to 4 URLs from the list to read "
     "in full. Prefer primary and official sources (a company's own site for its products, the original survey or report "
     "for a statistic) and recent material. Set done=true when the evidence covers the goal; reading the right pages "
-    "matters more than many searches."
+    "matters more than many searches. Write each query as 3 to 8 plain words, the way a person types into a search "
+    "engine: no quotes, no boolean operators, no site: filters."
 )
 
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
@@ -211,11 +212,12 @@ async def _draft_week(n: NodeCtx) -> dict:
                 CalendarSlot.publish_date < week + timedelta(days=7)).order_by(CalendarSlot.publish_date))).scalars().all()
     sem = asyncio.Semaphore(max(target, 3))   # every slot in parallel; per-model pacing is the real throttle
     errors: list[str] = []
+    deadline = time.monotonic() + get_settings().content_time_budget_s
 
     async def one(slot_id: str):
         async with sem:
             try:
-                post = await draft_slot(n.tenant_id, slot_id, n.agent)
+                post = await draft_slot(n.tenant_id, slot_id, n.agent, deadline=deadline)
                 if post.status == "pending_approval":
                     return "ready" if post.critic_score >= bar else "below_bar"
                 return "blocked"
@@ -228,7 +230,7 @@ async def _draft_week(n: NodeCtx) -> dict:
 
     statuses = list(await asyncio.gather(*[one(sid) for sid in slots[:target]]))
     spare = list(slots[target:])
-    while statuses.count("ready") < target and spare:          # bounded by the week's own planned slots
+    while statuses.count("ready") < target and spare and time.monotonic() < deadline:   # bounded by slots and time
         need = target - statuses.count("ready")
         batch, spare = spare[:need], spare[need:]
         statuses += await asyncio.gather(*[one(sid) for sid in batch])
@@ -247,6 +249,9 @@ async def _draft_week(n: NodeCtx) -> dict:
             shortfall.append(f"{counts['blocked']} slot(s) blocked by guardrails on every attempt (agency review)")
         if counts.get("failed"):
             shortfall.append(f"{counts['failed']} slot(s) failed: {errors[0] if errors else 'error'}")
+        if time.monotonic() >= deadline:
+            shortfall.append(f"redrafting stopped at the {get_settings().content_time_budget_s / 60:.1f}-minute time "
+                             f"budget (free-tier model limits)")
         shortfall.insert(0, f"{ready} of {target} posts ready")
     return {"week_start": week.isoformat(), "target": target, "ready": ready, "slots": len(statuses), **counts,
             "shortfall": shortfall}

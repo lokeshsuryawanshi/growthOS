@@ -33,6 +33,8 @@ def _prepare_env(args) -> None:
         if not key:
             sys.exit(f"{args.groq_key_var} is not set")
         os.environ["GROQ_API_KEY"] = key
+    if args.no_hunter:
+        os.environ["HUNTER_API_KEY"] = ""          # keep the monthly Hunter quota for measured runs
     os.environ["APP_ENV"] = "production"
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{Path(args.db).resolve()}"
     os.environ.setdefault("LLM_MODE", "live")
@@ -157,6 +159,7 @@ if __name__ == "__main__":
     ap.add_argument("--groq-key-var", default="")
     ap.add_argument("--runs", default="discovery,content,leads")
     ap.add_argument("--out", default="loadtest/reports/live-run")
+    ap.add_argument("--no-hunter", action="store_true")
     a = ap.parse_args()
     _prepare_env(a)
     sys.exit(asyncio.run(main(a)))

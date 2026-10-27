@@ -272,9 +272,11 @@ async def main_async(args) -> int:
     _EVAL_TENANT["id"] = ids["ledgerloop"]
 
     report: dict = {"mode": "live" if args.live else "mock"}
-    report["guardrails"] = await eval_guardrails()
-    report["pipeline"] = await eval_pipeline(args.weeks)
-    if args.live:
+    sections = set(args.sections.split(",")) if args.sections else \
+        ({"guardrails", "judge"} if args.live else {"guardrails", "pipeline"})
+    report["guardrails"] = await eval_guardrails() if "guardrails" in sections else {}
+    report["pipeline"] = await eval_pipeline(args.weeks) if "pipeline" in sections else {"clients": {}}
+    if args.live and "judge" in sections:
         report["judge"] = await eval_judge()
     baseline_path = HERE / "baseline.json"
     baseline = json.loads(baseline_path.read_text())
@@ -293,6 +295,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", action="store_true")
     ap.add_argument("--weeks", type=int, default=2)
+    ap.add_argument("--sections", default="", help="comma list; default guardrails,pipeline (mock) or guardrails,judge (live)")
     args = ap.parse_args()
     _setup_mode(args.live)
     sys.exit(asyncio.run(main_async(args)))

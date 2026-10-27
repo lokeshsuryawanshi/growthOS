@@ -90,7 +90,9 @@ class Settings(BaseSettings):
     leads_per_week_max: int = 20
     lead_fit_threshold: int = 70                      # below this a lead is dropped (and reported)
     critic_pass_score: float = 4.0
-    critic_max_rounds: int = 3
+    critic_max_rounds: int = 2                         # editor rounds per attempt (one revision); attempts are bounded too
+    draft_attempts: int = 3                            # fresh drafts per slot until one passes guardrails and the bar
+    content_time_budget_s: float = 270.0               # no new redraft attempt starts after this (in-flight ones finish)
     outreach_daily_send_cap: int = 25
 
     @property

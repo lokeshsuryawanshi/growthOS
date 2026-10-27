@@ -66,8 +66,11 @@ async def icp_builder(tenant_id: str, ctx: AgentContext) -> ICP:
             f"Competitors: {compact(comp, 800)}")
     res = await structured("icp_builder", "big",
                            "Define the ideal customer profile for outbound prospecting: 1-3 segments with job titles, "
-                           "industries, company size and geography, their pains and buying triggers. Exclude the client's "
-                           "competitors and their staff.", user, ICP, ctx, max_tokens=1300, metadata={"intake": intake})
+                           "industries, company size and geography, their pains and buying triggers. Outbound email reaches "
+                           "businesses, so every segment is a kind of company and the titles are its decision-makers. If "
+                           "the client sells to consumers, choose businesses that buy for, serve or refer many of those "
+                           "consumers (for example employers, property managers, co-living operators, relocation firms, "
+                           "universities). Exclude the client's competitors and their staff.", user, ICP, ctx, max_tokens=1300, metadata={"intake": intake})
     return res.output
 
 

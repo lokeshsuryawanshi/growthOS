@@ -10,6 +10,7 @@ draft_slot(): up to 3 attempts per slot until one passes the guardrails and the 
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -39,10 +40,18 @@ WRITER_SYSTEM = (
     "founder's own samples and general reasoning. If the sources have no figure for a point, make the point without a number. "
     "No hashtag spam (0-3 hashtags). Never mention other companies the agency works with."
 )
+# Anchored rubric: the scale means the same as the hand-scored calibration set (1 = unusable, 5 = publish as is), so the
+# 4.0 bar means "publishable after light edits". The earlier "be strict, 5 is rare" prompt scored drafts it called
+# "solid" at 3.6 and redrafting could not move them (live run 2026-10-27); on the calibration set the anchored prompt
+# agrees with the human within one point 87.5% of the time (Spearman 0.72) against 75% before.
 CRITIC_SYSTEM = (
-    "You are a demanding LinkedIn editor. Score the draft 1-5 on: voice_match (does it sound like the founder's samples), "
-    "specificity (concrete details, not generic advice), hook (would a busy buyer stop scrolling), insight (says something "
-    "non-obvious), cta_fit. List must_fix items only for real problems. Be strict: 5 is rare."
+    "You are an experienced LinkedIn editor reviewing a ghostwritten draft before the founder sees it. Score each "
+    "dimension 1-5 using these anchors: 5 = exceptional, publish as is; 4 = good, publishable after light edits; 3 = needs "
+    "a real revision before it is worth posting; 2 = weak; 1 = unusable. Dimensions: voice_match (sounds like the founder's "
+    "own posts), specificity (concrete details rather than generic advice), hook (the first line would stop a busy buyer), "
+    "insight (says something non-obvious), cta_fit (the ending invites a natural response). Score the draft as it stands: a "
+    "solid draft with one thing to improve is a 4, not a 3. Put an item in must_fix only if fixing it is needed to reach 4; "
+    "leave must_fix empty for a draft that is already good."
 )
 
 
@@ -50,7 +59,7 @@ def _words(text: str) -> set[str]:
     return set(re.findall(r"[a-z]{4,}", (text or "").lower()))
 
 
-def relevant_sources(sources: list[dict], slot: CalendarSlot, k: int = 4) -> list[dict]:
+def relevant_sources(sources: list[dict], slot: CalendarSlot, k: int = 3) -> list[dict]:
     """The few sources that matter for this slot (the client's own facts first), instead of every page read."""
     want = _words(f"{slot.topic} {slot.angle} {slot.pillar} {slot.trend_ref}")
 
@@ -98,24 +107,36 @@ def redraft_note(c: Composed, bar: float) -> str:
     return f"An editor scored the previous draft {c.score:.1f}/5 (bar {bar:.1f}). Write a stronger post. Fix: {fixes}"[:600]
 
 
-async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str = "", attempts: int = 3) -> Post:
+async def draft_slot(tenant_id: str, slot_id: str, ctx: AgentContext, note: str = "", attempts: int | None = None,
+                     deadline: float | None = None) -> Post:
     """Bounded redraft loop for one calendar slot.
 
     Up to `attempts` fresh drafts, each told why the previous one fell short, until one passes the guardrails and the
-    editor's bar. Blocked attempts are kept (agency-only) for the audit trail. If no attempt clears the bar, the best
-    guardrail-passing draft still reaches the founder, labelled as below the editor's bar; a draft that never passed
-    the guardrails never does."""
+    editor's bar; no new attempt starts after `deadline` (time.monotonic). Blocked attempts are kept (agency-only) for
+    the audit trail. If no attempt clears the bar, the best guardrail-passing draft still reaches the founder, labelled
+    as below the editor's bar; a draft that never passed the guardrails never does."""
     bar = get_settings().critic_pass_score
+    attempts = attempts or get_settings().draft_attempts
     best: Composed | None = None
     for attempt in range(1, attempts + 1):
-        c = await compose_post(tenant_id, slot_id, ctx, note=note, max_rounds=None if attempt == 1 else 2)
+        if attempt > 1 and deadline is not None and time.monotonic() > deadline:
+            ctx.event("writer", "redraft_stopped", slot=slot_id, reason="time budget reached")
+            break
+        c = await compose_post(tenant_id, slot_id, ctx, note=note)
         if c.ready(bar):
-            return await save_post(tenant_id, slot_id, c, ctx, final=True)
+            post = await save_post(tenant_id, slot_id, c, ctx, final=True)
+            await ctx.flush()                 # progress is visible while the rest of the week is still drafting
+            return post
         ctx.event("writer", "attempt_fell_short", slot=slot_id, attempt=attempt, reason=c.why_not(bar), score=c.score)
         if not c.report.passed:
             await save_post(tenant_id, slot_id, c, ctx, final=False)        # audit trail: what the guardrails stopped
+        await ctx.flush()
+        plateau = best is not None and best.report.passed and c.report.passed and c.score < best.score + 0.2
         if best is None or c.rank(bar) > best.rank(bar):
             best = c
+        if plateau:                 # another attempt did not help: more of the same will not either
+            ctx.event("writer", "redraft_stopped", slot=slot_id, reason="no improvement", best=best.score)
+            break
         note = redraft_note(c, bar)
     assert best is not None
     if not best.report.passed:                 # nothing passed the guardrails: the last blocked attempt is the record
@@ -133,10 +154,10 @@ async def compose_post(tenant_id: str, slot_id: str, ctx: AgentContext, note: st
     sources = relevant_sources(await source_pack(tenant_id), slot)
     pillar = next((p for p in strategy.get("pillars", []) if p["name"] == slot.pillar), {})
     policy = await policy_context(tenant_id)
-    src_text = "\n".join(f"[{s['url']}] {s['title']}: {s['text'][:800]}" for s in sources)
+    src_text = "\n".join(f"[{s['url']}] {s['title']}: {s['text'][:700]}" for s in sources)
     brief = (f"Topic: {slot.topic}\nAngle: {slot.angle}\nFormat: {slot.format}\nPillar: {slot.pillar} - "
              f"{pillar.get('description', '')}\nTrend reference: {slot.trend_ref or 'none'}\n"
-             f"Founder voice: {compact(voice, 1200)}\nSources you may cite:\n{src_text}")
+             f"Founder voice: {compact(voice, 1000)}\nSources you may cite:\n{src_text}")
     recent = [t.split("\n")[0] for t in policy.previous_posts[:6]]
     if recent:
         brief += "\nRecent openings (don't reuse these hooks or structures): " + " | ".join(recent)
@@ -146,7 +167,7 @@ async def compose_post(tenant_id: str, slot_id: str, ctx: AgentContext, note: st
                      "format": slot.format, "trend_ref": slot.trend_ref}, "voice": voice, "sources": sources,
             "note": note}
 
-    draft = (await structured("writer", "big", WRITER_SYSTEM, brief, PostDraft, ctx, temperature=0.7, max_tokens=1200,
+    draft = (await structured("writer", "big", WRITER_SYSTEM, brief, PostDraft, ctx, temperature=0.7, max_tokens=1000,
                               metadata={**meta, "round": 0})).output
     critique: Critique | None = None
     rounds = 0
@@ -162,7 +183,7 @@ async def compose_post(tenant_id: str, slot_id: str, ctx: AgentContext, note: st
         draft = (await structured("writer", "big", WRITER_SYSTEM,
                                   f"{brief}\n\nYour previous draft:\n{draft.text}\n\nEditor's required fixes:\n- " +
                                   "\n- ".join(critique.must_fix or [critique.verdict]), PostDraft, ctx, temperature=0.6,
-                                  max_tokens=1200,
+                                  max_tokens=1000,
                                   metadata={**meta, "round": rounds, "must_fix": critique.must_fix})).output
 
     report = check_post(draft.text, draft.hashtags, policy, draft.claims)
@@ -174,7 +195,7 @@ async def compose_post(tenant_id: str, slot_id: str, ctx: AgentContext, note: st
                                   f"{brief}\n\nYour draft:\n{draft.text}\n\nIt failed these policy checks. Rewrite to fix all of "
                                   f"them. If a figure cannot be tied to a source quote, remove the figure and the sentence around it; "
                                   f"do not invent anecdotes. Fix the claims list too:\n{report.instructions()}",
-                                  PostDraft, ctx, temperature=0.4, max_tokens=1200,
+                                  PostDraft, ctx, temperature=0.4, max_tokens=1000,
                                   metadata={**meta, "round": 99, "violations": [v.model_dump() for v in report.violations]})).output
         report = check_post(draft.text, draft.hashtags, policy, draft.claims)
     return Composed(draft, critique, rounds, report)
