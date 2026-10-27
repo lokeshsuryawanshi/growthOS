@@ -1,12 +1,14 @@
 {% extends "base.html" %}
+{% from "_macros.html" import provenance, unverified, srclink %}
 {% block title %}{{ tenant.name }} · Ops · Growth OS{% endblock %}
 {% block content %}
 <div class="pagehead">
-  <div><h1>{{ tenant.name }}</h1><div class="sub">{{ tenant.industry }} · founder {{ tenant.founder_name }}</div></div>
+  <div><h1>{{ tenant.name }}</h1><div class="sub">{{ tenant.industry }} · founder {{ tenant.founder_name }} ·
+    {% if tenant.kill_switch %}<span class="pill bad">paused</span>{% else %}<span class="pill ok">{{ tenant.status }}</span>{% endif %}</div></div>
   <div class="row">
     <a class="btn" href="/portal/{{ tenant.id }}">Founder's view</a>
     {% if me.can('run:start') %}
-    <form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="discovery"><button>Run discovery</button></form>
+    <form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="discovery"><button>Run research</button></form>
     <form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="weekly"><button class="primary">Run weekly cycle</button></form>
     {% endif %}
     {% if me.can('tenant:kill_switch') %}
@@ -24,79 +26,102 @@
 {% if tab == 'brief' %}
   {% set v = arts.get('voice_profile') %}{% set m = arts.get('market_report') %}{% set c = arts.get('competitor_matrix') %}
   {% set tr = arts.get('trend_report') %}{% set st = arts.get('content_strategy') %}{% set icp = arts.get('icp') %}
-  {% if not st %}<div class="empty">No strategy yet. Run discovery to research this client.</div>{% endif %}
-  {% if waiting_gate %}<div class="flash">The strategy brief is waiting for your sign-off. <form class="inline" method="post" action="/ui/{{ tenant.id }}/runs/{{ waiting_gate }}/approve/strategy_review"><button class="primary">Approve brief and continue</button></form></div>{% endif %}
+  {% if not st %}<div class="empty"><h3>No strategy yet</h3><p>Run research to study this client's market, competitors and voice.</p></div>{% endif %}
+  {% if waiting_gate %}<div class="flash warn" style="align-items:center"><div style="flex:1"><b>The strategy is waiting for sign-off.</b> The founder usually approves it; the agency can too.</div>
+    {% if me.can('strategy:review') %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ waiting_gate }}/approve/strategy_review"><button class="primary">Approve and continue</button></form>{% endif %}</div>{% endif %}
   <div class="grid2">
-  {% if v %}<section class="panel stack"><h2>Founder voice <span class="pill">v{{ v.version }}</span></h2>
-    <p>{{ v.data.summary }}</p>
-    <div class="row">{% for t in v.data.tone %}<span class="pill accent">{{ t }}</span>{% endfor %}</div>
-    <div><b>Formatting</b><ul class="violations" style="color:var(--ink)">{% for r in v.data.formatting_rules %}<li>{{ r }}</li>{% endfor %}</ul></div>
-    {% if v.data.learned_rules %}<div><b>Learned from the founder's edits</b><ul class="violations" style="color:var(--accent)">{% for r in v.data.learned_rules %}<li>{{ r }}</li>{% endfor %}</ul></div>{% endif %}
-  </section>{% endif %}
-  {% if st %}<section class="panel stack"><h2>Content strategy</h2><p>{{ st.data.positioning }}</p>
-    <table><tr><th>Pillar</th><th class="n">Share</th></tr>{% for p in st.data.pillars %}<tr><td><b>{{ p.name }}</b><br><span class="sub">{{ p.description }}</span></td><td class="n">{{ p.share_pct }}%</td></tr>{% endfor %}</table>
+  {% if st %}<section class="panel stack"><div class="row"><h2>Content strategy</h2><span class="pill">v{{ st.version }}</span></div><p>{{ st.data.positioning }}</p>
+    <div class="tablewrap"><table><tr><th>Pillar</th><th class="n">Share</th></tr>{% for p in st.data.pillars %}<tr><td><b>{{ p.name }}</b><br><span class="sub">{{ p.description }}</span></td><td class="n">{{ p.share_pct }}%</td></tr>{% endfor %}</table></div>
     <div class="sub">{{ st.data.posts_per_week }} posts per week · formats {{ st.data.format_mix | dictsort | map('join', ' ') | join(', ') }}%</div>
+  </section>{% endif %}
+  {% if v %}<section class="panel stack"><div class="row"><h2>Founder voice</h2><span class="pill">v{{ v.version }}</span></div>
+    <p>{{ v.data.summary }}</p>
+    <div class="chips">{% for t in v.data.tone %}<span class="pill accent">{{ t }}</span>{% endfor %}</div>
+    <div class="kv"><h3>Formatting</h3><ul class="violations" style="color:var(--ink)">{% for r in v.data.formatting_rules %}<li>{{ r }}</li>{% endfor %}</ul></div>
+    {% if v.data.learned_rules %}<div class="kv"><h3>Learned from the founder's edits</h3><ul class="violations" style="color:var(--accent-ink)">{% for r in v.data.learned_rules %}<li>{{ r }}</li>{% endfor %}</ul></div>{% endif %}
   </section>{% endif %}
   {% if c %}<section class="panel stack"><h2>Competitors</h2>
     <div class="tablewrap"><table><tr><th>Name</th><th>Positioning</th><th>Content</th></tr>
-    {% for x in c.data.competitors %}<tr><td><b>{{ x.name }}</b></td><td>{{ x.positioning }}</td><td class="sub">{{ x.content_themes | join('; ') }}<br>{{ x.posting_cadence }}</td></tr>{% endfor %}</table></div>
-    <div><b>Whitespace</b><ul class="violations" style="color:var(--ink)">{% for w in c.data.whitespace %}<li>{{ w }}</li>{% endfor %}</ul></div>
-  </section>{% endif %}
-  {% if tr %}<section class="panel stack"><h2>Trends</h2>
-    {% for x in tr.data.trends %}<div><b>{{ x.name }}</b> <span class="pill">relevance {{ x.relevance }}/5</span><div class="sub">{{ x.summary }}</div><div class="why">Angle: {{ x.content_angle }}</div></div>{% endfor %}
+    {% for x in c.data.competitors %}<tr><td><b>{{ x.name }}</b><br>{% if x.verified %}<span class="pill ok">checked</span>{% else %}<span class="pill warn" title="{{ x.note }}">not confirmed</span>{% endif %}{% if x.official_source %} <span class="pill ok">own site</span>{% endif %}</td>
+      <td>{{ x.positioning }}</td><td class="sub">{{ x.content_themes | join('; ') }}<br>{{ x.posting_cadence }}</td></tr>{% endfor %}</table></div>
+    <div class="kv"><h3>Whitespace</h3><ul class="violations" style="color:var(--ink)">{% for w in c.data.whitespace %}<li>{{ w }}</li>{% endfor %}</ul></div>
+    {{ unverified(c) }}{{ provenance(c) }}
   </section>{% endif %}
   {% if m %}<section class="panel stack"><h2>Market</h2><p>{{ m.data.summary }}</p>
-    {% for f in m.data.key_facts %}<div class="why">{{ f.claim }} <span class="mono sub">{{ f.source_url }}</span></div>{% endfor %}
+    {% for f in m.data.key_facts %}<div class="fact">{{ f.claim }}{% if f.status == 'outdated' %} <span class="pill warn">{{ f.note }}</span>{% endif %}<br>{{ srclink(f.source_url) }}</div>{% endfor %}
+    {{ unverified(m) }}{{ provenance(m) }}
+  </section>{% endif %}
+  {% if tr %}<section class="panel stack"><h2>Trends</h2>
+    {% for x in tr.data.trends %}<div class="kv"><div class="row"><b>{{ x.name }}</b><span class="pill">relevance {{ x.relevance }}/5</span>{% if x.note %}<span class="pill warn">{{ x.note }}</span>{% endif %}</div><div class="why">{{ x.summary }}</div><div class="why"><b>Angle:</b> {{ x.content_angle }}</div></div>{% endfor %}
+    {{ unverified(tr) }}
   </section>{% endif %}
   {% if icp %}<section class="panel stack"><h2>Ideal customer profile</h2>
-    {% for sgm in icp.data.segments %}<div><b>{{ sgm.name }}</b>: {{ sgm.titles | join(', ') }}<div class="sub">{{ sgm.industries | join(', ') }} · {{ sgm.min_employees }}–{{ sgm.max_employees }} employees · {{ sgm.geos | join(', ') }}</div></div>{% endfor %}
+    {% for sgm in icp.data.segments %}<div class="kv"><b>{{ sgm.name }}</b><div class="why">{{ sgm.titles | join(', ') }}</div><div class="sub">{{ sgm.industries | join(', ') }} · {{ sgm.min_employees }}–{{ sgm.max_employees }} employees · {{ sgm.geos | join(', ') }}</div></div>{% endfor %}
   </section>{% endif %}
   </div>
 
 {% elif tab == 'runs' %}
-  <section class="panel"><h2>Runs</h2><div class="tablewrap"><table>
-    <tr><th>Started</th><th>Kind</th><th>Status</th><th class="n">Cost</th><th>Note</th></tr>
-    {% for r in runs %}<tr><td><a href="/ops/{{ tenant.id }}/runs/{{ r.id }}">{{ r.created_at.strftime('%d %b %H:%M:%S') }}</a></td><td>{{ r.kind }}</td>
-      <td><span class="pill {{ r.status }}">{{ r.status.replace('_', ' ') }}</span></td><td class="n num">${{ '%.4f' % r.cost_usd }}</td><td class="sub">{{ r.error }}</td></tr>
-    {% else %}<tr><td colspan="5" class="sub">No runs yet.</td></tr>{% endfor %}</table></div></section>
+  <section class="panel"><div class="tablewrap"><table>
+    <tr><th>Started</th><th>Run</th><th>Status</th><th class="n">Took</th><th class="n">AI cost</th><th>Note</th></tr>
+    {% for r in runs %}<tr><td class="num"><a href="/ops/{{ tenant.id }}/runs/{{ r.id }}">{{ r.created_at.strftime('%d %b %H:%M:%S') }}</a></td><td>{{ r.kind }}</td>
+      <td><span class="pill {{ r.status }}">{{ r.status.replace('_', ' ') }}</span></td>
+      <td class="n num">{% if r.finished_at %}{% set secs = (r.finished_at - r.created_at).total_seconds() | int %}{{ secs // 60 }}m {{ secs % 60 }}s{% endif %}</td>
+      <td class="n num">${{ '%.4f' % r.cost_usd }}</td><td class="sub">{{ r.error | truncate(140) }}</td></tr>
+    {% else %}<tr><td colspan="6" class="sub">No runs yet.</td></tr>{% endfor %}</table></div></section>
 
 {% elif tab == 'content' %}
+  <div class="flash"><div>Every draft, including the ones the guardrails blocked (the founder never sees those). Blocked attempts stay here as the audit trail of what was stopped.</div></div>
   {% for r in all_posts %}{% with post=r.post, slot=r.slot %}{% include "partials/post_card.html" %}{% endwith %}
-  {% else %}<div class="empty">No drafts yet.</div>{% endfor %}
+  {% else %}<div class="empty"><h3>No drafts yet</h3><p>Drafts appear after a posts run.</p></div>{% endfor %}
 
 {% elif tab == 'leads' %}
-  <section class="panel"><h2>Qualified leads</h2><div class="tablewrap"><table>
-    <tr><th>Week</th><th>Person</th><th>Company</th><th class="n">Fit</th><th>Evidence</th><th>Outreach</th></tr>
-    {% for r in leads %}<tr><td class="num">{{ r.lead.week_of }}</td><td><b>{{ r.lead.full_name }}</b><br><span class="sub">{{ r.lead.title }}</span></td><td>{{ r.lead.company }}</td>
-      <td class="n">{{ r.lead.fit_score }}</td><td class="sub">{{ r.lead.evidence | join('; ') }}</td>
-      <td>{% if r.msg %}<span class="pill {{ r.msg.status }}">{{ r.msg.status.replace('_', ' ') }}</span>{% endif %}</td></tr>{% endfor %}
+  <section class="panel stack"><h2>Qualified leads</h2><div class="tablewrap"><table>
+    <tr><th>Week</th><th>Company</th><th>Contact</th><th class="n">Fit</th><th>Evidence</th><th>Outreach</th></tr>
+    {% for r in leads %}{% set l = r.lead %}<tr><td class="num">{{ l.week_of.strftime('%d %b') }}</td>
+      <td><b>{{ l.company }}</b><br>{{ srclink(l.source_url) }}</td>
+      <td>{% if l.full_name %}{{ l.full_name }}<br><span class="sub">{{ l.title }}</span><br><span class="pill {{ l.email_status or 'pending' }}">{{ (l.email_status or 'no email').replace('_', ' ') }}</span>{% else %}<span class="sub">company only</span>{% endif %}</td>
+      <td class="n">{{ l.fit_score }}</td><td class="sub">{{ l.evidence | join('; ') }}</td>
+      <td>{% if r.msg %}<span class="pill {{ r.msg.status }}">{{ r.msg.status.replace('_', ' ') }}</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="6" class="sub">No leads yet.</td></tr>{% endfor %}
   </table></div></section>
-  <section class="panel"><h2>Filtered out</h2><div class="sub" style="margin-bottom:8px">Prospects the system deliberately didn't keep, and why.</div><div class="tablewrap"><table>
-    <tr><th>Person</th><th>Company</th><th>Reason</th><th class="n">Fit</th><th>Detail</th></tr>
-    {% for x in rejections %}<tr><td>{{ x.full_name }}</td><td>{{ x.company }}</td><td><span class="pill {{ 'bad' if x.reason in ('suppressed', 'competitor') else '' }}">{{ x.reason.replace('_', ' ') }}</span></td>
-      <td class="n">{{ x.fit_score if x.fit_score is not none else '' }}</td><td class="sub mono">{{ x.detail }}</td></tr>{% endfor %}
+  <section class="panel stack"><h2>Filtered out</h2><div class="sub">Prospects the system deliberately did not keep, and why.</div><div class="tablewrap"><table>
+    <tr><th>Company</th><th>Person</th><th>Reason</th><th class="n">Fit</th><th>Detail</th></tr>
+    {% for x in rejections %}<tr><td>{{ x.company }}</td><td>{{ x.full_name }}</td><td><span class="pill {{ 'bad' if x.reason in ('suppressed', 'competitor') else '' }}">{{ x.reason.replace('_', ' ') }}</span></td>
+      <td class="n">{{ x.fit_score if x.fit_score is not none else '' }}</td><td class="sub">{{ x.detail | truncate(160) }}</td></tr>
+    {% else %}<tr><td colspan="5" class="sub">Nothing filtered out yet.</td></tr>{% endfor %}
   </table></div></section>
 
 {% elif tab == 'costs' %}
-  <section class="panel"><h2>Model spend by agent</h2><div class="tablewrap"><table>
+  <div class="metrics">
+    <div class="metric"><div class="label">AI this month</div><div class="value num">${{ '%.4f' % k.cost_month_usd }}</div><div class="target">budget ${{ '%.0f' % tenant.monthly_budget_usd }}</div></div>
+    <div class="metric"><div class="label">Search and contact credits this month</div><div class="value num">${{ '%.3f' % k.external_cost_month_usd }}</div><div class="target">at pay-as-you-go list prices</div></div>
+    <div class="metric"><div class="label">Per ready post (AI)</div><div class="value num">${{ '%.4f' % k.cost_per_ready_post }}</div></div>
+    <div class="metric"><div class="label">Per lead (AI)</div><div class="value num">${{ '%.4f' % k.cost_per_lead }}</div></div>
+  </div>
+  <section class="panel stack"><h2>Model spend by agent</h2><div class="tablewrap"><table>
     <tr><th>Agent</th><th>Model</th><th class="n">Calls</th><th class="n">Cached</th><th class="n">Retries</th><th class="n">Tokens in</th><th class="n">Tokens out</th><th class="n">Avg latency</th><th class="n">Cost</th></tr>
     {% for r in costs.rows %}<tr><td>{{ r.agent }}</td><td class="mono">{{ r.model }}</td><td class="n">{{ r.calls }}</td><td class="n">{{ r.cached }}</td><td class="n">{{ r.retries }}</td>
       <td class="n">{{ '{:,}'.format(r.prompt) }}</td><td class="n">{{ '{:,}'.format(r.completion) }}</td><td class="n">{{ r.latency }} ms</td><td class="n">${{ '%.4f' % r.cost }}</td></tr>
     {% else %}<tr><td colspan="9" class="sub">No model calls yet.</td></tr>{% endfor %}
-  </table></div>
-  <p class="sub">Cost per ready post ${{ '%.4f' % k.cost_per_ready_post }} · per lead ${{ '%.4f' % k.cost_per_lead }} · this month ${{ '%.4f' % k.cost_month_usd }} of ${{ '%.0f' % tenant.monthly_budget_usd }} budget</p></section>
+  </table></div></section>
+  <section class="panel stack"><h2>Search, contact and sending services</h2><div class="tablewrap"><table>
+    <tr><th>Service</th><th>Operation</th><th class="n">Calls</th><th class="n">Credits</th><th class="n">Cost at list price</th></tr>
+    {% for r in costs.external %}<tr><td>{{ r.provider }}</td><td>{{ r.operation.replace('_', ' ') }}</td><td class="n">{{ r.calls }}</td><td class="n">{{ '%.1f' % r.units }}</td><td class="n">${{ '%.3f' % r.cost }}</td></tr>
+    {% else %}<tr><td colspan="5" class="sub">No paid search or contact lookups yet.</td></tr>{% endfor %}
+  </table></div><p class="sub">Free tiers make the real cost $0 until they run out; this shows what the same usage costs on a paid plan.</p></section>
 
 {% elif tab == 'guardrails' %}
-  <section class="panel"><h2>Guardrail incidents</h2><div class="tablewrap"><table>
+  <section class="panel"><div class="tablewrap"><table>
     <tr><th>When</th><th>Layer</th><th>Rule</th><th>Severity</th><th>Detail</th></tr>
     {% for i in incidents %}<tr><td class="num">{{ i.created_at.strftime('%d %b %H:%M') }}</td><td>{{ i.layer }}</td><td>{{ i.rule.replace('_', ' ') }}</td>
       <td><span class="pill {{ i.severity }}">{{ i.severity }}</span></td><td class="sub">{{ i.detail }}</td></tr>
     {% else %}<tr><td colspan="5" class="sub">No incidents.</td></tr>{% endfor %}</table></div></section>
 
 {% elif tab == 'audit' %}
-  <section class="panel"><h2>Audit log</h2><div class="tablewrap"><table>
+  <section class="panel"><div class="tablewrap"><table>
     <tr><th>When</th><th>Actor</th><th>Action</th><th>Object</th><th>Detail</th></tr>
     {% for a in audit %}<tr><td class="num">{{ a.created_at.strftime('%d %b %H:%M:%S') }}</td><td class="mono">{{ a.actor }}</td><td>{{ a.action }}</td>
-      <td class="mono">{{ a.object_type }} {{ a.object_id }}</td><td class="sub mono">{{ a.detail }}</td></tr>{% endfor %}</table></div></section>
+      <td class="mono sub">{{ a.object_type }} {{ a.object_id }}</td><td class="sub mono" style="word-break:break-word">{{ a.detail | tojson | truncate(160) }}</td></tr>
+    {% else %}<tr><td colspan="5" class="sub">No audit entries.</td></tr>{% endfor %}</table></div></section>
 {% endif %}
 {% endblock %}

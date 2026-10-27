@@ -31,6 +31,7 @@ from app.agents.schemas import CompetitorMatrix, MarketReport, TrendReport, Voic
 from app.core.config import get_settings
 from app.core.tenancy import tenant_scope
 from app.db.audit import incident
+from app.db.usage import record_external
 from app.db.models import KnowledgeDoc
 from app.db.session import get_db
 from app.guardrails.input_guard import MODEL_VISIBLE_CHARS, sanitize, scan
@@ -98,6 +99,8 @@ async def _web_search(args: SearchArgs, ctx: AgentContext, with_answer: bool = T
     res = hit[1] if cached else await get_research().search(args.query)   # IntegrationError aborts the node with the fix
     if not cached:
         _SEARCH_CACHE[key] = (time.time(), res)
+        if not res.synthetic:
+            await record_external(ctx.tenant_id, res.provider, "search", ctx.call.run_id, ctx.call.node_key)
     st["synthetic"] = st["synthetic"] or res.synthetic
     st["searches"].append({"query": args.query, "provider": res.provider, "results": len(res.hits), "cached": cached})
     for note in res.skipped:

@@ -21,6 +21,7 @@ from app.core.tenancy import tenant_scope
 from app.db.audit import audit, incident
 from app.db.models import CalendarSlot, Feedback, Lead, OutreachMessage, Post, SuppressionEntry, Tenant
 from app.db.session import get_db
+from app.db.usage import record_external
 from app.guardrails.output_guard import check_outreach, check_post
 from app.guardrails.state import OUTREACH_TRANSITIONS, POST_TRANSITIONS, transition
 from app.integrations import gmail
@@ -232,7 +233,8 @@ async def send_outreach(p: Principal, tenant_id: str, msg_id: str) -> OutreachMe
             m.sent_at, m.external_id = _now(), external_id
             ld.status = "contacted"
             audit(s, p.user_id, "outreach.sent", "outreach", m.id, gmail_id=external_id)
-            return m
+    await record_external(tenant_id, "gmail", "send", node_key="send")
+    return m
 
 
 async def recover_interrupted_sends() -> int:

@@ -8,8 +8,8 @@ from typing import Any
 from sqlalchemy import case, func, select
 
 from app.core.tenancy import system_scope, tenant_scope
-from app.db.models import (Artifact, AuditLog, CalendarSlot, GuardrailIncident, Lead, LeadRejection, LLMCall,
-                           OutreachMessage, Post, Run, RunNode, Tenant, TraceEvent)
+from app.db.models import (Artifact, AuditLog, CalendarSlot, ExternalCall, GuardrailIncident, Lead, LeadRejection,
+                           LLMCall, OutreachMessage, Post, Run, RunNode, Tenant, TraceEvent)
 from app.db.session import get_db
 
 
@@ -90,6 +90,25 @@ async def run_detail(tenant_id: str, run_id: str) -> dict[str, Any] | None:
     return {"run": run, "nodes": nodes, "calls": calls, "events": events, "by_node": dict(by_node)}
 
 
+def time_breakdown(detail: dict[str, Any]) -> dict[str, Any]:
+    """Where a run's time went, per step: provider time vs waiting on our own per-model pacing vs 429 backoff.
+    Calls run in parallel, so these are summed call-seconds, compared with each step's wall time."""
+    steps: dict[str, dict[str, float]] = defaultdict(lambda: {"calls": 0, "model_s": 0.0, "pace_s": 0.0, "retry_s": 0.0})
+    models: dict[str, dict[str, float]] = defaultdict(lambda: {"calls": 0, "tokens": 0, "model_s": 0.0, "pace_s": 0.0,
+                                                                "retry_s": 0.0, "spilled": 0})
+    for c in detail["calls"]:
+        for agg in (steps[c.node_key], models[c.model]):
+            agg["calls"] += 1
+            agg["model_s"] += c.latency_ms / 1000
+            agg["pace_s"] += c.pace_wait_ms / 1000
+            agg["retry_s"] += c.retry_wait_ms / 1000
+        models[c.model]["tokens"] += c.prompt_tokens + c.completion_tokens
+        models[c.model]["spilled"] += "spilled" in (c.route_note or "")
+    total = {k: round(sum(v[k] for v in steps.values()), 1) for k in ("model_s", "pace_s", "retry_s")}
+    return {"steps": {k: {kk: round(vv, 1) for kk, vv in v.items()} for k, v in steps.items()},
+            "models": {k: {kk: round(vv, 1) for kk, vv in v.items()} for k, v in sorted(models.items())}, "total": total}
+
+
 async def incidents(tenant_id: str, limit: int = 100) -> list[GuardrailIncident]:
     return await _all(tenant_id, select(GuardrailIncident).order_by(GuardrailIncident.created_at.desc()).limit(limit))
 
@@ -107,9 +126,14 @@ async def cost_breakdown(tenant_id: str) -> dict[str, Any]:
                                                func.sum(LLMCall.retries), func.avg(LLMCall.latency_ms))
                                         .group_by(LLMCall.agent, LLMCall.model)
                                         .order_by(func.sum(LLMCall.cost_usd).desc()))).all()
+            external = (await s.execute(select(ExternalCall.provider, ExternalCall.operation, func.count(ExternalCall.id),
+                                               func.sum(ExternalCall.units), func.sum(ExternalCall.cost_usd))
+                                        .group_by(ExternalCall.provider, ExternalCall.operation))).all()
     return {"rows": [dict(agent=a, model=m, calls=n, prompt=int(pt or 0), completion=int(ct or 0), cost=float(c or 0),
                           cached=int(ca or 0), retries=int(r or 0), latency=int(l or 0))
-                     for a, m, n, pt, ct, c, ca, r, l in by_agent]}
+                     for a, m, n, pt, ct, c, ca, r, l in by_agent],
+            "external": [dict(provider=pv, operation=op, calls=n, units=float(u or 0), cost=float(c or 0))
+                         for pv, op, n, u, c in external]}
 
 
 async def portfolio(tenant_ids: list[str]) -> list[dict[str, Any]]:
@@ -141,8 +165,14 @@ async def run_usage(tenant_id: str, run_id: str) -> dict[str, Any]:
             row = (await s.execute(select(func.count(LLMCall.id), func.coalesce(func.sum(LLMCall.prompt_tokens), 0),
                                           func.coalesce(func.sum(LLMCall.completion_tokens), 0),
                                           func.coalesce(func.sum(LLMCall.cost_usd), 0.0),
-                                          func.coalesce(func.sum(LLMCall.retries), 0))
+                                          func.coalesce(func.sum(LLMCall.retries), 0),
+                                          func.coalesce(func.sum(LLMCall.pace_wait_ms), 0),
+                                          func.coalesce(func.sum(LLMCall.latency_ms), 0))
                                    .where(LLMCall.run_id == run_id))).one()
+            ext = dict((await s.execute(select(ExternalCall.provider, func.count(ExternalCall.id))
+                                        .where(ExternalCall.run_id == run_id).group_by(ExternalCall.provider))).all())
+            ext_cost = (await s.execute(select(func.coalesce(func.sum(ExternalCall.cost_usd), 0.0))
+                                        .where(ExternalCall.run_id == run_id))).scalar_one()
             run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().first()
     end = (run.finished_at if run and run.finished_at else datetime.now(timezone.utc))
     start = run.created_at if run else end
@@ -151,4 +181,6 @@ async def run_usage(tenant_id: str, run_id: str) -> dict[str, Any]:
     if end.tzinfo is None:
         end = end.replace(tzinfo=timezone.utc)
     return {"calls": int(row[0]), "tokens_in": int(row[1]), "tokens_out": int(row[2]), "cost": float(row[3]),
-            "retries": int(row[4]), "elapsed_s": max(0, int((end - start).total_seconds()))}
+            "retries": int(row[4]), "pace_wait_s": int(row[5]) // 1000, "model_s": int(row[6]) // 1000,
+            "searches": int(ext.get("tavily", 0) + ext.get("gemini_search", 0)), "contact_lookups": int(ext.get("hunter", 0)),
+            "external_cost": float(ext_cost), "elapsed_s": max(0, int((end - start).total_seconds()))}

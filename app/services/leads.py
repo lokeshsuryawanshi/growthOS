@@ -22,6 +22,7 @@ from app.core.tenancy import tenant_scope
 from app.db.audit import audit
 from app.db.models import Lead, OutreachMessage, SuppressionEntry
 from app.db.session import get_db
+from app.db.usage import record_external
 from app.integrations.errors import IntegrationError
 from app.integrations.hunter import HunterClient, clean_domain
 from app.llm.gateway import get_gateway
@@ -63,6 +64,7 @@ async def add_manual_lead(p: Principal, tenant_id: str, full_name: str, email: s
     if hunter.configured:
         try:
             status, confidence = await hunter.verify(email)
+            await record_external(tenant_id, "hunter", "verify", node_key="manual_lead")
         except IntegrationError as e:
             why = f"Hunter.io could not check it ({e.message})"
         if status in ("invalid", "disposable"):

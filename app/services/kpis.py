@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from app.core.config import get_settings
 from app.core.tenancy import tenant_scope
 from app.agents.blackboard import intake_of, tenant_goals
-from app.db.models import CalendarSlot, GuardrailIncident, Lead, LLMCall, OutreachMessage, Post
+from app.db.models import CalendarSlot, ExternalCall, GuardrailIncident, Lead, LLMCall, OutreachMessage, Post
 from app.db.session import get_db
 
 
@@ -33,6 +33,8 @@ async def tenant_kpis(tenant_id: str) -> dict:
             cost_month = (await s.execute(select(func.coalesce(func.sum(LLMCall.cost_usd), 0.0))
                                           .where(LLMCall.created_at >= month_start))).scalar_one()
             cost_total = (await s.execute(select(func.coalesce(func.sum(LLMCall.cost_usd), 0.0)))).scalar_one()
+            ext_month = (await s.execute(select(func.coalesce(func.sum(ExternalCall.cost_usd), 0.0))
+                                         .where(ExternalCall.created_at >= month_start))).scalar_one()
             incidents = (await s.execute(select(GuardrailIncident.layer, func.count(GuardrailIncident.id))
                                          .group_by(GuardrailIncident.layer))).all()
 
@@ -71,6 +73,8 @@ async def tenant_kpis(tenant_id: str) -> dict:
         "outreach_pending": sum(1 for m in msgs if m.status == "pending_approval"),
         "outreach_sent": sum(1 for m in msgs if m.status in ("sent", "replied")),
         "cost_month_usd": round(float(cost_month), 4),
+        "external_cost_month_usd": round(float(ext_month), 4),       # search credits and contact lookups
+        "cost_all_in_month_usd": round(float(cost_month) + float(ext_month), 4),
         "cost_total_usd": round(float(cost_total), 4),
         "cost_per_ready_post": round(float(cost_total) / max(1, len(approved) + status.get("pending_approval", 0)), 4),
         "cost_per_lead": round(float(cost_total) / max(1, len(leads)), 4),

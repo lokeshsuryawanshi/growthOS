@@ -173,6 +173,18 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
 }
 
 
+# Non-model services, USD per unit at pay-as-you-go list prices (verify before quoting; see docs/ECONOMICS.md).
+# Free tiers make the real cost $0 until they run out; the ledger records what the usage would cost on a paid plan.
+EXTERNAL_PRICES: dict[tuple[str, str], tuple[float, float]] = {
+    # (provider, operation): (credits per call, USD per credit)
+    ("tavily", "search"): (1.0, 0.008),               # basic search = 1 credit
+    ("gemini_search", "search"): (1.0, 0.035),         # Google Search grounding, per grounded request
+    ("hunter", "domain_search"): (1.0, 0.098),         # Starter plan: $49 / 500 searches
+    ("hunter", "verify"): (0.5, 0.098),                # a verification costs half a search credit
+    ("gmail", "send"): (1.0, 0.0),
+}
+
+
 # Free-tier limits per model. Groq values were read from the x-ratelimit-limit-* headers on 2026-10-27 (tokens per
 # minute; Groq also caps 1,000 requests and about 200k tokens per day per model, enforced by 429s). A request whose
 # prompt + max_tokens exceeds a Groq model's TPM is rejected outright, so the gateway skips that model for it.

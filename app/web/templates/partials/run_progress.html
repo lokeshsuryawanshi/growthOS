@@ -1,32 +1,42 @@
-{# expects: run (Run), nodes (list), labels (dict), tenant, me, can_retry #}
+{# expects: run (Run), nodes (list), labels (dict), tenant, me, can_retry, usage, progress, targets #}
 {% set active = run.status in ('pending', 'running') %}
+{% set pg = progress or {} %}
+{% set timing = {} %}{% for st in pg.get('steps', []) %}{% set _ = timing.update({st.key: st}) %}{% endfor %}
 <section class="panel stack" id="run-{{ run.id }}" {% if active %}hx-get="/ui/{{ tenant.id }}/runs/{{ run.id }}/progress" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
   <div class="row"><h2>{{ run_titles.get(run.kind, run.kind) }}</h2>
     <span class="pill {{ run.status }}">{% if active %}<span class="dot"></span> {% endif %}{{ run.status.replace('_', ' ') }}</span>
-    <span class="spacer"></span><span class="sub num">started {{ run.created_at.strftime('%H:%M:%S') }}</span></div>
+    <span class="spacer"></span>
+    {% if active and pg.get('eta_s') is not none %}<span class="pill accent num" title="Estimated from previous runs; free-tier rate limits can add time">about {{ ((pg.eta_s + 59) // 60) if pg.eta_s >= 60 else 1 }} min left</span>{% endif %}
+    <span class="sub num">started {{ run.created_at.strftime('%H:%M:%S') }}</span></div>
   {% if usage %}
   <div class="metrics" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
-    <div class="metric"><div class="label">Tokens in</div><div class="value num">{{ '{:,}'.format(usage.tokens_in) }}</div></div>
-    <div class="metric"><div class="label">Tokens out</div><div class="value num">{{ '{:,}'.format(usage.tokens_out) }}</div></div>
-    <div class="metric"><div class="label">Model calls</div><div class="value num">{{ usage.calls }}</div><div class="target">{{ usage.retries }} retr{{ 'y' if usage.retries == 1 else 'ies' }}</div></div>
+    <div class="metric"><div class="label">Elapsed</div><div class="value num">{{ usage.elapsed_s // 60 }}m {{ usage.elapsed_s % 60 }}s</div>{% if usage.pace_wait_s %}<div class="target">{{ usage.pace_wait_s }}s of calls waited on free-tier limits</div>{% endif %}</div>
+    <div class="metric"><div class="label">Tokens in / out</div><div class="value num" style="font-size:20px">{{ '{:,}'.format(usage.tokens_in) }} / {{ '{:,}'.format(usage.tokens_out) }}</div><div class="target">{{ usage.calls }} model calls</div></div>
     <div class="metric"><div class="label">AI cost</div><div class="value num">${{ '%.4f' % usage.cost }}</div><div class="target">at list prices</div></div>
-    <div class="metric"><div class="label">Elapsed</div><div class="value num">{{ usage.elapsed_s // 60 }}m {{ usage.elapsed_s % 60 }}s</div></div>
+    <div class="metric"><div class="label">Search and contact credits</div><div class="value num">${{ '%.3f' % usage.external_cost }}</div><div class="target">{{ usage.searches }} search{{ 'es' if usage.searches != 1 }}, {{ usage.contact_lookups }} contact lookup{{ 's' if usage.contact_lookups != 1 }}</div></div>
+    {% if pg.get('live', {}).get('posts_ready') is not none %}<div class="metric ok"><div class="label">Posts ready so far</div><div class="value num">{{ pg.live.posts_ready }}<span class="sub" style="font-size:14px"> / {{ targets.posts_per_week if targets else 5 }}</span></div></div>{% endif %}
+    {% if pg.get('live', {}).get('leads_found') is not none %}<div class="metric ok"><div class="label">Leads found so far</div><div class="value num">{{ pg.live.leads_found }}</div></div>{% endif %}
   </div>
   {% endif %}
-  {% if run.status == 'waiting_human' %}<div class="flash warn"><div><b>Waiting for you.</b> <a href="/portal/{{ tenant.id }}?tab=research">Review the strategy</a> and approve it to continue.</div></div>{% endif %}
+  {% if run.status == 'waiting_human' %}<div class="flash warn"><div><b>{{ 'Waiting for you.' if me.can('strategy:review') else 'Waiting for the owner.' }}</b> <a href="/portal/{{ tenant.id }}?tab=research">Review the strategy</a>{{ ' and approve it, or suggest changes,' if me.can('strategy:review') }} to continue.</div></div>{% endif %}
+  {% if run.status == 'succeeded_with_shortfall' %}<div class="flash warn"><div><b>Finished, but short of your targets.</b> {{ run.error }}.</div></div>{% endif %}
   {% if run.status == 'failed' %}<div class="flash bad"><div><b>This run did not finish.</b> The steps below say why and what to do. Steps that already succeeded are kept, so a retry only redoes the failed part.</div></div>{% endif %}
   <div class="steps">
-  {% for n in nodes %}
+  {% for n in nodes %}{% set t = timing.get(n.key, {}) %}
     <div class="step">
       <span class="ico {{ n.status }}">{% if n.status == 'succeeded' %}✓{% elif n.status in ('failed', 'blocked') %}!{% else %}{{ loop.index }}{% endif %}</span>
       <div><b>{{ labels.get(n.key, n.key) }}</b>
+        {% if t.get('seconds') is not none and n.status in ('running', 'succeeded', 'failed') %}<span class="sub num"> · {{ t.seconds }}s{% if n.status == 'running' %} (usually about {{ t.typical }}s){% endif %}</span>{% endif %}
         {% if n.status == 'failed' %}
           <div class="why" style="color:var(--bad)">{{ (n.output.get('integration') or {}).get('message') or n.error }}</div>
           {% if (n.output.get('integration') or {}).get('recovery') %}<div class="why"><b>What to do:</b> {{ n.output.integration.recovery }}</div>{% endif %}
         {% elif n.status == 'blocked' %}<div class="why">Waiting on an earlier step that failed.</div>
         {% elif n.status == 'succeeded' and n.output.get('skipped') %}<div class="why">Skipped: {{ n.output.skipped }}</div>
-        {% elif n.status == 'succeeded' and n.output.get('warnings') %}{% for w in n.output.warnings %}<div class="why" style="color:var(--warn)">{{ w }}</div>{% endfor %}
+        {% elif n.status == 'succeeded' and n.key == 'draft_week' %}<div class="why">{{ n.output.get('ready', 0) }} of {{ n.output.get('target', '?') }} posts ready for your review{% if n.output.get('below_bar') %}, {{ n.output.below_bar }} below the editor's bar (labelled){% endif %}</div>
+          {% for w in n.output.get('shortfall', [])[1:] %}<div class="why" style="color:var(--warn)">{{ w }}</div>{% endfor %}
         {% elif n.status == 'succeeded' and n.key == 'leads' %}<div class="why">{{ n.output.get('kept', 0) }} new lead{{ 's' if n.output.get('kept', 0) != 1 }}{% if n.output.get('contacts') == 'not configured' %} (no contacts: Hunter.io is not connected){% endif %}</div>
+          {% for w in n.output.get('shortfall', [])[1:] %}<div class="why" style="color:var(--warn)">{{ w }}</div>{% endfor %}
+        {% elif n.status == 'succeeded' and n.output.get('warnings') %}{% for w in n.output.warnings %}<div class="why" style="color:var(--warn)">{{ w }}</div>{% endfor %}
         {% endif %}
       </div>
       <div class="row">

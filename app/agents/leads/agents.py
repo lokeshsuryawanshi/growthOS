@@ -28,6 +28,7 @@ from app.agents.schemas import CompanyCandidates, LeadScores, OutreachCritique, 
 from app.core.config import get_settings
 from app.core.tenancy import tenant_scope
 from app.db.audit import audit, incident
+from app.db.usage import record_external
 from app.db.models import Lead, LeadRejection, OutreachMessage, SuppressionEntry
 from app.db.session import get_db
 from app.guardrails.input_guard import scan_many
@@ -154,11 +155,13 @@ async def _attach_contacts(ctx: AgentContext, pool: list[dict], titles: list[str
         try:
             contacts = await hunter.domain_search(p["company_domain"], limit=6)
             _spend_hunter_search()
+            await record_external(ctx.tenant_id, "hunter", "domain_search", ctx.call.run_id, ctx.call.node_key)
             c = best_contact(contacts, titles)
             if c is None:
                 return "no_contact"
             if c.status not in ("valid", "accept_all"):
                 st_, score = await hunter.verify(c.email)
+                await record_external(ctx.tenant_id, "hunter", "verify", ctx.call.run_id, ctx.call.node_key)
                 c.status, c.confidence = st_, score or c.confidence
             p.update(full_name=c.full_name, title=c.position, email=c.email, email_status=c.status,
                      email_confidence=c.confidence, linkedin_url=c.linkedin_url, contact_source="hunter")

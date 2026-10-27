@@ -176,6 +176,20 @@ class LLMCall(TenantScoped, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
+class ExternalCall(TenantScoped, Base):
+    """Cost ledger for paid non-model services: web search credits, contact lookups, sends."""
+    __tablename__ = "external_calls"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    node_key: Mapped[str] = mapped_column(String(64), default="")
+    provider: Mapped[str] = mapped_column(String(32))        # tavily|gemini_search|hunter|gmail
+    operation: Mapped[str] = mapped_column(String(32))       # search|domain_search|verify|send
+    units: Mapped[float] = mapped_column(Float, default=1.0) # provider credits used
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)  # at the list price in config (EXTERNAL_PRICES)
+    status: Mapped[str] = mapped_column(String(16), default="ok")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class LLMCache(TenantScoped, Base):
     __tablename__ = "llm_cache"
     __table_args__ = (UniqueConstraint("tenant_id", "key"),)

@@ -30,6 +30,7 @@ from app.integrations.status import integration_status
 from app.services import (accounts, admin as admin_service, approvals, leads as lead_service, queries,
                           runs as run_service, strategy, team)
 from app.services.kpis import tenant_kpis
+from app.services import progress as progress_service
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -313,7 +314,8 @@ async def portal(request: Request, tid: str, tab: str = "overview", run: str | N
             d = await queries.run_detail(tid, rid)
             if d:
                 ctx.update(run=d["run"], nodes=d["nodes"], labels=NODE_LABELS, run_titles=RUN_TITLES, can_retry=me.can("run:start"),
-                           usage=await queries.run_usage(tid, rid))
+                           usage=await queries.run_usage(tid, rid), progress=await progress_service.run_progress(tid, d["run"], d["nodes"]),
+                           targets=k["targets"])
     return await render(request, "portal.html", me, **ctx)
 
 
@@ -326,7 +328,8 @@ async def run_progress(request: Request, tid: str, rid: str):
         raise HTTPException(404)
     return templates.TemplateResponse(request, "partials/run_progress.html", {
         "run": d["run"], "nodes": d["nodes"], "labels": NODE_LABELS, "run_titles": RUN_TITLES, "tenant": tenant, "me": me, "can_retry": me.can("run:start"),
-        "usage": await queries.run_usage(tid, rid)})
+        "usage": await queries.run_usage(tid, rid), "progress": await progress_service.run_progress(tid, d["run"], d["nodes"]),
+        "targets": (await tenant_kpis(tid))["targets"]})
 
 
 async def _post_card(request, me, tenant, post_id, msg="", bad=False):
@@ -708,7 +711,9 @@ async def ops_run(request: Request, tid: str, rid: str):
     d = await queries.run_detail(tid, rid)
     if d is None:
         raise HTTPException(404)
-    return await render(request, "ops_run.html", me, tenant=tenant, d=d, section="ops")
+    return await render(request, "ops_run.html", me, tenant=tenant, d=d, section="ops", labels=NODE_LABELS,
+                        usage=await queries.run_usage(tid, rid), progress=await progress_service.run_progress(tid, d["run"], d["nodes"]),
+                        waits=queries.time_breakdown(d))
 
 
 @router.post("/ui/ops/weekly")
