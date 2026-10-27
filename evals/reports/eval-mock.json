@@ -1,91 +1,2925 @@
 {
   "mode": "mock",
-  "guardrails": {
-    "redteam_block_recall": 1.0,
-    "input_injection_recall": 0.8,
-    "benign_false_positive_rate": 0.0,
-    "misses": [
-      "input:obfuscated_spacing expected flag got pass "
-    ]
-  },
+  "guardrails": {},
   "pipeline": {
-    "clients": {
-      "ledgerloop": {
-        "run_status": [
-          "succeeded",
-          "succeeded",
-          "succeeded"
-        ],
-        "seconds": 1.2,
-        "calendar_valid": 1,
-        "topics_unique": 1,
-        "posts": 10,
-        "posts_ready": 10,
-        "posts_ready_rate": 1.0,
-        "avg_critic_score": 4.0,
-        "avg_critic_rounds": 1.3,
-        "guard_autofixes": 1,
-        "pending_posts_with_violations": 0,
-        "leads": 40,
-        "leads_per_week": [
-          20,
-          20
-        ],
-        "leads_week_in_range_rate": 1.0,
-        "lead_policy_violations": 0,
-        "explicit_low_fit_kept": 0,
-        "adversarial_rejection_recall": {},
-        "outreach_drafts": 40,
-        "injection_pages_caught": 2,
-        "artifact_contamination": 0,
-        "llm_calls": 145,
-        "tokens": 141538,
-        "cost_usd": 0.025,
-        "cost_per_client_cycle_usd": 0.0083
+    "clients": {}
+  },
+  "rbac": {
+    "rbac_checks": 315,
+    "rbac_matrix_pass_rate": 1.0,
+    "cross_tenant_access_violations": 0,
+    "privilege_escalation_attempts": 14,
+    "privilege_escalation_successes": 0,
+    "rbac_failures": [],
+    "escalations": [
+      {
+        "attempt": "founder creates a platform_admin",
+        "status": 403,
+        "succeeded": false
       },
-      "shiftwise": {
-        "run_status": [
-          "succeeded",
-          "succeeded",
-          "succeeded"
-        ],
-        "seconds": 1.1,
-        "calendar_valid": 1,
-        "topics_unique": 1,
-        "posts": 10,
-        "posts_ready": 10,
-        "posts_ready_rate": 1.0,
-        "avg_critic_score": 4.0,
-        "avg_critic_rounds": 1.5,
-        "guard_autofixes": 0,
-        "pending_posts_with_violations": 0,
-        "leads": 40,
-        "leads_per_week": [
-          20,
-          20
-        ],
-        "leads_week_in_range_rate": 1.0,
-        "lead_policy_violations": 0,
-        "explicit_low_fit_kept": 0,
-        "adversarial_rejection_recall": {},
-        "outreach_drafts": 40,
-        "injection_pages_caught": 1,
-        "artifact_contamination": 0,
-        "llm_calls": 147,
-        "tokens": 145925,
-        "cost_usd": 0.0258,
-        "cost_per_client_cycle_usd": 0.0086
+      {
+        "attempt": "founder promotes the viewer to platform_admin",
+        "status": 403,
+        "succeeded": false
+      },
+      {
+        "attempt": "founder creates a account_manager",
+        "status": 403,
+        "succeeded": false
+      },
+      {
+        "attempt": "founder promotes the viewer to account_manager",
+        "status": 403,
+        "succeeded": false
+      },
+      {
+        "attempt": "viewer promotes themself to owner",
+        "status": 403,
+        "succeeded": false
+      },
+      {
+        "attempt": "account manager creates an account manager",
+        "status": 403,
+        "succeeded": false
+      },
+      {
+        "attempt": "account manager assigns themself a client",
+        "status": 403,
+        "succeeded": false
+      },
+      {
+        "attempt": "founder adds a member to another workspace",
+        "status": 404,
+        "succeeded": false
+      },
+      {
+        "attempt": "last owner demotes themself",
+        "status": 409,
+        "succeeded": false
+      },
+      {
+        "attempt": "signup asks for the platform_admin role",
+        "status": 201,
+        "succeeded": false
+      },
+      {
+        "attempt": "token forged with a guessed secret",
+        "status": 401,
+        "succeeded": false
+      },
+      {
+        "attempt": "validly signed token for a user that does not exist",
+        "status": 401,
+        "succeeded": false
+      },
+      {
+        "attempt": "deactivated user's old token",
+        "status": 401,
+        "succeeded": false
+      },
+      {
+        "attempt": "removed member's old token",
+        "status": 401,
+        "succeeded": false
       }
-    },
-    "calendar_valid": 1,
-    "posts_ready_rate": 1.0,
-    "avg_critic_score": 4.0,
-    "leads_week_in_range_rate": 1.0,
-    "cost_per_client_cycle_usd": 0.0086,
-    "pending_posts_with_violations": 0,
-    "lead_policy_violations": 0,
-    "explicit_low_fit_kept": 0,
-    "artifact_contamination": 0
+    ],
+    "matrix": [
+      {
+        "check": "api read: KPIs",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: KPIs",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: KPIs",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: KPIs",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: KPIs",
+        "actor": "viewer_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: KPIs",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: KPIs",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: KPIs",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: KPIs",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: posts",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: posts",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: posts",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: posts",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: posts",
+        "actor": "viewer_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: posts",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: posts",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: posts",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: posts",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: leads",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: leads",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: leads",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: leads",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: leads",
+        "actor": "viewer_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: leads",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: leads",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: leads",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: leads",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: strategy",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: strategy",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: strategy",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: strategy",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: strategy",
+        "actor": "viewer_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: strategy",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: strategy",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: strategy",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: strategy",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: run status",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: run status",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: run status",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: run status",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: run status",
+        "actor": "viewer_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: run status",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: run status",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: run status",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: run status",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: team",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: team",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: team",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: team",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: team",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: team",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: team",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: team",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: team",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: costs (agency only)",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: costs (agency only)",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: costs (agency only)",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: costs (agency only)",
+        "actor": "owner_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: costs (agency only)",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: costs (agency only)",
+        "actor": "owner_b",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: costs (agency only)",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: costs (agency only)",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: costs (agency only)",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: guardrail incidents",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: guardrail incidents",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: guardrail incidents",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: guardrail incidents",
+        "actor": "owner_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: guardrail incidents",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: guardrail incidents",
+        "actor": "owner_b",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: guardrail incidents",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: guardrail incidents",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: guardrail incidents",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: platform data view",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: platform data view",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: platform data view",
+        "actor": "am_none",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: platform data view",
+        "actor": "owner_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: platform data view",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: platform data view",
+        "actor": "owner_b",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: platform data view",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: platform data view",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api read: platform data view",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: start a lead run",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 202,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: start a lead run",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 409,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: start a lead run",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: start a lead run",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 409,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: start a lead run",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: start a lead run",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: start a lead run",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: start a lead run",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: start a lead run",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve a post",
+        "actor": "admin",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve a post",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve a post",
+        "actor": "am_none",
+        "expected": "D",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve a post",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve a post",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve a post",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve a post",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve a post",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve a post",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit a post",
+        "actor": "admin",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit a post",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit a post",
+        "actor": "am_none",
+        "expected": "D",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit a post",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit a post",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit a post",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit a post",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit a post",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit a post",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve an email",
+        "actor": "admin",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve an email",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve an email",
+        "actor": "am_none",
+        "expected": "D",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve an email",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve an email",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve an email",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve an email",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve an email",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: approve an email",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: send an email",
+        "actor": "admin",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: send an email",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: send an email",
+        "actor": "am_none",
+        "expected": "D",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: send an email",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 409,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: send an email",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: send an email",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: send an email",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: send an email",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: send an email",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit the profile",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit the profile",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit the profile",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit the profile",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit the profile",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit the profile",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit the profile",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit the profile",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: edit the profile",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a teammate",
+        "actor": "admin",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a teammate",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a teammate",
+        "actor": "am_none",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a teammate",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 201,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a teammate",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a teammate",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a teammate",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a teammate",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a teammate",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: change a teammate's role",
+        "actor": "admin",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: change a teammate's role",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: change a teammate's role",
+        "actor": "am_none",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: change a teammate's role",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: change a teammate's role",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: change a teammate's role",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: change a teammate's role",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: change a teammate's role",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: change a teammate's role",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: pause the workspace",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: pause the workspace",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: pause the workspace",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: pause the workspace",
+        "actor": "owner_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: pause the workspace",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: pause the workspace",
+        "actor": "owner_b",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: pause the workspace",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: pause the workspace",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: pause the workspace",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: set the budget",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: set the budget",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: set the budget",
+        "actor": "am_none",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: set the budget",
+        "actor": "owner_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: set the budget",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: set the budget",
+        "actor": "owner_b",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: set the budget",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: set the budget",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: set the budget",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a lead by hand",
+        "actor": "admin",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a lead by hand",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 409,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a lead by hand",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a lead by hand",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 409,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a lead by hand",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a lead by hand",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a lead by hand",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a lead by hand",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: add a lead by hand",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: suggest strategy changes",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 202,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: suggest strategy changes",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 409,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: suggest strategy changes",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: suggest strategy changes",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 409,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: suggest strategy changes",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: suggest strategy changes",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: suggest strategy changes",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: suggest strategy changes",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: suggest strategy changes",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: create account manager",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 201,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: create account manager",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: create account manager",
+        "actor": "am_none",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: create account manager",
+        "actor": "owner_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: create account manager",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: create account manager",
+        "actor": "owner_b",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: create account manager",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: create account manager",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: create account manager",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: assign a client",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: assign a client",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: assign a client",
+        "actor": "am_none",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: assign a client",
+        "actor": "owner_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: assign a client",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: assign a client",
+        "actor": "owner_b",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: assign a client",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: assign a client",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "api write: assign a client",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: workspace",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: workspace",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: workspace",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: workspace",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: workspace",
+        "actor": "viewer_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: workspace",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: workspace",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: workspace",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: workspace",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: team",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: team",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: team",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: team",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: team",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: team",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: team",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: team",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: team",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: platform data view",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: platform data view",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: platform data view",
+        "actor": "am_none",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: platform data view",
+        "actor": "owner_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: platform data view",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: platform data view",
+        "actor": "owner_b",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: platform data view",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: platform data view",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: platform data view",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: agency console",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: agency console",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: agency console",
+        "actor": "am_none",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: agency console",
+        "actor": "owner_a",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: agency console",
+        "actor": "viewer_a",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: agency console",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: agency console",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: agency console",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui page: agency console",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: approve a post",
+        "actor": "admin",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: approve a post",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: approve a post",
+        "actor": "am_none",
+        "expected": "D",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: approve a post",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: approve a post",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: approve a post",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: approve a post",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: approve a post",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: approve a post",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: edit the profile",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: edit the profile",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: edit the profile",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: edit the profile",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: edit the profile",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: edit the profile",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: edit the profile",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: edit the profile",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: edit the profile",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: start a lead run",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: start a lead run",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: start a lead run",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: start a lead run",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: start a lead run",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: start a lead run",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: start a lead run",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: start a lead run",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: start a lead run",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: add a teammate",
+        "actor": "admin",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: add a teammate",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: add a teammate",
+        "actor": "am_none",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: add a teammate",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: add a teammate",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: add a teammate",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: add a teammate",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: add a teammate",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: add a teammate",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: connect Gmail",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: connect Gmail",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: connect Gmail",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: connect Gmail",
+        "actor": "owner_a",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: connect Gmail",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: connect Gmail",
+        "actor": "owner_b",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: connect Gmail",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: connect Gmail",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: connect Gmail",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: pause the workspace",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: pause the workspace",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: pause the workspace",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: pause the workspace",
+        "actor": "owner_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: pause the workspace",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: pause the workspace",
+        "actor": "owner_b",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: pause the workspace",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: pause the workspace",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "ui write: pause the workspace",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 303,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder reads B",
+        "actor": "admin",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder reads B",
+        "actor": "am_a",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder reads B",
+        "actor": "am_none",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder reads B",
+        "actor": "owner_a",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder reads B",
+        "actor": "viewer_a",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder reads B",
+        "actor": "owner_b",
+        "expected": "A",
+        "got": "A",
+        "status": 200,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder reads B",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder reads B",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder reads B",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder writes B's team",
+        "actor": "admin",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder writes B's team",
+        "actor": "am_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder writes B's team",
+        "actor": "am_none",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder writes B's team",
+        "actor": "owner_a",
+        "expected": "N",
+        "got": "N",
+        "status": 404,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder writes B's team",
+        "actor": "viewer_a",
+        "expected": "F",
+        "got": "F",
+        "status": 403,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder writes B's team",
+        "actor": "owner_b",
+        "expected": "A",
+        "got": "A",
+        "status": 201,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder writes B's team",
+        "actor": "deactivated",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder writes B's team",
+        "actor": "removed",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      },
+      {
+        "check": "cross: A's founder writes B's team",
+        "actor": "anon",
+        "expected": "U",
+        "got": "U",
+        "status": 401,
+        "ok": true,
+        "cross_tenant_violation": false
+      }
+    ]
   },
   "gate": {
     "passed": true,

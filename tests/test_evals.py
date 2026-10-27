@@ -13,3 +13,13 @@ async def test_guardrail_eval_meets_baseline():
     failures = gate({"guardrails": g, "pipeline": {}}, baseline)
     assert not failures, failures
     assert g["redteam_block_recall"] == 1.0 and g["benign_false_positive_rate"] == 0.0
+
+
+async def test_rbac_eval_matrix_passes_with_no_violations(db):
+    from app.llm.gateway import LLMGateway, set_gateway
+    from evals.rbac import eval_rbac
+    set_gateway(LLMGateway())
+    r = await eval_rbac()
+    assert r["rbac_checks"] >= 300
+    assert r["rbac_matrix_pass_rate"] == 1.0, r["rbac_failures"]
+    assert r["cross_tenant_access_violations"] == 0 and r["privilege_escalation_successes"] == 0

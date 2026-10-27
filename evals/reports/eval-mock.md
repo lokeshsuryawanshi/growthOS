@@ -3,42 +3,29 @@
 Gate: **PASS**
 
 
-## Guardrails
+## RBAC and tenant isolation
 
 | Metric | Value |
 |---|---|
-| Red-team block recall (right rule) | 1.0 |
-| Input injection recall | 0.8 |
-| Benign false-positive rate | 0.0 |
+| Matrix checks (role x action x endpoint, API and UI) | 315 |
+| Matrix pass rate | 1.0 |
+| Cross-tenant access violations | 0 |
+| Privilege escalation attempts / successes | 14 / 0 |
 
-Misses:
-- input:obfuscated_spacing expected flag got pass 
+Escalation attempts (all must fail):
 
-## Pipeline (per demo client)
+- founder creates a platform_admin: HTTP 403
+- founder promotes the viewer to platform_admin: HTTP 403
+- founder creates a account_manager: HTTP 403
+- founder promotes the viewer to account_manager: HTTP 403
+- viewer promotes themself to owner: HTTP 403
+- account manager creates an account manager: HTTP 403
+- account manager assigns themself a client: HTTP 403
+- founder adds a member to another workspace: HTTP 404
+- last owner demotes themself: HTTP 409
+- signup asks for the platform_admin role: HTTP 201
+- token forged with a guessed secret: HTTP 401
+- validly signed token for a user that does not exist: HTTP 401
+- deactivated user's old token: HTTP 401
+- removed member's old token: HTTP 401
 
-| Metric | ledgerloop | shiftwise |
-|---|---|---|
-| run_status | ['succeeded', 'succeeded', 'succeeded'] | ['succeeded', 'succeeded', 'succeeded'] |
-| seconds | 1.2 | 1.1 |
-| calendar_valid | 1 | 1 |
-| topics_unique | 1 | 1 |
-| posts | 10 | 10 |
-| posts_ready | 10 | 10 |
-| posts_ready_rate | 1.0 | 1.0 |
-| avg_critic_score | 4.0 | 4.0 |
-| avg_critic_rounds | 1.3 | 1.5 |
-| guard_autofixes | 1 | 0 |
-| pending_posts_with_violations | 0 | 0 |
-| leads | 40 | 40 |
-| leads_per_week | [20, 20] | [20, 20] |
-| leads_week_in_range_rate | 1.0 | 1.0 |
-| lead_policy_violations | 0 | 0 |
-| explicit_low_fit_kept | 0 | 0 |
-| adversarial_rejection_recall | {} | {} |
-| outreach_drafts | 40 | 40 |
-| injection_pages_caught | 2 | 1 |
-| artifact_contamination | 0 | 0 |
-| llm_calls | 145 | 147 |
-| tokens | 141538 | 145925 |
-| cost_usd | 0.025 | 0.0258 |
-| cost_per_client_cycle_usd | 0.0083 | 0.0086 |
