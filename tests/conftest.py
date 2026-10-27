@@ -20,7 +20,11 @@ from app.db.session import Database, set_db
 
 @pytest.fixture
 async def db(tmp_path):
-    database = Database(f"sqlite+aiosqlite:///{tmp_path}/test.db")
+    """SQLite per test by default. TEST_DATABASE_URL=postgresql+asyncpg://... runs the same tests on Postgres."""
+    url = os.environ.get("TEST_DATABASE_URL") or f"sqlite+aiosqlite:///{tmp_path}/test.db"
+    database = Database(url)
+    if not url.startswith("sqlite"):
+        await database.drop_all()
     await database.create_all()
     set_db(database)
     yield database

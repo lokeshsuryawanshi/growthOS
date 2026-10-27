@@ -34,11 +34,26 @@ async def integration_status(tenant_id: str | None = None) -> list[dict]:
                 if search_ok else "No search provider: market, competitor and trend research cannot run.",
                 "how": "Set TAVILY_API_KEY (free tier at tavily.com), or enable billing on the Google key."})
     hunter = HunterClient()
-    out.append({"key": "hunter", "name": "Hunter.io (business emails)", "required": False,
-                "state": OK if hunter.configured else MISSING,
-                "detail": "Finds and verifies decision-maker emails for each lead." if hunter.configured
-                else "Not set: leads are found as companies without contacts, and outreach cannot be emailed.",
-                "how": "Create a key at hunter.io (free plan available) and set HUNTER_API_KEY."})
+    h: dict = {"key": "hunter", "name": "Hunter.io (business emails)", "required": False,
+               "state": OK if hunter.configured else MISSING,
+               "detail": "Finds and verifies decision-maker emails for each lead." if hunter.configured
+               else "Not set: leads are found as companies without contacts, and outreach cannot be emailed.",
+               "how": "Create a key at hunter.io (free plan available) and set HUNTER_API_KEY."}
+    if hunter.configured:
+        from app.agents.leads.agents import hunter_quota
+        q = await hunter_quota(hunter)
+        if q:
+            se, ve = q.get("searches", {}), q.get("verifications", {})
+            h["quota"] = {"plan": q.get("plan", ""), "searches_left": se.get("remaining"), "searches": se.get("available"),
+                          "verifications_left": ve.get("remaining"), "verifications": ve.get("available")}
+            h["detail"] += (f" {q.get('plan') or 'Plan'}: {se.get('remaining')} of {se.get('available')} contact searches and "
+                            f"{ve.get('remaining')} of {ve.get('available')} verifications left this month. Each qualified "
+                            f"company uses one search; when they run out, leads are kept without a contact.")
+            if se.get("remaining") == 0:
+                h["state"] = DEGRADED
+        else:
+            h["detail"] += " The remaining quota could not be read right now."
+    out.append(h)
     g: dict = {"key": "gmail", "name": "Gmail (send approved outreach)", "required": False,
                "how": "Add Google OAuth client credentials (see docs/DEPLOY.md), then click Connect Gmail."}
     if not gmail.configured():

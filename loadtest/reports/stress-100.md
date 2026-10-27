@@ -3,33 +3,33 @@
 | Metric | Value |
 |---|---|
 | config | {"tenants": 100, "latency_ms": [100, 600], "rate_limit_rate": 0.05, "transient_rate": 0.02, "global_concurrency": 48, "per_tenant_concurrency": 3, "provider_concurrency": 64} |
-| wall_seconds | 66.6 |
-| discovery_seconds | 21.6 |
-| weekly_seconds | 45.0 |
+| wall_seconds | 76.6 |
+| discovery_seconds | 20.5 |
+| weekly_seconds | 56.0 |
 | run_status | {"succeeded": 100, "weekly:succeeded": 100} |
 | nodes | 1600 |
 | nodes_failed | 0 |
-| node_seconds_p50 | 0.682 |
-| node_seconds_p95 | 8.452 |
-| queue_wait_p50 | 1.458 |
-| queue_wait_p95 | 14.902 |
-| fairness_mean_wait_max_over_min | 1.83 |
+| node_seconds_p50 | 0.917 |
+| node_seconds_p95 | 10.779 |
+| queue_wait_p50 | 2.725 |
+| queue_wait_p95 | 23.547 |
+| fairness_mean_wait_max_over_min | 3.67 |
 | scheduler_peak_concurrency | 48 |
-| llm_calls | 11482 |
-| llm_calls_per_second | 172.4 |
-| llm_retries | 614 |
+| llm_calls | 7622 |
+| llm_calls_per_second | 99.5 |
+| llm_retries | 568 |
 | llm_errors | 0 |
-| injected_failures | {"429": 431, "5xx": 183} |
+| injected_failures | {"429": 404, "5xx": 164} |
 | db_lock_errors | 0 |
 | posts | 500 |
 | posts_blocked | 0 |
-| leads | 1820 |
-| outreach | 1820 |
+| leads | 1764 |
+| outreach | 1764 |
 | tenants_meeting_posts_target | 100/100 |
 | tenants_meeting_calendar_target | 100/100 |
 | tenants_meeting_leads_target | 100/100 |
 | cross_tenant_fk_violations | 0 |
 | cross_tenant_name_mentions | 0 |
-| cost_usd_total | 1.3928 |
-| cost_usd_per_tenant | 0.0139 |
-| api | {"requests": 2000, "rps": 190.4, "p50_ms": 241.0, "p95_ms": 382.5, "p99_ms": 442.6, "errors": {}} |
+| cost_usd_total | 1.3268 |
+| cost_usd_per_tenant | 0.0133 |
+| api | {"requests": 2000, "rps": 115.8, "p50_ms": 410.6, "p95_ms": 614.9, "p99_ms": 696.3, "errors": {}} |

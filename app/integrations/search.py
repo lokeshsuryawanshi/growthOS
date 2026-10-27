@@ -1,12 +1,14 @@
 """Web search with an honest, labelled fallback chain.
 
-Order: Gemini Google-Search grounding -> Tavily. Both need a key; there is deliberately no scraping fallback.
+Order: SEARCH_PROVIDERS (default Tavily, then Gemini Google-Search grounding). Both need a key; there is
+deliberately no scraping fallback.
 Every response says which provider produced it and which providers were skipped and why, so the UI can show
 provenance. If no provider can answer the caller gets an IntegrationError with the fix. There is no canned fallback.
 """
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -35,6 +37,15 @@ class SearchResponse:
     hits: list[SearchHit] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)   # "gemini_search: quota exceeded"
     synthetic: bool = False
+
+
+def clean_query(q: str, max_words: int = 12) -> str:
+    """Plain words only: models like quotes, site: filters and boolean operators, which make search engines return
+    nothing (live run 2026-10-27: every lead query came back empty)."""
+    q = re.sub(r"\b(site|inurl|intitle|filetype):\S+", " ", q, flags=re.I)
+    q = re.sub(r"[\"\u201c\u201d()\[\]]", " ", q)
+    q = re.sub(r"\s(AND|OR|NOT)\s", " ", f" {q} ")
+    return " ".join(q.split()[:max_words])
 
 
 class WebSearch:
@@ -88,15 +99,16 @@ class WebSearch:
         data = r.json()
         hits = [SearchHit(x.get("title") or x["url"], x["url"], (x.get("content") or "")[:300])
                 for x in data.get("results", []) if x.get("url")]
-        if not hits:
-            raise IntegrationError("tavily", BAD_RESPONSE, "no results")
-        return SearchResponse("tavily", query, answer=data.get("answer") or "", hits=hits)
+        return SearchResponse("tavily", query, answer=data.get("answer") or "", hits=hits)   # no hits is an answer too
 
     # -- chain -----------------------------------------------------------------
     async def search(self, query: str) -> SearchResponse:
+        query = clean_query(query) or query
         s = get_settings()
-        chain = [("gemini_search", self._gemini, bool(s.google_api_key)),
-                 ("tavily", self._tavily, bool(s.tavily_api_key))]
+        providers = {"gemini_search": (self._gemini, bool(s.google_api_key)),
+                     "tavily": (self._tavily, bool(s.tavily_api_key))}
+        order = [x.strip() for x in s.search_providers.split(",") if x.strip() in providers] or list(providers)
+        chain = [(name, *providers[name]) for name in order]
         skipped: list[str] = []
         last: IntegrationError | None = None
         for name, fn, configured in chain:
@@ -107,7 +119,8 @@ class WebSearch:
             except IntegrationError as e:
                 last = e
                 skipped.append(f"{name}: {e.message}")
-                self._disable(name, 600 if e.code in ("quota_exceeded", "auth_failed") else 60)
+                if e.code in ("quota_exceeded", "auth_failed"):    # a timeout on one query must not stop every search
+                    self._disable(name, 600)
                 log.warning("search provider %s failed: %s", name, e.message)
                 continue
             res.skipped = skipped

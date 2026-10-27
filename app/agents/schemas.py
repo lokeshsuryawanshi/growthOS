@@ -7,7 +7,10 @@ from pydantic import BaseModel, Field, field_validator
 class Sourced(BaseModel):
     claim: str
     source_url: str = Field(description="URL the claim came from; empty only for client-provided facts")
-    verified: bool = Field(default=False, description="Set by code: the URL was actually returned by a search or fetched")
+    verified: bool = Field(default=False, description="Set by code: the cited source was seen and its text supports the claim")
+    status: str = Field(default="verified", description="Set by code: verified | outdated")
+    official: bool = Field(default=False, description="Set by code: the source is the client's or the company's own site")
+    note: str = Field(default="", description="Set by code")
 
 
 # ---------------- research ----------------------------------------------------
@@ -40,7 +43,9 @@ class Competitor(BaseModel):
     strengths: list[str] = Field(default_factory=list, max_length=4)
     weaknesses: list[str] = Field(default_factory=list, max_length=4)
     source_urls: list[str] = Field(default_factory=list)
-    verified: bool = False   # set by code: at least one source URL was actually seen
+    verified: bool = False         # set by code: a cited page was seen and its text supports positioning and offerings
+    official_source: bool = False  # set by code: one of the sources is the competitor's own website
+    note: str = ""                 # set by code: why it is not verified
 
 
 class CompetitorMatrix(BaseModel):
@@ -52,9 +57,10 @@ class Trend(BaseModel):
     name: str
     summary: str
     evidence_url: str = ""
-    verified: bool = False   # set by code: the evidence URL was actually seen
+    verified: bool = False   # set by code: the evidence URL was seen and its text supports the summary
     relevance: int = Field(default=3, ge=1, le=5)
     content_angle: str
+    note: str = ""           # set by code: e.g. the evidence is several years old
 
 
 class TrendReport(BaseModel):
@@ -194,7 +200,8 @@ class Candidate(BaseModel):
 
 
 class CompanyCandidates(BaseModel):
-    companies: list[Candidate] = Field(min_length=1, max_length=25, description="Companies named in the search results")
+    companies: list[Candidate] = Field(default_factory=list, max_length=25,
+                                       description="Companies named in the search results; empty if none fit")
 
 
 class OutreachCritique(BaseModel):

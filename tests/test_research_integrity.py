@@ -61,17 +61,22 @@ async def test_fabricated_source_urls_are_dropped_and_counted(world, monkeypatch
 
     def lying(req):
         out = real(req)
-        for call in out.get("tool_calls", []):
-            if call["name"] == "submit_result":
-                call["arguments"]["key_facts"] += [
-                    {"claim": "93% of CFOs love us", "source_url": "https://made-up.example/survey"},
-                    {"claim": "an uncited claim", "source_url": ""}]
+        real_url = req.metadata["pages"][0]["url"]
+        out["content"]["key_facts"] += [
+            {"claim": "93% of CFOs love us", "source_url": "https://made-up.example/survey"},
+            {"claim": "an uncited claim", "source_url": ""},
+            # a page that was really read, cited for something it does not say: the figure is not in its text
+            {"claim": "77% of finance teams plan to switch vendors next quarter", "source_url": real_url}]
         return out
     monkeypatch.setitem(MOCK_RESPONDERS, "market_analyst", lying)
     assert (await discover(orch, tid))[1] == "succeeded"
     m = await art(db, tid, "market_report")
-    assert not any("93%" in f["claim"] or f["claim"] == "an uncited claim" for f in m.data["key_facts"])
-    assert m.data["_provenance"]["dropped_unverified"] >= 2
+    assert not any(x in f["claim"] for f in m.data["key_facts"] for x in ("93%", "77%", "an uncited claim"))
+    assert m.data["_provenance"]["dropped_unverified"] >= 3
+    flagged = {u["claim"]: u["reason"] for u in m.data["_unverified"]}       # shown to the founder as not verified
+    assert "not found in the source" in flagged["77% of finance teams plan to switch vendors next quarter"]
+    assert "never returned" in flagged["93% of CFOs love us"]
+    assert all(f["verified"] and f["status"] in ("verified", "outdated") for f in m.data["key_facts"])
 
 
 async def test_unsourced_competitors_are_dropped_and_none_left_fails_honestly(world, monkeypatch):
@@ -81,10 +86,8 @@ async def test_unsourced_competitors_are_dropped_and_none_left_fails_honestly(wo
 
     def invented(req):
         out = real(req)
-        for call in out.get("tool_calls", []):
-            if call["name"] == "submit_result":
-                for c in call["arguments"]["competitors"]:
-                    c["source_urls"] = ["https://invented.example/page"]
+        for c in out["content"]["competitors"]:
+            c["source_urls"] = ["https://invented.example/page"]
         return out
     monkeypatch.setitem(MOCK_RESPONDERS, "competitor_analyst", invented)
     rid, status = await discover(orch, tid)
@@ -140,3 +143,31 @@ async def test_injected_page_never_reaches_stored_research(world):
         for kind in ("market_report", "competitor_matrix", "trend_report", "content_strategy", "icp"):
             blob = str((await art(db, ids[slug], kind)).data).lower()
             assert "ignore all previous" not in blob and "system prompt" not in blob
+
+
+def test_claim_support_needs_the_figures_and_most_key_words_in_the_source():
+    from app.agents.research.agents import check_support
+    src = "In our 2025 survey of 412 controllers, 61% said month-end close takes more than eight days."
+    assert check_support("61% of controllers say month-end close takes more than eight days", src)[0]
+    ok, why = check_support("71% of controllers say month-end close takes more than eight days", src)
+    assert not ok and "71" in why                                   # a figure the source does not contain
+    ok, why = check_support("Most CFOs are replacing their ERP systems this year", src)
+    assert not ok and "key words" in why                            # words the source does not say
+    assert not check_support("anything", "")[0]                     # an unreadable source supports nothing
+
+
+def test_old_statistics_are_flagged_as_outdated():
+    from app.agents.research.agents import outdated_year
+    assert outdated_year("In 2019, 40% of firms outsourced payroll", "", now_year=2026) == 2019
+    src = "A 2021 report found that 40% of firms outsourced payroll."
+    assert outdated_year("40% of firms outsource payroll", src, now_year=2026) == 2021   # year taken from the source
+    assert outdated_year("In 2025, 40% of firms outsourced payroll", "", now_year=2026) is None
+
+
+async def test_competitor_facts_from_their_own_site_are_marked_official(world):
+    db, ids, orch = world
+    tid = ids["ledgerloop"]
+    assert (await discover(orch, tid))[1] == "succeeded"
+    comp = (await art(db, tid, "competitor_matrix")).data
+    assert all("official_source" in c for c in comp["competitors"])
+    assert comp["_unverified"] == [] or all(u["reason"] for u in comp["_unverified"])

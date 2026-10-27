@@ -2,7 +2,9 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+import re
+
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,10 +48,23 @@ class Settings(BaseSettings):
     guard_model: str = "meta-llama/llama-prompt-guard-2-86m"  # injection classifier
     judge_model: str = "gemini-3.5-flash-lite"       # judge (Gemini), falls back to judge_fallback_model
     judge_fallback_model: str = "qwen/qwen3.8-27b"
-    research_model: str = "gemini-3.5-flash-lite"    # grounded web search; falls back to seeded corpus
+    research_model: str = "gemini-3.5-flash-lite"    # Google Search grounding (web search provider)
+    search_providers: str = "tavily,gemini_search"   # web search fallback order (Tavily first: free tier, no billing)
+    # Tier -> fallback chain, "provider:model" comma-separated. Empty = the default chain built from the models above
+    # (see Settings.route_chain). Free-tier limits are per model, so each tier leads with a different model and spills
+    # over to the next one when its own limit would make the call wait (route_spill_wait_s).
+    route_big: str = ""          # posts, outreach, strategy, calendar, voice
+    route_research: str = ""     # research steps: choose searches and pages to read
+    route_small: str = ""        # scoring, query planning, reflection
+    route_extract: str = ""      # one structured extraction from a large evidence pack
+    route_judge: str = ""        # critic: a different model family than the writer
+    route_guard: str = ""        # prompt-injection classifier
+    route_spill_wait_s: float = 4.0
+    model_limits_json: str = ""  # override MODEL_LIMITS, e.g. {"gemini-3.5-flash-lite": {"tpm": 250000, "rpm": 15}}
 
     # --- storage -----------------------------------------------------------
-    database_url: str = "sqlite+aiosqlite:///./growthos.db"
+    database_url: str = "sqlite+aiosqlite:///./growthos.db"   # or postgres://... (any hosted Postgres URL works as given)
+    ephemeral_storage_override: bool | None = Field(None, validation_alias=AliasChoices("EPHEMERAL_STORAGE"))
 
     # --- auth --------------------------------------------------------------
     jwt_secret: str = DEV_JWT_SECRET
@@ -76,10 +91,38 @@ class Settings(BaseSettings):
     calendar_weeks: int = 8
     leads_per_week_min: int = 10
     leads_per_week_max: int = 20
-    lead_fit_threshold: int = 60
+    lead_fit_threshold: int = 70                      # below this a lead is dropped (and reported)
     critic_pass_score: float = 4.0
-    critic_max_rounds: int = 3
+    critic_max_rounds: int = 2                         # editor rounds per attempt (one revision); attempts are bounded too
+    draft_attempts: int = 3                            # fresh drafts per slot until one passes guardrails and the bar
+    content_time_budget_s: float = 270.0               # no new redraft attempt starts after this (in-flight ones finish)
     outreach_daily_send_cap: int = 25
+
+    @field_validator("ephemeral_storage_override", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v):
+        return None if isinstance(v, str) and not v.strip() else v   # "EPHEMERAL_STORAGE=" in a .env means "decide for me"
+
+    @field_validator("database_url")
+    @classmethod
+    def _async_driver(cls, v: str) -> str:
+        """Accept the URL hosted Postgres providers hand out (postgres://...?sslmode=require) as is."""
+        v = (v or "").strip()
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                v = "postgresql+asyncpg://" + v[len(prefix):]
+        if v.startswith("postgresql+asyncpg://"):
+            v = re.sub(r"([?&])sslmode=(require|verify-full|verify-ca|prefer)", r"\1ssl=\2", v)
+            v = re.sub(r"[?&]channel_binding=\w+", "", v)
+        return v
+
+    @property
+    def ephemeral_storage(self) -> bool:
+        """SQLite in /tmp (e.g. the free Render plan): data is lost on redeploy, restart and idle spin-down.
+        EPHEMERAL_STORAGE=true/false overrides the guess."""
+        if self.ephemeral_storage_override is not None:
+            return self.ephemeral_storage_override
+        return self.database_url.startswith("sqlite") and "/tmp/" in self.database_url
 
     @property
     def fixtures_allowed(self) -> bool:
@@ -102,6 +145,24 @@ class Settings(BaseSettings):
             return "mock"
         return "unconfigured"
 
+    def route_chain(self, tier: str) -> list[tuple[str, str]]:
+        """The ordered (provider, model) fallback chain for a tier: env override or the default."""
+        raw = getattr(self, f"route_{tier}", "") or ",".join(DEFAULT_ROUTES[tier](self))
+        out = []
+        for item in raw.split(","):
+            provider, _, model = item.strip().partition(":")
+            if provider and model:
+                out.append((provider.strip(), model.strip()))
+        return out
+
+    def model_limits(self) -> dict[str, dict[str, int]]:
+        import json
+        limits = {m: dict(v) for m, v in MODEL_LIMITS.items()}
+        if self.model_limits_json:
+            for m, v in json.loads(self.model_limits_json).items():
+                limits.setdefault(m, {}).update(v)
+        return limits
+
     @property
     def uses_fixture_sources(self) -> bool:
         """Seeded research/prospects are used if and only if the models are mocked too."""
@@ -120,31 +181,64 @@ class Settings(BaseSettings):
             warnings.append("GROQ_API_KEY is not set: research and drafting are unavailable until it is.")
         if self.app_env == "production" and not self.app_base_url.startswith("https://"):
             warnings.append("APP_BASE_URL is not https: session cookies are not marked Secure.")
+        if self.ephemeral_storage:
+            warnings.append("The database is on ephemeral storage: accounts and data reset on redeploy, restart or idle "
+                            "spin-down. Set DATABASE_URL to a hosted Postgres to keep them.")
         return warnings
 
 
-# USD per 1M tokens (input, output). Approximate list prices; verify against
-# provider pricing pages before relying on absolute numbers.
+# USD per 1M tokens (input, output), paid list prices checked on the providers' pages on 2026-10-27
+# (console.groq.com/docs/models, ai.google.dev/gemini-api/docs/pricing). Free tiers bill $0; the ledger records what
+# the same usage would cost on a paid plan.
 MODEL_PRICES: dict[str, tuple[float, float]] = {
     "openai/gpt-oss-120b": (0.15, 0.60),
     "openai/gpt-oss-20b": (0.075, 0.30),
     "meta-llama/llama-prompt-guard-2-86m": (0.04, 0.04),
-    "qwen/qwen3.8-27b": (0.29, 0.59),
-    "gemini-3.5-flash-lite": (0.10, 0.40),
+    "qwen/qwen3.8-27b": (0.80, 4.00),
+    "meta-llama/llama-prompt-guard-2-22m": (0.03, 0.03),
+    "gemini-3.5-flash-lite": (0.30, 2.50),
     "mock-big": (0.15, 0.60),
+    "mock-research": (0.075, 0.30),
     "mock-small": (0.075, 0.30),
+    "mock-extract": (0.10, 0.40),
     "mock-judge": (0.10, 0.40),
     "mock-guard": (0.04, 0.04),
 }
 
 
-# Tokens-per-minute per model, from the provider's x-ratelimit-limit-tokens header
-# (Groq on-demand tier). The gateway paces requests with a token bucket per model.
-MODEL_TPM: dict[str, int] = {
-    "openai/gpt-oss-120b": 8000,
-    "openai/gpt-oss-20b": 8000,
-    "qwen/qwen3.8-27b": 8000,
-    "meta-llama/llama-prompt-guard-2-86m": 15000,
+# Non-model services, USD per unit at list prices checked on 2026-10-27 (tavily.com/pricing + docs.tavily.com,
+# ai.google.dev pricing, hunter.io/pricing). Free tiers make the real cost $0 until they run out.
+EXTERNAL_PRICES: dict[tuple[str, str], tuple[float, float]] = {
+    # (provider, operation): (credits per call, USD per credit)
+    ("tavily", "search"): (1.0, 0.008),               # basic search = 1 credit; pay-as-you-go $0.008/credit
+    ("gemini_search", "search"): (1.0, 0.014),         # grounding: $14 per 1,000 requests after 5,000 free a month
+    ("hunter", "domain_search"): (1.0, 0.0245),        # Starter $49 / 2,000 credits; one credit per query with results
+    ("hunter", "verify"): (0.5, 0.0245),               # a verification is half a credit
+    ("gmail", "send"): (1.0, 0.0),
+}
+
+
+# Free-tier limits per model. Groq values were read from the x-ratelimit-limit-* headers on 2026-10-27 (tokens per
+# minute; Groq also caps 1,000 requests and about 200k tokens per day per model, enforced by 429s). A request whose
+# prompt + max_tokens exceeds a Groq model's TPM is rejected outright, so the gateway skips that model for it.
+# Gemini's free tier is not reported in headers: the values are conservative and can be raised via MODEL_LIMITS_JSON.
+MODEL_LIMITS: dict[str, dict[str, int]] = {
+    "openai/gpt-oss-120b": {"tpm": 8000, "rpm": 30, "max_request": 8000},
+    "openai/gpt-oss-20b": {"tpm": 8000, "rpm": 30, "max_request": 8000},
+    "qwen/qwen3.8-27b": {"tpm": 8000, "rpm": 30, "max_request": 8000},
+    "meta-llama/llama-prompt-guard-2-86m": {"tpm": 15000, "rpm": 30},
+    "meta-llama/llama-prompt-guard-2-22m": {"tpm": 15000, "rpm": 30},
+    "gemini-3.5-flash-lite": {"tpm": 250000, "rpm": 15},
+}
+MODEL_TPM: dict[str, int] = {m: v["tpm"] for m, v in MODEL_LIMITS.items()}   # kept for callers that only need TPM
+
+DEFAULT_ROUTES = {
+    "big": lambda s: [f"groq:{s.groq_model}", f"groq:{s.judge_fallback_model}"],
+    "research": lambda s: [f"groq:{s.small_model}", f"groq:{s.judge_fallback_model}", f"gemini:{s.judge_model}"],
+    "small": lambda s: [f"groq:{s.small_model}", f"groq:{s.judge_fallback_model}", f"gemini:{s.judge_model}"],
+    "extract": lambda s: [f"gemini:{s.judge_model}", f"groq:{s.groq_model}", f"groq:{s.judge_fallback_model}"],
+    "judge": lambda s: [f"gemini:{s.judge_model}", f"groq:{s.judge_fallback_model}"],
+    "guard": lambda s: [f"groq:{s.guard_model}", "groq:meta-llama/llama-prompt-guard-2-22m"],
 }
 
 

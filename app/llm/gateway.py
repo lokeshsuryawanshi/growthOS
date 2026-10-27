@@ -15,8 +15,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
-from app.core.config import MODEL_PRICES, MODEL_TPM, Settings, get_settings
+from app.core.config import MODEL_PRICES, Settings, get_settings
 from app.core.tenancy import tenant_scope
 from app.db.audit import incident
 from app.db.models import LLMCache, LLMCall, Tenant
@@ -63,7 +64,9 @@ class LLMGateway:
         self.breakers = {n: CircuitBreaker(self.s.circuit_failure_threshold, self.s.circuit_cooldown_s)
                          for n in self.providers}
         self.semaphores = {n: asyncio.Semaphore(self.s.provider_max_concurrency) for n in self.providers}
-        self.buckets: dict[str, TokenBucket] = {m: TokenBucket(tpm) for m, tpm in MODEL_TPM.items()}
+        self.limits = self.s.model_limits()
+        self.buckets: dict[str, TokenBucket] = {m: TokenBucket(v["tpm"], v.get("rpm")) for m, v in self.limits.items()}
+        self.exhausted_until: dict[str, float] = {}             # model -> monotonic time its daily quota frees up
         self._tenants: dict[str, _TenantState] = {}
         self._tenant_lock = asyncio.Lock()
         self._global: tuple[str, float, float] | None = None   # (utc day, spend, fetched_at)
@@ -72,13 +75,36 @@ class LLMGateway:
     def route(self, tier: Tier) -> list[tuple[str, str]]:
         if self.mode == "mock":
             return [("mock", f"mock-{tier}")]
-        chains: dict[str, list[tuple[str, str]]] = {
-            "big": [("groq", self.s.groq_model)],
-            "small": [("groq", self.s.small_model), ("groq", self.s.groq_model)],
-            "judge": [("gemini", self.s.judge_model), ("groq", self.s.judge_fallback_model)],
-            "guard": [("groq", self.s.guard_model)],
-        }
-        return [(p, m) for p, m in chains[tier] if p in self.providers]
+        return [(p, m) for p, m in self.s.route_chain(tier) if p in self.providers]
+
+    def plan(self, req: LLMRequest) -> tuple[list[tuple[str, str]], list[str]]:
+        """Order the tier's chain for this request.
+
+        Limits are per model, so a busy primary should not make a call wait while another model in the same chain is
+        free. Candidates the request is too large for, or whose daily quota is used up, are dropped with a note. The
+        first candidate stays first unless its expected wait exceeds route_spill_wait_s and another one is sooner."""
+        need = self._estimate_tokens(req)
+        now = time.monotonic()
+        usable, notes = [], []
+        for pname, model in self.route(req.tier):
+            cap = self.limits.get(model, {}).get("max_request")
+            if cap and need > cap:
+                notes.append(f"{model}: request of ~{need} tokens exceeds its {cap}-token limit")
+                continue
+            if self.exhausted_until.get(model, 0) > now:
+                notes.append(f"{model}: daily quota used up")
+                continue
+            usable.append((pname, model))
+        if len(usable) > 1:
+            waits = {m: (self.buckets[m].estimate_wait(need) if m in self.buckets else 0.0) for _, m in usable}
+            first = usable[0][1]
+            if waits[first] > self.s.route_spill_wait_s:
+                best = min(usable, key=lambda c: waits[c[1]])
+                if waits[best[1]] + 1.0 < waits[first]:
+                    usable.remove(best)
+                    usable.insert(0, best)
+                    notes.append(f"spilled from {first} (~{waits[first]:.0f}s wait) to {best[1]}")
+        return usable, notes
 
     # -- tenant budget / kill switch ----------------------------------------------
     async def _tenant_state(self, tenant_id: str) -> _TenantState:
@@ -162,15 +188,18 @@ class LLMGateway:
         return LLMResponse(**row.response) if row else None
 
     async def _cache_put(self, tenant_id: str, key: str, resp: LLMResponse) -> None:
-        with tenant_scope(tenant_id):
-            async with get_db().session() as s:
-                exists = (await s.execute(select(LLMCache.id).where(LLMCache.key == key))).first()
-                if not exists:
-                    s.add(LLMCache(key=key, response=resp.model_dump()))
+        try:
+            with tenant_scope(tenant_id):
+                async with get_db().session() as s:
+                    exists = (await s.execute(select(LLMCache.id).where(LLMCache.key == key))).first()
+                    if not exists:
+                        s.add(LLMCache(key=key, response=resp.model_dump()))
+        except IntegrityError:
+            pass        # a parallel call cached the same answer first (possible on Postgres); the result is the same
 
     # -- ledger --------------------------------------------------------------------
     async def _ledger(self, ctx: CallContext, req: LLMRequest, resp: LLMResponse | None, status: str,
-                      error: str = "", model: str = "") -> None:
+                      error: str = "", model: str = "", waits: tuple[int, int] = (0, 0)) -> None:
         with tenant_scope(ctx.tenant_id):
             async with get_db().session() as s:
                 s.add(LLMCall(
@@ -178,6 +207,9 @@ class LLMGateway:
                     model=resp.model if resp else model, prompt_tokens=resp.prompt_tokens if resp else 0,
                     completion_tokens=resp.completion_tokens if resp else 0, cost_usd=resp.cost_usd if resp else 0.0,
                     latency_ms=resp.latency_ms if resp else 0, retries=resp.retries if resp else 0,
+                    pace_wait_ms=resp.pace_wait_ms if resp else waits[0],
+                    retry_wait_ms=resp.retry_wait_ms if resp else waits[1],
+                    route_note=(resp.route_note if resp else "")[:300],
                     cached=resp.cached if resp else False, status=status, error=error[:500]))
 
     # -- the call ------------------------------------------------------------------
@@ -189,38 +221,50 @@ class LLMGateway:
             hit = await self._cache_get(ctx.tenant_id, key)
             if hit:
                 hit.cached, hit.cost_usd, hit.latency_ms, hit.retries = True, 0.0, 0, 0
+                hit.pace_wait_ms = hit.retry_wait_ms = 0
                 await self._ledger(ctx, req, hit, "ok")
                 return hit
 
-        chain = self.route(req.tier)
+        chain, notes = self.plan(req)
         if not chain:
-            raise LLMUnavailable(f"no provider configured for tier {req.tier}")
+            msg = "; ".join(notes) or f"no provider configured for tier {req.tier}"
+            await self._ledger(ctx, req, None, "error", msg, model=(self.route(req.tier) or [("", "")])[0][1])
+            raise LLMUnavailable(msg)
         errors: list[str] = []
+        waited = [0.0, 0.0]          # pacing, retry sleeps: across every model tried for this call
         for idx, (pname, model) in enumerate(chain):
             breaker = self.breakers[pname]
             if breaker.is_open:
                 errors.append(f"{pname}: circuit open")
                 continue
             try:
-                resp = await self._call_with_retries(pname, model, req)
+                resp = await self._call_with_retries(pname, model, req, waited, last=idx == len(chain) - 1)
             except FatalError as e:
                 breaker.record_failure()
                 errors.append(f"{pname}/{model}: {e}")
                 continue
-            except (RateLimited, TransientError) as e:
+            except RateLimited as e:
+                if not e.daily:                      # a used-up daily quota says nothing about the provider's health
+                    breaker.record_failure()
+                errors.append(f"{pname}/{model}: rate limited: {str(e)[:200]}")
+                continue
+            except TransientError as e:
                 breaker.record_failure()
                 errors.append(f"{pname}/{model}: retries exhausted: {e}")
                 continue
             breaker.record_success()
             resp.fallback_used = idx > 0
+            resp.pace_wait_ms, resp.retry_wait_ms = int(waited[0] * 1000), int(waited[1] * 1000)
+            resp.route_note = "; ".join(notes + errors)
             await self._account(ctx, resp.cost_usd)
-            await self._ledger(ctx, req, resp, "fallback" if idx else "ok")
+            await self._ledger(ctx, req, resp, "fallback" if (idx or errors) else "ok")
             if key:
                 await self._cache_put(ctx.tenant_id, key, resp)
             return resp
 
-        msg = " | ".join(errors)
-        await self._ledger(ctx, req, None, "error", msg, model=chain[0][1])
+        msg = " | ".join(notes + errors)
+        await self._ledger(ctx, req, None, "error", msg, model=chain[0][1],
+                           waits=(int(waited[0] * 1000), int(waited[1] * 1000)))
         raise LLMUnavailable(msg)
 
     @staticmethod
@@ -230,35 +274,48 @@ class LLMGateway:
         chars += sum(len(str(t.parameters)) for t in req.tools or [])
         return chars // 4 + req.max_tokens
 
-    async def _call_with_retries(self, pname: str, model: str, req: LLMRequest) -> LLMResponse:
+    async def _call_with_retries(self, pname: str, model: str, req: LLMRequest, waited: list[float],
+                                 last: bool = True) -> LLMResponse:
+        """Call one model. 429s are waited out only when no other model in the chain could take the call sooner;
+        otherwise the model is marked busy (or exhausted for the day) and the caller moves on."""
         provider = self.providers[pname]
         retries = rate_limited = 0
         bucket = self.buckets.get(model)
         while True:
             if bucket is not None:
-                await bucket.acquire(self._estimate_tokens(req))
+                waited[0] += await bucket.acquire(self._estimate_tokens(req))
             t0 = time.monotonic()
             try:
                 async with self.semaphores[pname]:
                     raw = await provider.complete(model, req)
+                if bucket is not None:
+                    bucket.sync(raw.remaining_tokens, raw.reset_tokens_s)
                 return LLMResponse(
                     content=raw.content, tool_calls=raw.tool_calls, provider=pname, model=model,
                     prompt_tokens=raw.prompt_tokens, completion_tokens=raw.completion_tokens,
                     cost_usd=price(model, raw.prompt_tokens, raw.completion_tokens),
                     latency_ms=int((time.monotonic() - t0) * 1000), retries=retries)
             except RateLimited as e:
-                # Expected under load: wait as long as the provider asks (plus jitter), within limits.
-                if rate_limited >= self.s.llm_rate_limit_retries:
+                if e.daily:
+                    self.exhausted_until[model] = time.monotonic() + (e.retry_after or 3600)
+                    raise
+                wait = e.retry_after if e.retry_after else min(20.0, 0.5 * 2 ** (rate_limited + 1))
+                if bucket is not None:
+                    bucket.block(wait)
+                if rate_limited >= self.s.llm_rate_limit_retries or (not last and wait > self.s.route_spill_wait_s):
                     raise
                 rate_limited += 1
                 retries += 1
-                wait = e.retry_after if e.retry_after else min(20.0, 0.5 * 2 ** rate_limited)
-                await asyncio.sleep(min(self.s.llm_rate_limit_max_wait_s, wait) * random.uniform(1.0, 1.2))
+                pause = min(self.s.llm_rate_limit_max_wait_s, wait) * random.uniform(1.0, 1.2)
+                waited[1] += pause
+                await asyncio.sleep(pause)
             except TransientError:
                 if retries - rate_limited >= self.s.llm_max_retries:
                     raise
                 retries += 1
-                await asyncio.sleep(min(20.0, 0.5 * 2 ** (retries - rate_limited)) * random.uniform(0.7, 1.3))
+                pause = min(20.0, 0.5 * 2 ** (retries - rate_limited)) * random.uniform(0.7, 1.3)
+                waited[1] += pause
+                await asyncio.sleep(pause)
 
 
 _gateway: LLMGateway | None = None

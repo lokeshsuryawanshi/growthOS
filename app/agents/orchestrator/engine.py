@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
@@ -79,6 +80,9 @@ DAGS: dict[str, dict[str, list[str]]] = {
 }
 HUMAN_GATES = {"strategy_review"}
 TERMINAL = {"succeeded", "failed", "blocked", "skipped"}
+# A run finishes "succeeded" only if every node did and no node reported a KPI shortfall (output["shortfall"]);
+# otherwise "succeeded_with_shortfall" with the reasons in run.error, or "failed".
+RUN_DONE = {"succeeded", "succeeded_with_shortfall", "failed", "cancelled"}
 MAX_ATTEMPTS = 2
 
 
@@ -118,7 +122,7 @@ async def _ingest(n: NodeCtx) -> dict:
             docs = (await s.execute(select(KnowledgeDoc).where(KnowledgeDoc.kind.in_(["founder_sample", "intake_note"])))).scalars().all()
     flagged = 0
     for d in docs:
-        v = await scan(d.content, n.agent.call)
+        v = await scan(d.content, n.agent.call, trusted=d.trusted)   # the client's own text: heuristics only
         if v.flagged:
             flagged += 1
             with tenant_scope(n.tenant_id):
@@ -130,7 +134,10 @@ async def _ingest(n: NodeCtx) -> dict:
 
 async def _artifact(n: NodeCtx, kind: str, fn) -> dict:
     out = await fn(n.tenant_id, n.agent)
-    data = {**out.model_dump(), "_provenance": provenance(n.agent)}
+    # "_" keys are for the UI only (agents never see them): where the research came from, and the claims that were
+    # flagged rather than shown as facts because their source did not support them.
+    data = {**out.model_dump(), "_provenance": provenance(n.agent),
+            "_unverified": n.agent.call.extra.get("unverified", [])}
     art = await put_artifact(n.tenant_id, kind, data, n.run_id)
     return {"artifact": kind, "version": art.version}
 
@@ -152,20 +159,40 @@ async def _trends(n): return await _artifact(n, "trend_report", trend_scout)
 
 
 @handler("strategy")
-async def _strategy(n): return await _artifact(n, "content_strategy", strategist)
+async def _strategy(n):
+    n.agent.call.extra["feedback"] = _feedback(n, "strategy")
+    return await _artifact(n, "content_strategy", strategist)
 
 
 @handler("icp")
-async def _icp(n): return await _artifact(n, "icp", icp_builder)
+async def _icp(n):
+    n.agent.call.extra["feedback"] = _feedback(n, "icp")
+    return await _artifact(n, "icp", icp_builder)
+
+
+def _feedback(n: NodeCtx, part: str) -> list[str]:
+    """The founder's latest requested change ('Suggest changes' on the strategy page), if it applies to this step.
+    Earlier requests are already part of the current version, which the agent revises."""
+    history = n.params.get("strategy_feedback", [])
+    return [history[-1]["note"]] if history and part in history[-1].get("parts", []) else []
 
 
 @handler("calendar")
 async def _calendar(n: NodeCtx) -> dict:
     s = get_settings()
-    start = date.fromisoformat(n.params["start_date"]) if n.params.get("start_date") else next_monday(date.today())
-    written = await calendar_planner(n.tenant_id, n.agent, start, list(range(1, s.calendar_weeks + 1)))
+    meta = await latest(n.tenant_id, "calendar_meta")
+    start = date.fromisoformat(n.params["start_date"]) if n.params.get("start_date") else \
+        (date.fromisoformat(meta["start"]) if meta else next_monday(date.today()))
+    # Re-planning (e.g. after the founder suggested strategy changes) keeps weeks that already hold drafted, approved
+    # or posted slots; only weeks that are still just a plan are planned again.
+    with tenant_scope(n.tenant_id):
+        async with get_db().reader() as sess:
+            committed = {(d - start).days // 7 + 1 for (d,) in await sess.execute(
+                select(CalendarSlot.publish_date).where(CalendarSlot.status != "planned"))}
+    weeks = [w for w in range(1, s.calendar_weeks + 1) if w not in committed]
+    written = await calendar_planner(n.tenant_id, n.agent, start, weeks) if weeks else 0
     await put_artifact(n.tenant_id, "calendar_meta", {"start": start.isoformat(), "weeks": s.calendar_weeks}, n.run_id)
-    return {"slots": written, "start": start.isoformat()}
+    return {"slots": written, "start": start.isoformat(), "kept_weeks": sorted(w for w in committed if w >= 1)}
 
 
 @handler("trends_refresh")
@@ -187,38 +214,67 @@ async def week_to_draft(tenant_id: str) -> date | None:
 
 @handler("draft_week")
 async def _draft_week(n: NodeCtx) -> dict:
+    """Draft the week until the client's posts-per-week target is met, or say exactly why not.
+
+    A post counts toward the target only if it passed the guardrails and the editor's bar. Each slot gets a bounded
+    number of attempts (draft_slot); spare planned slots in the week are used if some slots still fall short."""
+    from app.agents.blackboard import intake_of, tenant_goals
+    bar = get_settings().critic_pass_score
+    target = tenant_goals(await intake_of(n.tenant_id))["posts_per_week"]
     week = date.fromisoformat(n.params["week_start"]) if n.params.get("week_start") else await week_to_draft(n.tenant_id)
     if week is None:
-        return {"drafted": 0, "note": "no planned slots"}
+        return {"target": target, "ready": 0, "shortfall": ["no planned calendar slots left to draft"]}
     n.params["week_start"] = week.isoformat()
     with tenant_scope(n.tenant_id):
         async with get_db().reader() as s:
             slots = (await s.execute(select(CalendarSlot.id).where(
                 CalendarSlot.status == "planned", CalendarSlot.publish_date >= week,
-                CalendarSlot.publish_date < week + timedelta(days=7)))).scalars().all()
-    sem = asyncio.Semaphore(3)  # fan-out inside one node, bounded
+                CalendarSlot.publish_date < week + timedelta(days=7)).order_by(CalendarSlot.publish_date))).scalars().all()
+    sem = asyncio.Semaphore(max(target, 3))   # every slot in parallel; per-model pacing is the real throttle
+    errors: list[str] = []
+    deadline = time.monotonic() + get_settings().content_time_budget_s
 
     async def one(slot_id: str):
         async with sem:
             try:
-                post = await draft_slot(n.tenant_id, slot_id, n.agent)
-                if post.status == "blocked":      # one fresh attempt, told why the first was refused
-                    why = "; ".join(v["rule"] for v in (post.guardrail_report or {}).get("violations", []))
-                    n.agent.event("writer", "redraft_after_block", slot=slot_id, rules=why)
-                    post = await draft_slot(n.tenant_id, slot_id, n.agent,
-                                            note=f"The previous draft was blocked ({why}). Write a new post with no statistics or invented stories.")
-                return post.status
+                post = await draft_slot(n.tenant_id, slot_id, n.agent, deadline=deadline)
+                if post.status == "pending_approval":
+                    return "ready" if post.critic_score >= bar else "below_bar"
+                return "blocked"
             except (BudgetExceeded, TenantPaused):
                 raise
             except Exception as e:  # one bad slot shouldn't sink the week
                 n.agent.event("writer", "slot_failed", slot=slot_id, error=str(e)[:300])
+                errors.append(str(e)[:160])
                 return "failed"
 
-    statuses = await asyncio.gather(*[one(sid) for sid in slots])
+    statuses = list(await asyncio.gather(*[one(sid) for sid in slots[:target]]))
+    spare = list(slots[target:])
+    while statuses.count("ready") < target and spare and time.monotonic() < deadline:   # bounded by slots and time
+        need = target - statuses.count("ready")
+        batch, spare = spare[:need], spare[need:]
+        statuses += await asyncio.gather(*[one(sid) for sid in batch])
     counts = {st: statuses.count(st) for st in set(statuses)}
     if statuses and counts.get("failed", 0) == len(statuses):
-        raise RuntimeError("every slot in the week failed to draft")
-    return {"week_start": week.isoformat(), "slots": len(slots), **counts}
+        raise RuntimeError("every slot in the week failed to draft: " + "; ".join(errors[:2]))
+    ready = counts.get("ready", 0)
+    shortfall = []
+    if ready < target:
+        if len(slots) < target:
+            shortfall.append(f"only {len(slots)} slots were planned for the week of {week:%d %b}")
+        if counts.get("below_bar"):
+            shortfall.append(f"{counts['below_bar']} draft(s) stayed below the editor's {bar:.1f} bar after 3 attempts "
+                             f"(shown to you, labelled)")
+        if counts.get("blocked"):
+            shortfall.append(f"{counts['blocked']} slot(s) blocked by guardrails on every attempt (agency review)")
+        if counts.get("failed"):
+            shortfall.append(f"{counts['failed']} slot(s) failed: {errors[0] if errors else 'error'}")
+        if time.monotonic() >= deadline:
+            shortfall.append(f"redrafting stopped at the {get_settings().content_time_budget_s / 60:.1f}-minute time "
+                             f"budget (free-tier model limits)")
+        shortfall.insert(0, f"{ready} of {target} posts ready")
+    return {"week_start": week.isoformat(), "target": target, "ready": ready, "slots": len(statuses), **counts,
+            "shortfall": shortfall}
 
 
 @handler("calendar_extend")
@@ -247,7 +303,25 @@ async def _leads(n: NodeCtx) -> dict:
     week = date.fromisoformat(n.params["week_start"]) if n.params.get("week_start") else \
         (await week_to_draft(n.tenant_id) or next_monday(date.today()))
     n.params.setdefault("week_start", week.isoformat())
-    return await find_leads(n.tenant_id, n.agent, week)
+    stats = await find_leads(n.tenant_id, n.agent, week)
+    return {**stats, "shortfall": lead_shortfall(stats)}
+
+
+def lead_shortfall(st: dict) -> list[str]:
+    """Why the week has fewer leads than the client's minimum, in the founder's terms."""
+    if st.get("week_total", st.get("kept", 0)) >= st.get("target_min", 0):
+        return []
+    out = [f"{st.get('week_total', st.get('kept', 0))} of the {st.get('target_min')}-{st.get('target_max')} leads wanted this week"]
+    dropped = {k: st.get(k, 0) for k in ("low_fit", "unverified_dropped", "duplicate", "suppressed", "competitor",
+                                       "no_evidence") if st.get(k)}
+    if dropped:
+        out.append("candidates dropped: " + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in dropped.items()))
+    if st.get("contacts") == "not configured":
+        out.append("Hunter.io is not connected, so leads are companies without a contact person")
+    out += [w for w in st.get("warnings", [])]
+    if not st.get("candidates"):
+        out.append("the web searches returned no companies matching your ideal customer profile")
+    return out
 
 
 @handler("outreach")
@@ -324,7 +398,7 @@ class Orchestrator:
         with tenant_scope(tenant_id):
             async with get_db().session() as s:
                 run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().one()
-                if run.status in ("succeeded", "failed", "cancelled"):
+                if run.status in RUN_DONE:
                     return run.status
                 run.status = "running"
                 for node in (await s.execute(select(RunNode).where(RunNode.run_id == run_id))).scalars():
@@ -336,28 +410,44 @@ class Orchestrator:
         if tenant is None or tenant.kill_switch:
             return await self._finish(tenant_id, run_id, "cancelled", "tenant kill switch is on")
 
-        while True:
-            nodes = await self._nodes(tenant_id, run_id)
-            by_key = {n.key: n for n in nodes}
-            for n in nodes:  # propagate failures downstream
-                if n.status == "pending" and any(by_key[d].status in ("failed", "blocked") for d in n.deps):
-                    await self._set_node(tenant_id, n.id, status="blocked", error="upstream failed")
-                    n.status = "blocked"
-            ready = [n for n in nodes if n.status == "pending"
-                     and all(by_key[d].status in ("succeeded", "skipped") for d in n.deps)]
-            if cancel.is_set():
-                return await self._finish(tenant_id, run_id, "cancelled", "cancelled")
-            if not ready:
-                if any(n.status == "waiting_human" for n in nodes):
-                    await self._set_run(tenant_id, run_id, status="waiting_human")
-                    return "waiting_human"
-                break
-            await asyncio.gather(*[self._run_node(tenant_id, run_id, n, params, budget, cancel) for n in ready])
+        # Event-driven: a node starts the moment its own dependencies have succeeded, not when a whole "wave" of
+        # siblings has finished (e.g. trends starts as soon as market is done, without waiting for competitors).
+        running: dict[str, asyncio.Task] = {}
+        try:
+            while True:
+                nodes = await self._nodes(tenant_id, run_id)
+                by_key = {n.key: n for n in nodes}
+                for n in nodes:  # propagate failures downstream
+                    if n.status == "pending" and any(by_key[d].status in ("failed", "blocked") for d in n.deps):
+                        await self._set_node(tenant_id, n.id, status="blocked", error="upstream failed")
+                        n.status = "blocked"
+                if not cancel.is_set():
+                    for n in nodes:
+                        if n.status == "pending" and n.key not in running and \
+                                all(by_key[d].status in ("succeeded", "skipped") for d in n.deps):
+                            running[n.key] = asyncio.create_task(
+                                self._run_node(tenant_id, run_id, n, params, budget, cancel))
+                if not running:
+                    if cancel.is_set():
+                        return await self._finish(tenant_id, run_id, "cancelled", "cancelled")
+                    if any(n.status == "waiting_human" for n in nodes):
+                        await self._set_run(tenant_id, run_id, status="waiting_human")
+                        return "waiting_human"
+                    break
+                done, _ = await asyncio.wait(running.values(), return_when=asyncio.FIRST_COMPLETED)
+                for key in [k for k, t in running.items() if t in done]:
+                    running.pop(key).result()       # node errors are recorded on the node; anything else is a bug
+        finally:
+            for t in running.values():
+                t.cancel()
 
         nodes = await self._nodes(tenant_id, run_id)
         failed = [n.key for n in nodes if n.status in ("failed", "blocked")]
-        return await self._finish(tenant_id, run_id, "failed" if failed else "succeeded",
-                                  f"failed nodes: {failed}" if failed else "")
+        if failed:
+            return await self._finish(tenant_id, run_id, "failed", f"failed nodes: {failed}")
+        shortfall = [r for n in nodes for r in (n.output or {}).get("shortfall", [])]
+        return await self._finish(tenant_id, run_id, "succeeded_with_shortfall" if shortfall else "succeeded",
+                                  "; ".join(shortfall))
 
     async def _run_node(self, tenant_id: str, run_id: str, node: RunNode, params: dict, budget: Budget,
                         cancel: asyncio.Event) -> None:
@@ -414,14 +504,20 @@ class Orchestrator:
                 audit(s, actor, "run.gate_approved", "run", run_id, node=key)
         self.start(tenant_id, run_id)
 
-    async def rerun_from(self, tenant_id: str, run_id: str, key: str, actor: str) -> None:
-        """Invalidate a node and everything downstream of it, then resume."""
-        dag = None
+    async def rerun_from(self, tenant_id: str, run_id: str, key: str | list[str], actor: str,
+                         params: dict | None = None) -> None:
+        """Invalidate node(s) and everything downstream of them, then resume. `params` are merged into the run's
+        parameters first (e.g. the founder's requested strategy changes)."""
+        keys = [key] if isinstance(key, str) else list(key)
         with tenant_scope(tenant_id):
             async with get_db().session() as s:
                 run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().one()
                 dag = DAGS[run.kind]
-                stale, frontier = {key}, [key]
+                if any(k not in dag for k in keys):
+                    raise ValueError(f"unknown step {keys}")
+                if params:
+                    run.params = {**(run.params or {}), **params}
+                stale, frontier = set(keys), list(keys)
                 while frontier:
                     k = frontier.pop()
                     for child, deps in dag.items():
@@ -432,7 +528,7 @@ class Orchestrator:
                     if node.key in stale:
                         node.status, node.output, node.error = "pending", {}, ""
                 run.status, run.finished_at = "pending", None
-                audit(s, actor, "run.rerun_from", "run", run_id, node=key, stale=sorted(stale))
+                audit(s, actor, "run.rerun_from", "run", run_id, node=keys, stale=sorted(stale))
         self.start(tenant_id, run_id)
 
     async def resume_incomplete(self) -> int:

@@ -1,0 +1,51 @@
+{% from "_icons.html" import icon %}
+<div class="pagehead"><div><h1>Team</h1><div class="sub">Who can open this workspace and what they can do. Changes apply on their next click.</div></div></div>
+{% set manage = me.can('team:manage') %}
+<div class="grid2">
+<section class="panel stack">
+  <div class="row"><h2>Members</h2><span class="pill">{{ members | length }}</span></div>
+  <div class="tablewrap"><table>
+    <tr><th>Person</th><th>Role</th><th>Status</th>{% if manage %}<th></th>{% endif %}</tr>
+    {% for m in members %}<tr>
+      <td><b>{{ m.name }}</b>{% if m.is_me %} <span class="pill accent">you</span>{% endif %}<br><span class="sub">{{ m.email }}</span>
+        {% if m.added_by %}<br><span class="sub">added by {{ m.added_by }}</span>{% endif %}</td>
+      <td>{% if manage and not m.agency and not m.is_me %}
+        <form method="post" action="/ui/{{ tenant.id }}/team/{{ m.user_id }}/role" class="row">
+          <select name="role" aria-label="Role for {{ m.email }}">
+            <option value="client_viewer" {{ 'selected' if m.role == 'client_viewer' }}>Viewer (read-only)</option>
+            <option value="client_owner" {{ 'selected' if m.role == 'client_owner' }}>Owner</option>
+          </select><button class="sm">Save</button></form>
+        {% else %}{{ m.role_label }}{% if m.agency %} <span class="sub">(agency)</span>{% endif %}{% endif %}</td>
+      <td><span class="pill {{ 'ok' if m.active else 'bad' }}">{{ 'active' if m.active else 'deactivated' }}</span></td>
+      {% if manage %}<td>{% if not m.agency %}
+        <details><summary>Manage</summary><div class="stack-sm" style="margin-top:8px">
+          <form method="post" action="/ui/{{ tenant.id }}/team/{{ m.user_id }}/password" class="row">
+            <input type="password" name="password" minlength="10" placeholder="New password (10+ characters)" required autocomplete="new-password">
+            <button class="sm">Reset password</button></form>
+          <form method="post" action="/ui/{{ tenant.id }}/team/{{ m.user_id }}/active" class="row">
+            <input type="hidden" name="on" value="{{ '0' if m.active else '1' }}">
+            <button class="sm {{ 'danger' if m.active }}">{{ 'Deactivate' if m.active else 'Reactivate' }}</button></form>
+          {% if not m.is_me %}<form method="post" action="/ui/{{ tenant.id }}/team/{{ m.user_id }}/remove" class="row">
+            <button class="sm danger" onclick="return confirm('Remove {{ m.email }} from this workspace? Their account is closed.')">Remove</button></form>{% endif %}
+        </div></details>{% else %}<span class="sub">managed by the agency</span>{% endif %}</td>{% endif %}
+    </tr>{% endfor %}
+  </table></div>
+</section>
+{% if manage %}
+<section class="panel stack">
+  <h2>Add a teammate</h2>
+  <p class="sub">They sign in on the normal login page with the email and password you set here, and go straight to this workspace. No invite email is sent.</p>
+  <form method="post" action="/ui/{{ tenant.id }}/team" class="stack">
+    <label>Name<input name="name" required maxlength="100" autocomplete="off"></label>
+    <label>Email<input name="email" type="email" required autocomplete="off"></label>
+    <label>Password<input name="password" type="password" required minlength="10" autocomplete="new-password"><span class="sub">At least 10 characters. Share it with them directly.</span></label>
+    <label>Role<select name="role">
+      <option value="client_viewer">Viewer: sees everything, changes nothing</option>
+      <option value="client_owner">Owner: approves, sends, manages the team</option></select></label>
+    <div><button class="primary">{{ icon('users') }} Add teammate</button></div>
+  </form>
+  <div class="prov"><b>What each role can do</b>
+    Owners approve, edit and reject posts and emails, send from Gmail, start runs, change the profile and manage this team. Viewers can open every page but every action is refused by the server, not just hidden. A workspace always keeps at least one active owner.</div>
+</section>
+{% endif %}
+</div>

@@ -1,11 +1,23 @@
-{% from "_macros.html" import empty, srcchip, srclink, provenance %}
+{% from "_macros.html" import empty, srcchip, srclink, provenance, unverified %}
 {% set v = arts.get('voice_profile') %}{% set m = arts.get('market_report') %}{% set c = arts.get('competitor_matrix') %}
 {% set tr = arts.get('trend_report') %}{% set st = arts.get('content_strategy') %}{% set icp = arts.get('icp') %}
 <div class="pagehead"><div><h1>Strategy and research</h1><div class="sub">What the agents learned, and the sources behind it. Facts whose source could not be verified are removed, not shown.</div></div>
   {% if ws.can_discover and st %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="discovery"><button>Re-run research</button></form>{% endif %}</div>
 {% if ws.gate_run %}
-<div class="flash warn" style="align-items:center"><div style="flex:1"><b>Your approval is needed.</b> Read the strategy below. When you approve, post writing and lead search unlock, as two separate steps.</div>
-  <form method="post" action="/ui/{{ tenant.id }}/runs/{{ ws.gate_run }}/approve/strategy_review"><button class="primary">Approve strategy</button></form></div>
+<div class="flash warn" style="align-items:center"><div style="flex:1"><b>{{ 'Your approval is needed.' if me.can('strategy:review') else 'Waiting for the owner to approve the strategy.' }}</b> Read the strategy below. When it is approved, post writing and lead search unlock, as two separate steps.</div>
+  {% if me.can('strategy:review') %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ ws.gate_run }}/approve/strategy_review"><button class="primary">Approve strategy</button></form>{% endif %}</div>
+{% endif %}
+{% if st and me.can('strategy:review') %}
+<section class="panel stack" id="suggest">
+  <div class="row"><h2>Suggest changes</h2><span class="sub">Add, edit or remove anything above before you approve. Only the parts you pick are redone; the research is kept.</span></div>
+  <form method="post" action="/ui/{{ tenant.id }}/strategy/suggestions" class="stack">
+    <textarea name="note" required minlength="10" maxlength="2000" placeholder="e.g. Drop the humour pillar, add one on corporate relocation, and post 4 times a week instead of 5."></textarea>
+    <div class="row">{% for key, label in parts.items() %}<label class="row" style="gap:6px;font-weight:500"><input type="checkbox" name="parts" value="{{ key }}" {{ 'checked' if key == 'strategy' }}> {{ label }}</label>{% endfor %}
+      <span class="spacer"></span><button class="primary">Revise with my changes</button></div>
+  </form>
+  {% if suggestions %}<div class="kv"><h3>Changes you asked for</h3>
+    {% for x in suggestions %}<div class="fact">{{ x.note }}<div class="sub">{{ x.at[:16].replace('T', ' ') }} UTC · {{ x.parts | map('replace', 'strategy', 'strategy and calendar') | map('replace', 'icp', 'ideal customer profile') | join(', ') }}</div></div>{% endfor %}</div>{% endif %}
+</section>
 {% endif %}
 {% if not st and not v %}
   {% call empty('compass', 'No research yet', 'We read your website, research your market and competitors on the web, and study your writing to build a strategy. It takes about ten minutes and you can watch progress live.') %}
@@ -21,16 +33,23 @@
     {% if v.data.learned_rules %}<div class="kv"><h3>Learned from your edits</h3><ul class="violations" style="color:var(--accent-ink)">{% for r in v.data.learned_rules %}<li>{{ r }}</li>{% endfor %}</ul></div>{% endif %}</section>{% endif %}
   {% if m %}<section class="panel stack"><h2>Market</h2><p>{{ m.data.summary }}</p>
     <div class="kv"><h3>Verified facts</h3>
-    {% for f in m.data.key_facts %}<div class="fact">{{ f.claim }}<br>{{ srclink(f.source_url) }}</div>{% else %}<div class="sub">No claim could be tied to a verifiable source.</div>{% endfor %}</div>
-    {{ provenance(m) }}</section>{% endif %}
+    {% for f in m.data.key_facts %}<div class="fact">{{ f.claim }}
+      {% if f.status == 'outdated' %}<span class="pill warn" title="{{ f.note }}">outdated: {{ f.note }}</span>{% endif %}
+      {% if f.official %}<span class="pill ok">official source</span>{% endif %}<br>{{ srclink(f.source_url) }}</div>
+    {% else %}<div class="sub">No claim could be tied to a verifiable source.</div>{% endfor %}</div>
+    {{ unverified(m) }}{{ provenance(m) }}</section>{% endif %}
   {% if c %}<section class="panel stack"><h2>Competitors</h2>
     <div class="tablewrap"><table><tr><th>Competitor</th><th>Positioning</th><th>Sources</th></tr>
-    {% for x in c.data.competitors %}<tr><td><b>{{ x.name }}</b></td><td>{{ x.positioning }}<div class="sub">{{ x.content_themes | join('; ') }}</div></td><td>{% for u in x.source_urls %}{{ srclink(u) }}<br>{% endfor %}</td></tr>{% endfor %}</table></div>
+    {% for x in c.data.competitors %}<tr><td><b>{{ x.name }}</b><br>
+      {% if x.verified %}<span class="pill ok">checked against source</span>{% else %}<span class="pill warn" title="{{ x.note }}">not confirmed by its sources</span>{% endif %}
+      {% if x.official_source %}<span class="pill ok">own website</span>{% endif %}</td>
+      <td>{{ x.positioning }}<div class="sub">{{ x.content_themes | join('; ') }}</div>{% if x.note %}<div class="sub" style="color:var(--warn)">{{ x.note }}</div>{% endif %}</td>
+      <td>{% for u in x.source_urls %}{{ srclink(u) }}<br>{% endfor %}</td></tr>{% endfor %}</table></div>
     <div class="kv"><h3>Whitespace to own</h3><ul class="violations" style="color:var(--ink)">{% for w in c.data.whitespace %}<li>{{ w }}</li>{% endfor %}</ul></div>
-    {{ provenance(c) }}</section>{% endif %}
+    {{ unverified(c) }}{{ provenance(c) }}</section>{% endif %}
   {% if tr %}<section class="panel stack"><h2>Trends</h2>
-    {% for x in tr.data.trends %}<div class="kv"><div class="row"><b>{{ x.name }}</b><span class="pill">relevance {{ x.relevance }}/5</span></div><div class="why">{{ x.summary }}</div><div class="why"><b>Angle:</b> {{ x.content_angle }}</div>{{ srclink(x.evidence_url) }}</div>{% endfor %}
-    {{ provenance(tr) }}</section>{% endif %}
+    {% for x in tr.data.trends %}<div class="kv"><div class="row"><b>{{ x.name }}</b><span class="pill">relevance {{ x.relevance }}/5</span>{% if x.note %}<span class="pill warn">{{ x.note }}</span>{% endif %}</div><div class="why">{{ x.summary }}</div><div class="why"><b>Angle:</b> {{ x.content_angle }}</div>{{ srclink(x.evidence_url) }}</div>{% endfor %}
+    {{ unverified(tr) }}{{ provenance(tr) }}</section>{% endif %}
   {% if icp %}<section class="panel stack"><h2>Ideal customer profile</h2>
     {% for sgm in icp.data.segments %}<div class="kv"><b>{{ sgm.name }}</b><div class="why">{{ sgm.titles | join(', ') }}</div><div class="sub">{{ sgm.industries | join(', ') }} · {{ sgm.min_employees }}–{{ sgm.max_employees }} employees · {{ sgm.geos | join(', ') }}</div>
       <div class="why"><b>Triggers:</b> {{ sgm.buying_triggers | join('; ') }}</div></div>{% endfor %}</section>{% endif %}

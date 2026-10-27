@@ -93,6 +93,7 @@ async def test_search_fails_loudly_when_nothing_is_configured(monkeypatch):
 
 async def test_search_falls_back_and_labels_the_provider(monkeypatch):
     monkeypatch.setattr(get_settings(), "tavily_api_key", "tv-key")
+    monkeypatch.setattr(get_settings(), "search_providers", "gemini_search,tavily")
     ws = WebSearch()
 
     async def gemini_over_quota(q):
@@ -105,6 +106,18 @@ async def test_search_falls_back_and_labels_the_provider(monkeypatch):
     assert [h.url for h in res.hits] == ["https://x.example/a"]
     # the quota failure is remembered, so the next query does not waste a call on the dead provider
     assert ws._usable("gemini_search") is False
+
+
+async def test_tavily_is_tried_first_by_default(monkeypatch):
+    monkeypatch.setattr(get_settings(), "tavily_api_key", "tv-key")
+    monkeypatch.setattr(get_settings(), "google_api_key", "g-key")
+    ws = WebSearch()
+
+    async def gemini_should_not_run(q):
+        raise AssertionError("Gemini grounding was called although Tavily answered")
+    monkeypatch.setattr(ws, "_gemini", gemini_should_not_run)
+    transport(lambda r: httpx.Response(200, json={"answer": "", "results": [{"title": "T", "url": "https://x.example/b", "content": "c"}]}))
+    assert (await ws.search("q")).provider == "tavily"
 
 
 async def test_search_reports_every_provider_failure(monkeypatch):
@@ -208,3 +221,30 @@ async def test_gmail_not_configured_on_server(monkeypatch):
     with pytest.raises(IntegrationError) as e:
         gmail.authorize_url("t", "u")
     assert e.value.code == NOT_CONFIGURED and "GOOGLE_OAUTH_CLIENT_ID" in e.value.recovery
+
+
+def test_search_queries_are_reduced_to_plain_words():
+    from app.integrations.search import clean_query
+    assert clean_query('"student housing" "new lease" site:linkedin.com') == "student housing new lease"
+    assert clean_query('"ecommerce" AND hiring OR Mumbai (expansion)') == "ecommerce hiring Mumbai expansion"
+
+
+async def test_an_empty_result_is_an_answer_not_an_outage(monkeypatch):
+    monkeypatch.setattr(get_settings(), "tavily_api_key", "tv-key")
+    monkeypatch.setattr(get_settings(), "google_api_key", "")
+    ws = WebSearch()
+    transport(lambda r: httpx.Response(200, json={"answer": "", "results": []}))
+    res = await ws.search("very niche query")
+    assert res.provider == "tavily" and res.hits == [] and ws._usable("tavily")     # still usable for the next query
+
+
+def test_any_encryption_key_value_works_and_round_trips(monkeypatch):
+    """Regression: a non-Fernet ENCRYPTION_KEY (e.g. a passphrase) crashed Gmail connect with ValueError."""
+    from app.integrations.crypto import decrypt, encrypt
+    for key in ("not-a-fernet-key-just-words", "", "q0x6pUm8wuh9cUQBF1uqnrLKF0UQiS2Mfeg2rKeVc0s="):
+        monkeypatch.setattr(get_settings(), "encryption_key", key)
+        assert decrypt(encrypt('{"refresh_token": "rt"}')) == '{"refresh_token": "rt"}'
+    monkeypatch.setattr(get_settings(), "encryption_key", "passphrase-one")
+    token = encrypt("secret")
+    monkeypatch.setattr(get_settings(), "encryption_key", "passphrase-two")
+    assert decrypt(token) is None                       # a changed key is detected, never mis-decrypted

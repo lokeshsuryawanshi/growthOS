@@ -21,6 +21,7 @@ from app.core.tenancy import tenant_scope
 from app.db.audit import audit, incident
 from app.db.models import CalendarSlot, Feedback, Lead, OutreachMessage, Post, SuppressionEntry, Tenant
 from app.db.session import get_db
+from app.db.usage import record_external
 from app.guardrails.output_guard import check_outreach, check_post
 from app.guardrails.state import OUTREACH_TRANSITIONS, POST_TRANSITIONS, transition
 from app.integrations import gmail
@@ -36,6 +37,17 @@ class GuardrailRefusal(Exception):
     pass
 
 
+class SendRefused(ForbiddenError):
+    """The send gate refused for a business reason (not approved, unverified recipient, cap...). The caller is
+    allowed to send in principle, so the API answers 409, not 403."""
+
+
+POST_ACTION_PERMS = {"approve": "content:approve", "reject": "content:approve", "request_changes": "content:edit",
+                     "edit": "content:edit"}
+OUTREACH_ACTION_PERMS = {"approve": "outreach:approve", "reject": "outreach:approve", "request_changes": "outreach:edit",
+                         "edit": "outreach:edit"}
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -49,8 +61,7 @@ async def _post(s, post_id: str) -> Post:
 
 async def decide_post(p: Principal, tenant_id: str, post_id: str, action: str, text: str | None = None,
                       note: str = "") -> Post:
-    perm = {"approve": "content:approve", "reject": "content:approve", "request_changes": "content:edit",
-            "edit": "content:edit"}.get(action)
+    perm = POST_ACTION_PERMS.get(action)
     if perm is None:
         raise ValueError(f"unknown action {action}")
     authorize(p, perm, tenant_id)
@@ -115,8 +126,7 @@ async def regenerate(tenant_id: str, slot_id: str, note: str) -> Post:
 
 async def decide_outreach(p: Principal, tenant_id: str, msg_id: str, action: str, text: str | None = None,
                           note: str = "", subject: str | None = None) -> OutreachMessage:
-    perm = {"approve": "outreach:approve", "reject": "outreach:approve", "request_changes": "outreach:edit",
-            "edit": "outreach:edit"}.get(action)
+    perm = OUTREACH_ACTION_PERMS.get(action)
     if perm is None:
         raise ValueError(f"unknown action {action}")
     authorize(p, perm, tenant_id)
@@ -165,39 +175,44 @@ async def send_outreach(p: Principal, tenant_id: str, msg_id: str) -> OutreachMe
     daily cap, Gmail connected. The message is locked as 'sending' before Gmail is called, so a double click or a crash
     can never send twice; a failure puts it back to 'approved' with the reason.
     """
+    from app.services.leads import is_sendable_address
     authorize(p, "outreach:send", tenant_id)
     async with get_db().reader() as s:
         tenant = await s.get(Tenant, tenant_id)
     if tenant is None or tenant.kill_switch:
-        raise ForbiddenError("sending is paused for this client")
+        raise SendRefused("sending is paused for this client")
     intake = await intake_of(tenant_id)
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     with tenant_scope(tenant_id):
         async with get_db().session() as s:
-            msg = (await s.execute(select(OutreachMessage).where(OutreachMessage.id == msg_id))).scalars().first()
+            # Row lock: on Postgres two clicks would otherwise both read 'approved' and both send (SQLite serialises
+            # writers with BEGIN IMMEDIATE, so this was invisible there). The second click waits, then sees 'sending'.
+            msg = (await s.execute(select(OutreachMessage).where(OutreachMessage.id == msg_id)
+                                   .with_for_update())).scalars().first()
             if msg is None:
                 raise NotFound("message not found")
             if msg.status != "approved":
-                raise ForbiddenError("only approved messages can be sent")
+                raise SendRefused("only approved messages can be sent")
             lead = (await s.execute(select(Lead).where(Lead.id == msg.lead_id))).scalars().one()
             if lead.is_synthetic:
-                raise ForbiddenError("this lead is synthetic demo data and can never be emailed")
-            if not lead.email or lead.email_status != "valid":
-                raise ForbiddenError("the recipient's address is not verified (Hunter.io status: "
-                                     f"{lead.email_status or 'none'}); only verified addresses can be emailed")
+                raise SendRefused("this lead is synthetic demo data and can never be emailed")
+            if not is_sendable_address(lead):
+                raise SendRefused("the recipient's address is not verified (Hunter.io status: "
+                                  f"{lead.email_status or 'none'}); only verified addresses, or ones you added by hand "
+                                  "and confirmed, can be emailed")
             sup = (await s.execute(select(SuppressionEntry))).scalars().all()
             if any((x.kind == "email" and x.value.lower() == lead.email.lower()) or
                    (x.kind == "domain" and x.value.lower() == lead.company_domain.lower()) or
                    (x.kind == "company" and x.value.lower() == lead.company.lower()) for x in sup):
                 incident(s, "process", "suppressed_send_blocked", "high", f"{lead.full_name or lead.company} is on the suppression list",
                          "outreach", msg.id)
-                raise ForbiddenError("recipient is on the do-not-contact list")
+                raise SendRefused("recipient is on the do-not-contact list")
             sent_today = (await s.execute(select(func.count(OutreachMessage.id))
                                           .where(OutreachMessage.sent_at >= today))).scalar_one()
             in_flight = (await s.execute(select(func.count(OutreachMessage.id))
                                          .where(OutreachMessage.status == "sending"))).scalar_one()
             if sent_today + in_flight >= get_settings().outreach_daily_send_cap:
-                raise ForbiddenError("daily send cap reached; protects the founder's mailbox reputation")
+                raise SendRefused("daily send cap reached; protects the founder's mailbox reputation")
             to, subject = lead.email, msg.subject or f"Quick question for {lead.company}"
             body = (msg.approved_text or msg.text) + email_footer(intake)
             transition(msg, "sending", OUTREACH_TRANSITIONS)
@@ -221,7 +236,8 @@ async def send_outreach(p: Principal, tenant_id: str, msg_id: str) -> OutreachMe
             m.sent_at, m.external_id = _now(), external_id
             ld.status = "contacted"
             audit(s, p.user_id, "outreach.sent", "outreach", m.id, gmail_id=external_id)
-            return m
+    await record_external(tenant_id, "gmail", "send", node_key="send")
+    return m
 
 
 async def recover_interrupted_sends() -> int:

@@ -2,6 +2,7 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 sqlalchemy[asyncio]>=2.0.30
 aiosqlite>=0.20
+asyncpg>=0.30                # optional Postgres (DATABASE_URL=postgres://...), e.g. a free hosted database
 pydantic>=2.7
 pydantic-settings>=2.3
 jinja2>=3.1

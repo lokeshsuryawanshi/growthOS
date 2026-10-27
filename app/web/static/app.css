@@ -110,7 +110,7 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 /* ---------------------------------------------------------------- pills & chips */
 .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; background: #eef0f4; color: var(--ink-2); white-space: nowrap; }
 .pill.ok, .pill.succeeded, .pill.approved, .pill.scheduled, .pill.published, .pill.sent, .pill.connected, .pill.valid { background: var(--ok-soft); color: var(--ok); }
-.pill.warn, .pill.pending_approval, .pill.waiting_human, .pill.running, .pill.changes_requested, .pill.medium, .pill.degraded, .pill.accept_all, .pill.sending { background: var(--warn-soft); color: var(--warn); }
+.pill.warn, .pill.pending_approval, .pill.waiting_human, .pill.running, .pill.changes_requested, .pill.medium, .pill.degraded, .pill.accept_all, .pill.sending, .pill.succeeded_with_shortfall, .pill.founder_confirmed { background: var(--warn-soft); color: var(--warn); }
 .pill.bad, .pill.failed, .pill.blocked, .pill.rejected, .pill.critical, .pill.high, .pill.cancelled, .pill.synthetic, .pill.invalid { background: var(--bad-soft); color: var(--bad); }
 .pill.accent, .pill.planned, .pill.drafted { background: var(--accent-soft); color: var(--accent-ink); }
 .pill.not_configured, .pill.pending, .pill.skipped, .pill.prospect { background: #eef0f4; color: var(--muted); }
@@ -239,3 +239,11 @@ pre.json { background: #f7f8fa; border: 1px solid var(--line); border-radius: 8p
 .nojs .obstep { display: grid; gap: 18px; margin-bottom: 28px; }
 .hero { background: linear-gradient(135deg, #eef0ff, #f6f0ff); border: 1px solid #dfe2ff; border-radius: var(--radius); padding: 24px; display: grid; gap: 12px; }
 .hero h2 { font-size: 19px; }
+
+/* ---------------------------------------------------------------- additions: team, admin, progress */
+input[type=search] { font: inherit; border: 1px solid var(--line-2); border-radius: 9px; padding: 8px 12px; background: var(--surface); color: var(--ink); }
+select { width: auto; min-width: 140px; }
+td select { padding: 5px 8px; }
+.node details summary { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details.panel > summary, details.prov > summary { list-style-position: outside; }
+.step .ico.succeeded_with_shortfall { background: var(--warn); color: #fff; }

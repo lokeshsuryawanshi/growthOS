@@ -76,78 +76,103 @@ def _voice(req: LLMRequest) -> dict:
     }}
 
 
-def _research_flow(req: LLMRequest, queries: list[str], fetch_n: int, build) -> dict:
-    step = req.metadata.get("step", 1)
-    searches = _tool_payloads(req, "web_search")
-    fetched = [p for p in _tool_payloads(req, "fetch_page") if isinstance(p, dict) and p.get("status") != "quarantined"]
-    if not searches and step < 3:
-        return _calls(*[("web_search", {"query": q}) for q in queries])
-    if not _tool_payloads(req, "fetch_page") and step < 4:
-        urls: list[str] = []
-        for s in searches:
-            for r in s.get("results", []):
-                if r["url"] not in urls:
-                    urls.append(r["url"])
-        if urls:
-            return _calls(*[("fetch_page", {"url": u}) for u in urls[:fetch_n]])
-    return _submit(build(fetched))
+def _cut(text: str, n: int) -> str:
+    """Shorten at a word boundary, so a figure is never cut in half."""
+    return text if len(text) <= n else text[:n].rsplit(" ", 1)[0]
+
+
+def _research_step(req: LLMRequest, queries: list[str], reads: int) -> dict:
+    """The research loop's decision step: search first (and read client-given sites), then read the top results."""
+    md = req.metadata
+    if md["step"] == 1:
+        return {"content": {"queries": queries, "read_urls": md.get("seeds", [])[:4], "done": False}}
+    unread = [u for u in md.get("results", []) if u not in md.get("pages", [])]
+    if md["step"] == 2 and unread:
+        return {"content": {"queries": [], "read_urls": unread[:reads], "done": True}}
+    return {"content": {"queries": [], "read_urls": [], "done": True}}
+
+
+def _intake(req: LLMRequest) -> dict:
+    return req.metadata.get("intake", {})
+
+
+def _industry(req: LLMRequest) -> str:
+    """The brief starts 'Client: Name (industry).'"""
+    m = re.match(r".*? \((.*)\)\.?$", _brief_field(req, "Client"))
+    return m.group(1) if m else "industry"
+
+
+@register_mock("market_analyst_step")
+def _market_step(req: LLMRequest) -> dict:
+    ind = _industry(req)
+    return _research_step(req, [f"{ind} survey", f"{ind} benchmark"], 3)
+
+
+@register_mock("competitor_analyst_step")
+def _competitor_step(req: LLMRequest) -> dict:
+    names = _brief_field(req, "Known competitors").split(", ")
+    names = [n for n in names if n and not n.startswith("(")][:4] or ["Main competitor"]
+    return _research_step(req, names, len(names) + 1)
+
+
+@register_mock("trend_scout_step")
+def _trend_step(req: LLMRequest) -> dict:
+    ind = _industry(req)
+    return _research_step(req, [f"{ind} trends", f"linkedin content {ind.split(':')[0]} trends"], 3)
+
+
+def _brief_field(req: LLMRequest, label: str) -> str:
+    m = re.search(rf"^{label}: (.*)$", req.messages[-1]["content"], re.M)
+    return m.group(1).strip() if m else ""
 
 
 @register_mock("market_analyst")
 def _market(req: LLMRequest) -> dict:
-    intake = req.metadata.get("intake", {})
+    intake, pages = _intake(req), req.metadata.get("pages", [])
     ind = intake.get("industry", "the industry")
-
-    def build(pages):
-        facts = [{"claim": s, "source_url": p["url"]} for p in pages for s in _sentences(p["text"]) if re.search(r"\d", s)][:6]
-        pains = [s for p in pages for s in _sentences(p["text"]) if not re.search(r"\d", s)][:4] or \
-            [f"Buyers in {ind} struggle to get reliable answers fast."]
-        segs = [x.strip() for x in re.split(r",| and ", intake.get("target_customers", "core buyers"))][:4]
-        return {"industry": ind, "summary": f"{ind}: buyers want faster, more reliable outcomes with less manual work.",
-                "buyer_segments": [x for x in segs if x] or ["core buyers"], "buyer_pains": pains, "key_facts": facts}
-    return _research_flow(req, [f"{ind} survey", f"{ind} benchmark"], 3, build)
+    facts = [{"claim": s, "source_url": p["url"]} for p in pages for s in _sentences(p["text"]) if re.search(r"\d", s)][:6]
+    pains = [s for p in pages for s in _sentences(p["text"]) if not re.search(r"\d", s)][:4] or \
+        [f"Buyers in {ind} struggle to get reliable answers fast."]
+    segs = [x.strip() for x in re.split(r",| and ", intake.get("target_customers", "core buyers"))][:4]
+    return {"content": {"industry": ind, "summary": f"{ind}: buyers want faster, more reliable outcomes with less manual work.",
+                        "buyer_segments": [x for x in segs if x] or ["core buyers"], "buyer_pains": pains, "key_facts": facts}}
 
 
 @register_mock("competitor_analyst")
 def _competitors(req: LLMRequest) -> dict:
-    intake = req.metadata.get("intake", {})
+    intake, pages = _intake(req), req.metadata.get("pages", [])
     names = intake.get("known_competitors", [])[:4] or ["Main competitor"]
-
-    def build(pages):
-        comps = []
-        for n in names:
-            page = next((p for p in pages if n.lower().replace(" ", "") in (p.get("title", "") + p["url"]).lower().replace(" ", "")), None)
-            page = page or (pages[0] if pages else None)   # mock only: attribute to the closest page it read
-            sents = _sentences(page["text"]) if page else []
-            focus = next((s for s in sents if "content focus" in s.lower()), "Content focus: not enough public data.")
-            cadence = next((s for s in sents if re.search(r"post|publish", s, re.I)), "Unknown cadence")
-            comps.append({"name": n, "positioning": sents[0] if sents else f"{n} competes for the same buyers.",
-                          "offerings": [sents[0][:80]] if sents else [], "content_themes": [focus.split(":", 1)[-1].strip()[:100]],
-                          "posting_cadence": cadence[:120], "strengths": [sents[1][:100]] if len(sents) > 1 else [],
-                          "weaknesses": ["Little founder-led content"], "source_urls": [page["url"]] if page else []})
-        return {"competitors": comps,
-                "whitespace": ["Founder-led stories with real operating numbers",
-                               f"Practical playbooks for {intake.get('target_customers', 'buyers')[:60]}",
-                               "Honest takes on what technology should and shouldn't do"]}
-    return _research_flow(req, [f"{n}" for n in names], len(names) + 1, build)
+    comps = []
+    for n in names:
+        page = next((p for p in pages if n.lower().replace(" ", "") in (p.get("title", "") + p["url"]).lower().replace(" ", "")), None)
+        page = page or (pages[0] if pages else None)   # mock only: attribute to the closest page it read
+        sents = _sentences(page["text"]) if page else []
+        focus = next((s for s in sents if "content focus" in s.lower()), "Content focus: not enough public data.")
+        cadence = next((s for s in sents if re.search(r"post|publish", s, re.I)), "Unknown cadence")
+        comps.append({"name": n, "positioning": sents[0] if sents else f"{n} competes for the same buyers.",
+                      "offerings": [_cut(sents[0], 80)] if sents else [], "content_themes": [focus.split(":", 1)[-1].strip()[:100]],
+                      "posting_cadence": cadence[:120], "strengths": [_cut(sents[1], 100)] if len(sents) > 1 else [],
+                      "weaknesses": ["Little founder-led content"], "source_urls": [page["url"]] if page else []})
+    return {"content": {"competitors": comps,
+                        "whitespace": ["Founder-led stories with real operating numbers",
+                                       f"Practical playbooks for {intake.get('target_customers', 'buyers')[:60]}",
+                                       "Honest takes on what technology should and shouldn't do"]}}
 
 
 @register_mock("trend_scout")
 def _trends(req: LLMRequest) -> dict:
-    intake = req.metadata.get("intake", {})
+    intake, pages = _intake(req), req.metadata.get("pages", [])
     ind = intake.get("industry", "industry")
-
-    def build(pages):
-        trends = []
-        for p in pages:
-            parts = [x.strip() for x in re.split(r"Trend \d+:|\d\.\s", p["text"]) if len(x.strip()) > 25]
-            for part in parts[:3]:
-                name = " ".join(part.split()[:6]).rstrip(".,")
-                trends.append({"name": name, "summary": part[:240], "evidence_url": p["url"],
-                               "relevance": 3 + h(name) % 3, "content_angle": f"What '{name.lower()}' means for our buyers"})
-        return {"trends": trends[:6] or [{"name": f"Change in {ind}", "summary": "Buyers expect more for less.",
-                                          "evidence_url": "", "relevance": 3, "content_angle": "What we see with customers"}]}
-    return _research_flow(req, [f"{ind} trends", f"linkedin content {ind.split(':')[0]} trends"], 3, build)
+    trends = []
+    for p in pages:
+        parts = [x.strip() for x in re.split(r"Trend \d+:|\d\.\s", p["text"]) if len(x.strip()) > 25]
+        for part in parts[:3]:
+            name = " ".join(part.split()[:6]).rstrip(".,")
+            trends.append({"name": name, "summary": _cut(part, 240), "evidence_url": p["url"],
+                           "relevance": 3 + h(name) % 3, "content_angle": f"What '{name.lower()}' means for our buyers"})
+    return {"content": {"trends": trends[:6] or [{"name": f"Change in {ind}", "summary": "Buyers expect more for less.",
+                                                  "evidence_url": "", "relevance": 3,
+                                                  "content_angle": "What we see with customers"}]}}
 
 
 # ---------------------------------------------------------------- strategy ----

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
 
-from app.core.security import AuthError, ForbiddenError, Principal, authorize, decode_token
+from app.core.security import PERMISSION_LABELS, AuthError, ForbiddenError, Principal, authorize, decode_token
 from app.core.tenancy import system_scope
 from app.db.models import Membership, Tenant, User
 from app.db.session import get_db
@@ -51,10 +51,15 @@ async def current_principal(request: Request) -> Principal:
     return p
 
 
+def forbidden(p: Principal, permission: str) -> HTTPException:
+    label = PERMISSION_LABELS.get(permission, permission)
+    return HTTPException(403, f"Your role ({p.role.replace('_', ' ')}) can't {label} [{permission}].")
+
+
 def check(p: Principal, permission: str, tenant_id: str | None = None) -> None:
     """Permission failures are 403; tenant-access failures are 404 so tenant ids can't be probed."""
     if not p.can(permission):
-        raise HTTPException(403, f"your role can't {permission}")
+        raise forbidden(p, permission)
     if tenant_id is not None:
         try:
             authorize(p, permission, tenant_id)

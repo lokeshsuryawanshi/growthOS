@@ -1,64 +1,71 @@
 # Cost, unit economics and run time
 
-All token numbers come from the real cost ledger (`llm_calls` table) of a live run on 2026-10-27: one test client, real Groq + Gemini + Tavily calls. Prices are list prices per million tokens and **must be re-checked before quoting**; the Groq/Gemini prices are the ones in `app/core/config.py` (`MODEL_PRICES`).
+Every number below comes from the ledgers of a **live run on 2026-10-27** (`loadtest/reports/live-run.md`): a fresh workspace, real Groq, Gemini, Tavily and Hunter.io calls, on their free tiers. Costs are what the same usage costs at the **paid list prices checked that day** on each provider's page (Groq model docs, Google AI pricing, Tavily and Hunter pricing, Anthropic and OpenAI pricing). On the free tiers the actual bill was $0.
 
-## 1. What one run costs in tokens (measured)
+## 1. One client, measured
 
-| Step | Model calls | Input tokens | Output tokens | Notes |
-|---|---|---|---|---|
-| Research and strategy (once per client) | 54 | 64,140 | 7,953 | voice, market, competitors, trends, strategy, ICP, 8-week calendar |
-| Weekly cycle (first live attempt) | 36+ | 58,410+ | 3,301+ | measured before drafting finished; the old lead scout wasted ~43k input tokens on retries |
-| Whole test client, everything incl. retries | 143 | 220,285 | 19,077 | failed and repeated work included |
+| Run | How often | Wall time | Model calls | Tokens in / out | AI cost | Search and contacts |
+|---|---|---|---|---|---|---|
+| Research and strategy | once (and on request) | **90 s** | 33 | 51,124 / 13,854 | $0.048 | $0.28 (35 Tavily searches) |
+| Posts and calendar (5 posts) | weekly | **147 s** | 17 | 25,186 / 4,370 | $0.016 | $0 |
+| Lead search and outreach (8 leads, 6 verified emails) | weekly | **18 s** | 21 | 15,358 / 3,513 | $0.0065 | $0.25 (5 searches, 8 Hunter searches, 1 verification) |
 
-About 40% of calls are tiny safety-scanner calls (Prompt Guard on every fetched page). Input tokens dominate (about 10 to 1) because agents read search results.
+Before this work the same runs took about 14-20 minutes (research) and 20-35 minutes (a weekly cycle), with only about 2.5 minutes of actual model time: the rest was waiting on free-tier limits.
 
-**Planning figures** used below (after the lead-scout fix, which removes the wasted retries):
-- Research and strategy: 64k in / 8k out, once.
-- Weekly cycle: about 100k in / 10k out, four times a month.
-- **Per client per month: about 464k in / 48k out.**
+**Per client per month** (1 research run, 4 content runs, 4 lead runs): about **213,000 input and 45,000 output tokens**, **$0.14 of AI**, $0.44 of Tavily (55 searches) and $0.83 of Hunter credits (34). Variable cost about **$1.41 per client per month**, or **$0.58 without Hunter** (leads are then companies without a contact).
 
-## 2. Cost per client per month, by model
+Unit costs: about **$0.003 of AI per ready post**, and about **$0.03 per lead** ($0.04 per lead with a verified email), mostly the Hunter lookup.
 
-Same workload, different price points.
+## 2. The same work on other models
 
-| Model scenario | $ in / $ out per 1M | Per client / month | 12 clients | 100 clients |
-|---|---|---|---|---|
-| Current mix on Groq (gpt-oss-120b writer, 20b scoring) | 0.15 / 0.60 (120b) | about $0.10 | about $1.2 | about $10 |
-| All gpt-oss-20b | 0.075 / 0.30 | about $0.05 | about $0.6 | about $5 |
-| Gemini 3.5 flash-lite | 0.10 / 0.40 | about $0.07 | about $0.8 | about $7 |
-| Frontier-class model at the prices you gave | 2.50 / 10.00 | about $1.64 | about $20 | about $164 |
-| Higher-priced frontier tier (3.00 / 15.00, check list price) | 3.00 / 15.00 | about $2.11 | about $25 | about $211 |
+AI cost only, for the measured token counts priced at each model's list price (per 1M tokens). Frontier models would spend somewhat different token counts (more reasoning, fewer repairs), so read the expensive rows as order of magnitude.
 
-Formula: `(464k x price_in + 48k x price_out) / 1M`. Even at frontier prices the AI is roughly **$2 per client per month**, so margin is driven by other things (below).
+| Model | $ in / out | Research run | Content run | Lead run | Per client / month | 12 clients | 100 clients |
+|---|---|---|---|---|---|---|---|
+| **Measured mix** (gpt-oss-120b, 20b, qwen3.8-27b, Gemini Flash-Lite) | as routed | $0.048 | $0.016 | $0.0065 | **$0.14** | $1.66 | $14 |
+| Groq gpt-oss-120b only | 0.15 / 0.60 | $0.016 | $0.006 | $0.0044 | $0.06 | $0.71 | $6 |
+| Groq gpt-oss-20b only | 0.075 / 0.30 | $0.008 | $0.003 | $0.0022 | $0.03 | $0.36 | $3 |
+| Claude Haiku 5.5 | 0.10 / 0.50 | $0.012 | $0.005 | $0.0033 | $0.04 | $0.53 | $4 |
+| OpenAI gpt-5-mini | 0.25 / 2.00 | $0.040 | $0.015 | $0.011 | $0.14 | $1.73 | $14 |
+| Gemini 3.5 Flash-Lite only | 0.30 / 2.50 | $0.050 | $0.018 | $0.013 | $0.18 | $2.13 | $18 |
+| Groq qwen3.8-27b only | 0.80 / 4.00 | $0.096 | $0.038 | $0.026 | $0.35 | $4.23 | $35 |
+| Claude Sonnet 5.5 | 2.00 / 10.00 | $0.241 | $0.094 | $0.066 | $0.88 | $10.57 | $88 |
+| OpenAI gpt-6.1-sol | 2.00 / 10.00 | $0.241 | $0.094 | $0.066 | $0.88 | $10.57 | $88 |
+| Claude Opus 5.5 | 4.00 / 20.00 | $0.482 | $0.188 | $0.132 | $1.76 | $21.13 | $176 |
+| OpenAI gpt-5.5 | 5.00 / 30.00 | $0.671 | $0.257 | $0.182 | $2.43 | $29.14 | $243 |
 
-## 3. Costs that are not model tokens
+Two things stand out. Even at frontier prices the AI is about $2 per client per month, so **margin is decided by contact data and hosting, not tokens**. And in the measured mix, **qwen3.8-27b carries most of the AI cost** although it handled only 9 of 71 calls: it is where big-tier work spills when gpt-oss-120b is busy under the free tier's 8,000 tokens/minute, and it is the priciest model in the mix. On a paid Groq plan (250,000 tokens/minute per model) spillover rarely happens and the mix moves toward the gpt-oss-120b row; spillover can also be pointed at a cheaper model with `ROUTE_BIG`.
 
-| Item | Basis | Status |
-|---|---|---|
-| Web search (Tavily) | about 1 credit per basic search (one test prompt used 2 credits); free tier 1,000 credits/month | search count per cycle is not yet logged: measure before promising a number |
-| Hunter.io | one domain search per lead company, plus verifications | free plan is about 25 searches/month, so 10-20 leads/week per client needs a paid plan: check pricing |
-| Hosting | Render starter instance plus 1 GB disk | about $7 to $8 a month: verify |
-| Human time | approvals take the founder minutes per week | not a cost to us, but the real product constraint |
+## 3. Platform cost by client count
 
-## 4. Run time
+| Clients | Hosting | AI (paid prices) | Tavily | Hunter.io | Total per month |
+|---|---|---|---|---|---|
+| 0 | $0 (free Render instance; free hosted Postgres to keep data) or $7.25 (Starter + 1 GB disk) | $0 | $0 | $0 | **$0 to $7** |
+| 1 | same | $0.14 (or $0 on free tiers) | $0 (free 1,000 credits) | $0 (free plan: 50 credits) | **$0 to $7** |
+| 12 | $7.25 recommended | $1.66 (or $0) | $0 (660 credits fit the free tier) | $49 (Starter: 2,000 credits; 408 needed) | **about $58** |
+| 100 | larger instance and Postgres (not priced here) | $14 | about $44 (5,500 credits: $30 plan + pay-as-you-go) | $149 (Growth: 10,000 credits; 3,400 needed) | **about $207 + hosting** |
 
-| Mode | Research and strategy | Weekly cycle |
-|---|---|---|
-| **Today (Groq free tier)** | about 14 min measured | 20 to 35 min measured (daily token cap hit: 200k tokens/day/model) |
-| Paid tier, no rate limits (estimate, not measured) | 3 to 4 min | 4 to 6 min |
+Free-tier fit for 12 clients: Tavily's 1,000 free credits cover them; Groq's free tier (about 200,000 tokens and 1,000 requests per day per model, across three models) covers 12 weekly cycles but with the pacing waits shown above; Hunter's free 50 credits cover about one client, so 12 clients need a Starter plan. **Hunter is the one cost that has to be paid from client one** if leads need contact emails.
 
-Why it is slow today: the whole ledger shows only about 2.5 minutes of actual model response time. The rest is our own pacing (`TokenBucket` in `app/llm/providers.py`) and 429 waits against Groq's free limits (8,000 tokens per minute per model, 200,000 per day). It is a provider limit, not agent logic.
+## 4. Run time and what limits it
 
-## 5. How the system controls cost
+| Mode | Research and strategy | Content run | Lead run |
+|---|---|---|---|
+| **Free tiers, measured** | 90 s | 147 s | 18 s |
+| Paid tiers, estimated from model time alone | about 60 s | about 45 s | about 15 s |
 
-- Tiered routing: small model for scoring and extraction, big model only for strategy and writing.
-- Research is done once; `trends_refresh` skips when the report is under 6 days old.
-- Per-run budget, per-client monthly budget (80% incident, 100% hard stop), service-wide daily budget, per-client kill switch.
-- Response cache for deterministic work; compact artifact summaries instead of raw documents in prompts.
-- Every call is written to the ledger with model, tokens, latency, retries and cost. The run page shows live tokens and cost.
+The content run's 147 s is mostly pacing: five drafts in parallel on two writer models at 8,000 tokens/minute each (448 call-seconds of waiting against 42 s of model time). The estimate for paid tiers removes the waiting and keeps the measured model latency; it is not a measurement.
 
-## 6. Scaling to 100+ clients
+Where the speed came from (details in DECISIONS.md §5b): each tier leads with a different model because limits are per model, with spillover to the next model in the chain; `max_tokens` sized from measured use (Groq counts the reservation); research rebuilt as a decide-act loop with compact observations and one extraction on Gemini; Prompt Guard scoring only what models see; steps started as soon as their own dependencies finish.
 
-- Orchestration was load-tested on mock models: 100 clients, 200/200 runs succeeded, 0 failed steps, 0 database lock errors, about 67 seconds, about 172 model calls per second, API p95 under 400 ms. This proves the scheduler and database, not real provider speed.
-- Real throughput is limited by provider rate limits: at 8k tokens/minute, one client cycle needs about 15 minutes of a model's budget. 100 clients need a paid tier (or several providers) or the work queues.
-- Production path: Postgres (RLS migration exists), a durable job queue, Redis rate limits, more than one worker.
+## 5. How cost is controlled
+
+| Lever | How |
+|---|---|
+| Tiered routing | small and cheap models for decisions, scoring and planning; the big model only for writing and strategy; Gemini for large-input extraction |
+| Do expensive work rarely | research once per client; trends reused for 6 days; search results cached per client for 12 hours |
+| Bounded loops | step, attempt and time limits on every loop; redrafts stop when they stop improving |
+| Budgets | per run, per client per month (incident at 80%, stop at 100%), and service-wide per day |
+| Kill switch | per client, checked by the gateway, the orchestrator and the send gate |
+| Contacts | Hunter lookups only for leads that already qualified, within the quota left this month |
+| Visibility | every model call and every search, lookup and send in a ledger; live tokens, cost and credits on the run page; time split into model time, pacing and 429 backoff on the agency run page |

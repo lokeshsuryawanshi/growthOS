@@ -1,95 +1,47 @@
 # Growth OS: handoff
 
-State as of 2026-10-27. Work is **committed locally in chunks but not pushed** (`main` is ahead of `origin/main`). Only `coding-round-links.md` (the user's own file) is untracked on purpose. Remote: `https://github.com/lokeshsuryawanshi/growthOS.git` (`gh` is logged in as `lokeshsuryawanshi`).
+State as of 2026-10-27 (evening). All work is on the branch **`feature/improvements`**, committed in small steps, **not pushed and not merged**. `main` is untouched, so the live site (which auto-deploys from `main`) still runs the old code. Untracked on purpose: `AGENT_PROMPT.md`, `coding-round-links.md` (the user's own files).
 
 ## 1. What this is
 
-Take-home for an AI analyst role: a done-for-you growth portal for founders (LinkedIn content, personal brand, lead gen). Agents research, plan an 8-week calendar, draft ≥5 posts/week, find 10-20 leads/week and draft outreach. **A human approves everything.** The interviewer will open a public link and test it, so the deployed app must show **no demo, seeded, synthetic or mock data**, and must show honest errors instead of faking success.
-
-Stack: Python 3.13 (`.venv`), FastAPI, SQLAlchemy 2.1 async + SQLite (WAL), Jinja + HTMX (vendored `app/web/static/htmx.min.js`), Pydantic v2, Alembic, Groq (`openai/gpt-oss-120b` / `-20b`, `llama-prompt-guard-2-86m`), Gemini judge, httpx.
-
-Architecture (see `PLAN.md`, `DECISIONS.md`; both predate this session's changes):
-- `app/agents/orchestrator/engine.py`: DAGs (discovery, weekly), node checkpoints, retries (MAX_ATTEMPTS=2), human gate `strategy_review`, `rerun_from`, resume. `scheduler.py`: fair scheduler.
-- `app/llm/gateway.py`: tier routing, token buckets, breakers, budgets (run, tenant monthly, **new: global daily**), kill switch, cost ledger.
-- `app/agents/{research,strategy,content,leads}`: agents. `app/guardrails/`: input, output, state machines.
-- `app/db/session.py`: tenant-isolation ORM interceptor. `app/core/security.py`: RBAC policy table.
-- `app/web/` (UI), `app/api/` (JSON API), `app/services/` (approvals, accounts, runs, queries, kpis).
+Take-home for an AI analyst role: a done-for-you growth portal for founders (LinkedIn content, personal brand, lead generation). Agents research, plan an 8-week calendar, draft at least 5 posts a week, find leads and draft outreach emails; a human approves everything. The reviewer reads the repo; start them at `docs/REVIEWER_GUIDE.md`.
 
 ## 2. Run it
 
 ```bash
-.venv/bin/uvicorn app.main:app --port 8000      # production semantics (the default APP_ENV)
-.venv/bin/python -m pytest -q                    # all tests
-APP_ENV=demo LLM_MODE=mock .venv/bin/uvicorn app.main:app --port 8010   # labelled synthetic demo, local only
+.venv/bin/uvicorn app.main:app --port 8000          # production semantics (the default APP_ENV)
+.venv/bin/python -m pytest -q                        # 224 tests, ~2.5 min
+.venv/bin/python -m evals.run_evals                  # offline gate
+.venv/bin/python scripts/live_run.py --profile <form.json> --db data/live.db --groq-key-var GROQ_API_KEY2   # live measurement
 ```
 
-`APP_ENV` = `production` (default) | `demo` | `test`. Only `demo`/`test` allow `app/fixtures/*` and mock models. Production refuses `LLM_MODE=mock`, refuses a weak/default `JWT_SECRET` (<32 chars), and runs Alembic at startup.
+## 3. Done on this branch (see `git log main..feature/improvements`)
 
-## 3. Completed this session
+| Area | What changed |
+|---|---|
+| Speed (P0-A) | Per-model pacing synced to Groq's headers, tier routing with spillover (`ROUTE_*`), oversized-request and daily-quota handling, wait times in the ledger, event-driven DAG, decide-act research loop with one Gemini extraction, smaller `max_tokens`, cheaper Prompt Guard use, concurrent calendar chunks, ETA and progress in the UI, a "where the time went" view for the agency. Live: research 90 s, posts 147 s, leads 18 s (was 25-35 min overall). |
+| RBAC (P0-B) | Team page, platform admin data view, account managers created and assigned by the admin, 403 on every viewer write (API and UI) with a page naming the permission, last-owner rule, grant table, CSRF origin check. RBAC eval (315 checks, 14 escalations) and a mutation test. |
+| Weekly output (P0-C) | Bounded redraft loop to the posts-per-week target, anchored critic rubric (calibrated), `succeeded_with_shortfall` with reasons. |
+| Leads (P1) | Fit threshold 70 with quoted evidence, contacts only for qualified companies within the Hunter quota (shown on Integrations), plain-word search queries, empty results handled, "Add a lead manually" with Hunter verification or explicit founder confirmation. |
+| Strategy | Every research claim checked against its source page; unsupported claims flagged, outdated figures labelled, official competitor sites preferred; "Suggest changes" before approving. |
+| Deploy (P1) | `render.free.yaml`, ephemeral-storage banner and `/healthz` field, Postgres support (tested locally), `docs/DEPLOY.md`. |
+| Polish (P2) | Search and contact credits in a cost ledger, deterministic quality report, ops pages restyled, DECISIONS.md and PLAN.md corrected, reports refreshed, prices checked on provider pages. |
+| Bugs found by live runs and Postgres | un-awaited async call; Unicode hyphen failing every calendar slot; strict critic; empty search disabling the provider; lead scoring penalising missing fields; double email send on Postgres; cache unique-key race; re-planning clashing with drafted weeks; invalid `ENCRYPTION_KEY` crashing Gmail connect. |
 
-- **Data-integrity gate**: all synthetic things moved to `app/fixtures/` (clients, corpus, prospects, mocks, seed, `SeededLeadSource`, `FixtureResearch`); importing it in production raises. No mock publisher/sender exists anymore. Gateway has an `unconfigured` mode that raises an honest `IntegrationError` (HTTP 424 with `recovery`).
-- **Accounts/onboarding**: `/signup`, `/onboarding` (4-step form), `/portal/{tid}?tab=settings` edit, `app/services/accounts.py`. New workspaces start empty (empty states on every tab). Optional `SIGNUP_INVITE_CODE`, `ADMIN_EMAIL`/`ADMIN_PASSWORD` bootstrap. Founders may start runs and approve the strategy gate (`POLICY` changed). Rate limits (`app/core/ratelimit.py`, in-memory), per-tenant run limit, `SELF_SERVE_MONTHLY_BUDGET_USD`=2, `GLOBAL_DAILY_BUDGET_USD`=5.
-- **Real research**: `app/integrations/{search,fetch,research}.py`. Search = Gemini grounding → Tavily (both need keys). SSRF-safe fetch. Cited URLs are verified against what was actually seen; unverifiable facts/competitors/trends are dropped and counted; provenance stored under `_provenance` in artifacts and shown in the UI. DuckDuckGo scraping was **deliberately removed** (auto-mode classifier flagged it as bot-check circumvention).
-- **Leads**: live path = scout agent finds companies via search, candidates verified against results, Hunter.io attaches/verifies a contact (`app/integrations/hunter.py`). Without Hunter, leads are saved as `prospect` (company only, no outreach). Outreach is now **email** (subject + body + auto footer with opt-out).
-- **Gmail OAuth send** (`app/integrations/gmail.py`, routes `/oauth/google/start|callback`): `gmail.send` scope only, refresh token Fernet-encrypted. `approvals.send_outreach` uses a `sending` lock state (no double send), requires verified (`valid`) non-synthetic address, suppression, daily cap, connected Gmail. Posts are **not** published (social integration skipped): approve → copy → "I posted it" (`mark_posted`).
-- **Grounding fixes**: `PostDraft.claims` (number + verbatim quote + source); `check_claims` (catches the "1,100 SMBs" misattribution), `check_copying` (founder samples/example hooks); writer no longer sees `example_hooks`.
-- **UI**: new design system (`app.css`), sidebar shell, templates under `app/web/templates/{auth,portal,partials}`, run-progress partial with retry buttons, integrations page.
-- **Migrations**: `alembic.ini`, `migrations/env.py`, `migrations/versions/0001_initial_schema.py` (21 tables, autogenerated), `app/db/migrate.py`, `app/bootstrap.py`.
+## 4. Verified, and not verified
 
-## 4. Tests
+Verified: all tests on SQLite and on PostgreSQL 15; offline and live eval gates; stress at 12 and 100 clients; a full live run on Groq, Gemini, Tavily and Hunter on a fresh database; every page rendered for every role with data (demo-mode crawl); a production-mode boot from a clean Python 3.13 environment filtered like the Docker build.
 
-`.venv/bin/python -m pytest -q` → **150 passed** (≈57 s) at the last run. New files: `tests/test_{accounts,grounding,integrations,orchestration,production_integrity,research_integrity,send_gate}.py`, `tests/helpers.py` (FakeGoogle). `test_production_integrity.py` boots a real uvicorn in production mode with a fresh DB and no keys (cwd is a temp dir so `.env` cannot leak). `tests/conftest.py` sets `APP_ENV=test`, blanks all provider keys.
+Not verified: **a live Gmail send** (needs the user's own OAuth consent in a browser); **the Docker build itself** (no Docker on this machine; Render builds it on deploy); **a hosted Postgres provider** (Neon/Supabase) as opposed to local Postgres; the new UI in a real browser (pages were fetched and checked as HTML, not looked at).
 
-Not re-run since the refactor: `python -m evals.run_evals`, `python -m loadtest.stress --tenants 12|100`, `scripts/demo_drive.py`. Their imports were updated by sed but they are unverified; `evals/baseline.json` and the reports in `evals/reports`, `loadtest/reports` are from the old code.
+## 5. Next steps for the user
 
-Not verified at all: the new UI in a browser (no screenshot taken), any live Groq run with the new code, Hunter/Gmail against the real services (only mock transports).
+1. Review and merge: `git push -u origin feature/improvements`, open a PR, merge when happy. Merging redeploys the live site; on the free plan that also wipes its SQLite data.
+2. On Render (Environment tab): set `GOOGLE_API_KEY` if not set (Gemini is now the critic and extraction model), keep `TAVILY_API_KEY`, `GROQ_API_KEY`, `HUNTER_API_KEY`. For data that survives sleeping, create a free hosted Postgres and set `DATABASE_URL` to its URL. Optionally set `ADMIN_EMAIL`/`ADMIN_PASSWORD` to get the admin data view.
+3. Try a live Gmail send to your own address: Integrations → Connect Gmail, Leads → Add a lead manually (your address, tick "I know this address is correct"), approve the drafted email, send.
+4. Local `.env`: `ENCRYPTION_KEY` was not a valid Fernet key; it now works as a passphrase, but keep it stable or connected Gmail accounts must reconnect. `DATABASE_URL` still points at the old `growthos.db` (demo data); use a new file for production-mode runs.
+5. Hunter's free plan here is 50 searches and 100 verifications a month (17 and 35 left on 2026-10-27 after testing); 12 clients need the Starter plan.
 
-## 5. Remaining work, by priority
+## 6. Environment variables
 
-1. **Browser check, partly done** (launch config `growthos-fresh`, port 8020, `data/fresh.db`): signup, onboarding, overview, integrations and leads render correctly. Still unchecked: content, calendar, research, settings, activity tabs with data, and the ops pages (`ops_client.html`/`ops_run.html` not updated for new fields).
-2. **Live run** with real keys: needs `TAVILY_API_KEY` (Gemini grounding was still 429/quota-exhausted on 2026-10-27). Run discovery for a fresh account; check research provenance, claims, DM drafting.
-3. **Deployment**: `Dockerfile`, `.dockerignore`, `render.yaml` and `docs/DEPLOY.md` are written but untested (no Docker or hosting access here). New empty DB at `/data/growthos.db`; one worker only. The user must create the host account and set env vars.
-4. **Docs**: `README.md`, `.env.example`, `docs/DEPLOY.md` are current. `DECISIONS.md` and `PLAN.md` are not updated (they still describe seeded data, LinkedIn DMs, a mock publisher).
-5. **Re-run** evals + stress (12 and 100 tenants), update baselines/reports honestly. Add deterministic evals (factual, brand voice, output quality, safety) to `evals/`; currently the deterministic checks exist only as pytest tests.
-6. Add an Alembic drift test (migration schema == `Base.metadata`); regenerate `0001` if models change before first deploy.
-7. CSRF/Origin check for cookie-authenticated POSTs (only `SameSite=Lax` today); email verification; password reset; multi-instance rate limiting (Redis).
-8. Commit in logical chunks and push to `main` (no force push). Open question: the interviewer link needs the deploy.
-
-## 6. Known bugs and risks
-
-- The user's `.env` uses `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REDIRECT_URI` (=`http://localhost:8000/auth/gmail/callback`) and has `HUNTER_API_KEY`; the app accepts these names and serves that callback path. Hunter/Gmail have still not been exercised live.
-- An earlier uncommitted `.env.example` contained a real Google key pasted by mistake; it was replaced with a clean template before any commit (the key remains only in `.env`).
-- Web search status shows `degraded` when only Gemini grounding is configured (known quota 429); `TAVILY_API_KEY` is still missing.
-- **`growthos.db` (the `DATABASE_URL` in `.env`) holds old seeded demo tenants and no `alembic_version`.** In production it would show fake clients or fail the first migration. Move it aside or point `DATABASE_URL` at a new file before running production mode. `demo_mock.db` is demo data too. Both are git-ignored.
-- A server on port 8010 (old code, mock mode, `demo_mock.db`) may still be running from earlier.
-- During testing, one early subprocess test run picked up the project `.env` and may have started a real Groq run for a few seconds (cents at most). Fixed by running the subprocess in a temp cwd.
-- Hunter free plan allows ~25 searches/month: 10-20 contacts per week is not achievable on it. Leads then degrade to company-only with a visible warning.
-- `app.fixtures.web_corpus` now generates fictional competitor pages at import (tests only).
-- `Post.claims` check is strict: a live writer that omits `claims` for a figure gets one auto-fix rewrite, then is `blocked`. Watch the block rate on the first live run.
-- `kpis` and some read paths call `profile()`/`intake_of()`; legacy fixture `intake["goals"]` is a string (handled).
-
-## 7. Environment variables
-Required in production: `JWT_SECRET` (≥32 chars, set in `.env`, 64 chars), `GROQ_API_KEY` (set, validated), `DATABASE_URL` (persistent path), `APP_BASE_URL` (public https URL).
-Search (one needed for research): `TAVILY_API_KEY` (**missing**; free at tavily.com) or `GOOGLE_API_KEY` with billing (set, but grounding quota exhausted).
-Optional, not configured: `HUNTER_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` (Google Cloud OAuth web client, Gmail API enabled, redirect `{APP_BASE_URL}/oauth/google/callback`, app in testing mode needs test users), `ENCRYPTION_KEY` (Fernet; derived from `JWT_SECRET` if empty, so rotating the secret disconnects Gmail), `SIGNUP_INVITE_CODE`, `ADMIN_EMAIL`/`ADMIN_PASSWORD`, `GLOBAL_DAILY_BUDGET_USD`, `SELF_SERVE_MONTHLY_BUDGET_USD`.
-Never print or commit `.env`.
-
-## 8. Exact next steps
-1. `git status`, `git log --oneline -12`; run `.venv/bin/python -m pytest -q` once to confirm 150 pass.
-2. Inspect before editing: `app/core/config.py`, `app/web/routes.py`, `app/services/accounts.py`, `app/integrations/*`, `tests/test_production_integrity.py`.
-3. Start a clean production server on a fresh DB and walk the UI (item 5.1). Fix what breaks, rerun tests.
-4. Re-run evals and stress; fix import breakage; save new reports.
-5. Finish the browser check; update `DECISIONS.md`/`PLAN.md`.
-6. Commit in chunks, push, then hand the user the exact remaining credential/deploy steps (Tavily key, host account, optional Hunter and Google OAuth).
-
-
-## Update: workflows split (latest)
-- Content/calendar and lead generation are now separate runs (`content`, `leads` DAGs; `weekly` kept for agency). The agency name "Growth OS" leaked into an outreach email; prompts changed and an `agency_name_leak` guardrail added. 156 tests pass.
-
-## Update (live run on 2026-10-27, later)
-- Live run on real services (Groq, Gemini, Tavily, Hunter): research/strategy succeeded (about 14 min on the free tier); weekly cycle produced 5 posts (guardrails blocked 3, correctly catching an invented "$2,000" figure and a false positive on list numbers, since fixed) and 11 real leads (5 with Hunter-verified emails).
-- Lead scout was rewritten (plan queries -> code searches -> one structured extraction) because the tool loop failed on small models.
-- New: live token/cost counter on the Activity run page; docs/ARCHITECTURE.md, docs/EVALS_AND_GUARDRAILS.md, docs/ECONOMICS.md.
-- Evals and stress re-run after the refactor (reports refreshed): gate PASS, 100/100 clients OK, 0 failures.
-- Groq free tier caps each model at 200k tokens/day; a second key is in .env as GROQ_API_KEY2 (not read by the app; pass it as GROQ_API_KEY to use it).
-- Still open: deployment (Render account pending), Gmail live send untested, search credits not in the cost ledger, post quality tuning on the 120b writer, ops pages not restyled.
+Required in production: `JWT_SECRET`, `GROQ_API_KEY`, `TAVILY_API_KEY`, `DATABASE_URL`, `APP_BASE_URL`. Recommended: `GOOGLE_API_KEY`. Optional: `HUNTER_API_KEY`, Google OAuth (`GOOGLE_OAUTH_CLIENT_ID`/`_SECRET`, `GOOGLE_REDIRECT_URI`), `ENCRYPTION_KEY`, `ADMIN_EMAIL`/`ADMIN_PASSWORD`, `SIGNUP_INVITE_CODE`, `ROUTE_*`, `MODEL_LIMITS_JSON`, `SEARCH_PROVIDERS`, `CONTENT_TIME_BUDGET_S`, budgets. `GROQ_API_KEY2..4` are test-only keys from separate accounts; the app never reads them (pass one as `GROQ_API_KEY`, or use `scripts/live_run.py --groq-key-var`). Never print or commit `.env`.

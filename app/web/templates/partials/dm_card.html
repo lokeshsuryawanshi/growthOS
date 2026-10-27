@@ -4,7 +4,8 @@
 <article class="card {{ 'done' if m.status not in ('pending_approval', 'approved', 'sending', 'blocked') }}" id="dm-{{ m.id }}">
   <div class="preview stack">
     <div class="row"><b>To: {{ lead.full_name or lead.company }}</b><span class="sub">{{ lead.title }}{{ ', ' if lead.title }}{{ lead.company }} · {{ lead.email }}</span>
-      <span class="pill {{ lead.email_status or 'pending' }}">email {{ lead.email_status or 'unknown' }}</span>{% if lead.is_synthetic %}<span class="pill synthetic">synthetic</span>{% endif %}</div>
+      {% if lead.email_status == 'founder_confirmed' %}<span class="pill warn">unverified address: you confirmed it</span>
+      {% else %}<span class="pill {{ lead.email_status or 'pending' }}">email {{ lead.email_status or 'unknown' }}</span>{% endif %}{% if lead.is_synthetic %}<span class="pill synthetic">synthetic</span>{% endif %}</div>
     <div class="dm"><div class="subject">{{ m.subject }}</div>{{ m.approved_text or m.text }}<div class="footer">Your name, company and an opt-out line are added automatically when it is sent.</div></div>
     {% if m.alt_text %}<details><summary>Alternative version</summary><div class="dm" style="margin-top:8px">{{ m.alt_text }}</div></details>{% endif %}
   </div>

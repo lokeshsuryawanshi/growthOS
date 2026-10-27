@@ -1,0 +1,408 @@
+{
+  "date": "2026-10-27",
+  "client": "test workspace: a consumer furniture and appliance rental company in India (real public website)",
+  "providers": "Groq free tier (gpt-oss-120b, gpt-oss-20b, qwen3.8-27b, Prompt Guard), Gemini 3.5 Flash-Lite free tier, Tavily, Hunter.io free plan",
+  "note": "Costs re-priced at paid list prices checked on 2026-10-27; on these free tiers the actual bill was $0.",
+  "discovery": {
+    "kind": "discovery",
+    "status": "succeeded",
+    "shortfall": "",
+    "wall_s": 90.5,
+    "steps": [
+      {
+        "step": "strategy_review",
+        "status": "succeeded",
+        "seconds": null
+      },
+      {
+        "step": "ingest",
+        "status": "succeeded",
+        "seconds": 7.4
+      },
+      {
+        "step": "voice",
+        "status": "succeeded",
+        "seconds": 1.5
+      },
+      {
+        "step": "market",
+        "status": "succeeded",
+        "seconds": 18.4
+      },
+      {
+        "step": "competitors",
+        "status": "succeeded",
+        "seconds": 22.6
+      },
+      {
+        "step": "trends",
+        "status": "succeeded",
+        "seconds": 28.1
+      },
+      {
+        "step": "icp",
+        "status": "succeeded",
+        "seconds": 2.1
+      },
+      {
+        "step": "strategy",
+        "status": "succeeded",
+        "seconds": 3.3
+      },
+      {
+        "step": "calendar",
+        "status": "succeeded",
+        "seconds": 32.5
+      }
+    ],
+    "calls": 33,
+    "tokens_in": 51124,
+    "tokens_out": 13854,
+    "ai_cost_usd": 0.0477,
+    "external": {
+      "tavily search": {
+        "calls": 35,
+        "cost_usd": 0.28
+      }
+    },
+    "external_cost_usd": 0.28,
+    "by_model": {
+      "gemini-3.5-flash-lite": {
+        "calls": 4,
+        "tokens_in": 18764,
+        "tokens_out": 3228,
+        "model_s": 12.9,
+        "pacing_s": 0.0,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.0137
+      },
+      "meta-llama/llama-prompt-guard-2-86m": {
+        "calls": 13,
+        "tokens_in": 3831,
+        "tokens_out": 0,
+        "model_s": 2.7,
+        "pacing_s": 0.0,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.00015
+      },
+      "openai/gpt-oss-120b": {
+        "calls": 5,
+        "tokens_in": 7148,
+        "tokens_out": 4946,
+        "model_s": 13.5,
+        "pacing_s": 17.6,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.00404
+      },
+      "openai/gpt-oss-20b": {
+        "calls": 6,
+        "tokens_in": 10078,
+        "tokens_out": 724,
+        "model_s": 4.9,
+        "pacing_s": 0.0,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.00097
+      },
+      "qwen/qwen3.8-27b": {
+        "calls": 5,
+        "tokens_in": 11303,
+        "tokens_out": 4956,
+        "model_s": 12.4,
+        "pacing_s": 0.7,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.02887
+      }
+    },
+    "outputs": []
+  },
+  "content": {
+    "kind": "content",
+    "status": "succeeded",
+    "shortfall": "",
+    "wall_s": 147.1,
+    "steps": [
+      {
+        "step": "reflect",
+        "status": "succeeded",
+        "seconds": 0.0
+      },
+      {
+        "step": "trends_refresh",
+        "status": "succeeded",
+        "seconds": 0.0
+      },
+      {
+        "step": "draft_week",
+        "status": "succeeded",
+        "seconds": 134.4
+      },
+      {
+        "step": "calendar_extend",
+        "status": "succeeded",
+        "seconds": 12.7
+      },
+      {
+        "step": "kpi_snapshot",
+        "status": "succeeded",
+        "seconds": 0.0
+      }
+    ],
+    "calls": 17,
+    "tokens_in": 25186,
+    "tokens_out": 4370,
+    "ai_cost_usd": 0.0161,
+    "external": {},
+    "external_cost_usd": 0,
+    "by_model": {
+      "gemini-3.5-flash-lite": {
+        "calls": 7,
+        "tokens_in": 7247,
+        "tokens_out": 500,
+        "model_s": 15.8,
+        "pacing_s": 0.0,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.00342
+      },
+      "openai/gpt-oss-120b": {
+        "calls": 7,
+        "tokens_in": 12083,
+        "tokens_out": 2731,
+        "model_s": 16.3,
+        "pacing_s": 278.2,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.00345
+      },
+      "qwen/qwen3.8-27b": {
+        "calls": 3,
+        "tokens_in": 5856,
+        "tokens_out": 1139,
+        "model_s": 9.7,
+        "pacing_s": 170.5,
+        "retry_wait_s": 4.2,
+        "cost_usd": 0.00924
+      }
+    },
+    "outputs": [
+      {
+        "week_start": "2026-11-02",
+        "target": 5,
+        "ready": 5,
+        "slots": 5,
+        "shortfall": []
+      }
+    ]
+  },
+  "leads_before_scoring_fix": {
+    "status": "succeeded_with_shortfall",
+    "wall_s": 21.1,
+    "shortfall": "0 of the 5-10 leads wanted this week; candidates dropped: 8 low fit",
+    "outputs": [
+      {
+        "rounds": 3,
+        "candidates": 8,
+        "kept": 0,
+        "duplicate": 0,
+        "suppressed": 0,
+        "competitor": 0,
+        "missing_contact": 0,
+        "low_fit": 8,
+        "no_evidence": 0,
+        "injection_flagged": 0,
+        "with_email": 0,
+        "target_min": 5,
+        "target_max": 10,
+        "fit_threshold": 70,
+        "searches": 15,
+        "unverified_dropped": 0,
+        "week_total": 0,
+        "shortfall": [
+          "0 of the 5-10 leads wanted this week",
+          "candidates dropped: 8 low fit"
+        ]
+      },
+      {
+        "drafted": 0
+      }
+    ]
+  },
+  "leads": {
+    "kind": "leads",
+    "status": "succeeded",
+    "shortfall": "",
+    "wall_s": 17.5,
+    "steps": [
+      {
+        "step": "leads",
+        "status": "succeeded",
+        "seconds": 14.5
+      },
+      {
+        "step": "outreach",
+        "status": "succeeded",
+        "seconds": 3.0
+      }
+    ],
+    "calls": 21,
+    "tokens_in": 15358,
+    "tokens_out": 3513,
+    "ai_cost_usd": 0.0065,
+    "external": {
+      "hunter domain_search": {
+        "calls": 8,
+        "cost_usd": 0.196
+      },
+      "hunter verify": {
+        "calls": 1,
+        "cost_usd": 0.0123
+      },
+      "tavily search": {
+        "calls": 5,
+        "cost_usd": 0.04
+      }
+    },
+    "external_cost_usd": 0.2483,
+    "by_model": {
+      "gemini-3.5-flash-lite": {
+        "calls": 1,
+        "tokens_in": 3180,
+        "tokens_out": 796,
+        "model_s": 3.2,
+        "pacing_s": 0.0,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.00294
+      },
+      "meta-llama/llama-prompt-guard-2-86m": {
+        "calls": 6,
+        "tokens_in": 918,
+        "tokens_out": 0,
+        "model_s": 1.1,
+        "pacing_s": 0.0,
+        "retry_wait_s": 0.0,
+        "cost_usd": 4e-05
+      },
+      "openai/gpt-oss-120b": {
+        "calls": 5,
+        "tokens_in": 3854,
+        "tokens_out": 1049,
+        "model_s": 4.4,
+        "pacing_s": 0.0,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.00121
+      },
+      "openai/gpt-oss-20b": {
+        "calls": 8,
+        "tokens_in": 6697,
+        "tokens_out": 1459,
+        "model_s": 5.8,
+        "pacing_s": 0.0,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.00094
+      },
+      "qwen/qwen3.8-27b": {
+        "calls": 1,
+        "tokens_in": 709,
+        "tokens_out": 209,
+        "model_s": 0.5,
+        "pacing_s": 0.0,
+        "retry_wait_s": 0.0,
+        "cost_usd": 0.0014
+      }
+    },
+    "outputs": [
+      {
+        "rounds": 1,
+        "candidates": 8,
+        "kept": 8,
+        "duplicate": 0,
+        "suppressed": 0,
+        "competitor": 0,
+        "missing_contact": 0,
+        "low_fit": 0,
+        "no_evidence": 0,
+        "injection_flagged": 0,
+        "with_email": 6,
+        "target_min": 5,
+        "target_max": 10,
+        "fit_threshold": 70,
+        "searches": 5,
+        "unverified_dropped": 0,
+        "contacts": {
+          "no_contact": 2,
+          "ok": 6
+        },
+        "week_total": 8,
+        "shortfall": []
+      },
+      {
+        "drafted": 6,
+        "pending_approval": 6
+      }
+    ],
+    "kept": [
+      {
+        "company": "NRI Relocation",
+        "fit": 85,
+        "contact": "verified email"
+      },
+      {
+        "company": "Sirva",
+        "fit": 85,
+        "contact": "verified email"
+      },
+      {
+        "company": "FlxHo",
+        "fit": 85,
+        "contact": "company only"
+      },
+      {
+        "company": "Colive",
+        "fit": 80,
+        "contact": "verified email"
+      },
+      {
+        "company": "Kohabs",
+        "fit": 80,
+        "contact": "verified email"
+      },
+      {
+        "company": "The HelloWorld",
+        "fit": 80,
+        "contact": "company only"
+      },
+      {
+        "company": "Ukio",
+        "fit": 80,
+        "contact": "verified email"
+      },
+      {
+        "company": "Blueground",
+        "fit": 80,
+        "contact": "verified email"
+      }
+    ]
+  },
+  "posts_delivered": [
+    {
+      "critic_score": 4.0,
+      "chars": 1005
+    },
+    {
+      "critic_score": 4.0,
+      "chars": 847
+    },
+    {
+      "critic_score": 4.0,
+      "chars": 1338
+    },
+    {
+      "critic_score": 4.0,
+      "chars": 982
+    },
+    {
+      "critic_score": 4.0,
+      "chars": 923
+    }
+  ],
+  "weekly_wall_s_content_and_leads_in_parallel": 147.1,
+  "total_s": 237.6
+}

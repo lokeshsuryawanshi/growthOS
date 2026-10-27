@@ -15,12 +15,27 @@ from app.core.config import get_settings
 
 ROLES = ("platform_admin", "account_manager", "client_owner", "client_viewer")
 AGENCY_ROLES = {"platform_admin", "account_manager"}
+CLIENT_ROLES = {"client_owner", "client_viewer"}
 _ALL = set(ROLES)
+
+# Which roles a role may hand out. Nobody grants a role above their own, and client roles never grant agency roles:
+# a founder can add viewers and co-owners to their own workspace; only the platform admin creates account managers.
+GRANTABLE: dict[str, set[str]] = {
+    "platform_admin": {"account_manager"},
+    "account_manager": set(),
+    "client_owner": {"client_owner", "client_viewer"},
+    "client_viewer": set(),
+}
 
 # permission -> roles allowed. Anything not listed is denied.
 POLICY: dict[str, set[str]] = {
     "tenant:list_all":   {"platform_admin"},
     "tenant:manage":     {"platform_admin"},          # budgets, create tenants, users
+    "admin:view":        {"platform_admin"},          # read-only data view across the platform
+    "agency:manage":     {"platform_admin"},          # create account managers, assign them to clients
+    "team:view":         {"platform_admin", "account_manager", "client_owner"},
+    "team:manage":       {"client_owner"},            # the founder adds, changes and removes their own teammates
+    "lead:add":          {"account_manager", "client_owner"},   # add a lead by hand (e.g. to test sending)
     "tenant:kill_switch": {"platform_admin", "account_manager"},
     "tenant:view":       _ALL,
     "strategy:view":     _ALL,
@@ -42,6 +57,19 @@ POLICY: dict[str, set[str]] = {
     "guardrail:view":    {"platform_admin", "account_manager"},
     "eval:view":         {"platform_admin", "account_manager"},
     "kpi:view":          _ALL,
+}
+
+
+PERMISSION_LABELS: dict[str, str] = {
+    "tenant:manage": "manage workspaces and budgets", "admin:view": "open the platform data view",
+    "agency:manage": "create account managers and assign clients", "team:view": "see the team",
+    "team:manage": "add, change or remove teammates", "lead:add": "add leads", "tenant:kill_switch": "pause a workspace",
+    "strategy:review": "approve or change the strategy", "onboarding:edit": "edit the company profile",
+    "run:start": "start research, posts or lead runs", "run:view": "see run internals",
+    "integration:manage": "connect or disconnect integrations", "content:edit": "edit posts",
+    "content:approve": "approve, reject or mark posts as posted", "outreach:edit": "edit emails",
+    "outreach:approve": "approve or reject emails", "outreach:send": "send emails", "cost:view": "see costs",
+    "guardrail:view": "see guardrail incidents", "eval:view": "see evals",
 }
 
 
@@ -71,12 +99,22 @@ class Principal:
         return self.role == "platform_admin" or tenant_id in self.tenant_ids
 
 
+class NoTenantAccess(ForbiddenError):
+    """The principal has no membership in this workspace. Callers answer 404 so workspace ids cannot be probed."""
+
+
 def authorize(principal: Principal, permission: str, tenant_id: str | None = None) -> None:
     if not principal.can(permission):
         raise ForbiddenError(f"role {principal.role} lacks {permission}")
     if tenant_id is not None and not principal.can_access_tenant(tenant_id):
-        # Callers turn this into 404 so tenant ids can't be probed.
-        raise ForbiddenError("no access to tenant")
+        raise NoTenantAccess("no access to tenant")
+
+
+def can_grant(granter_role: str, role: str) -> bool:
+    return role in GRANTABLE.get(granter_role, set())
+
+
+MIN_PASSWORD = 10
 
 
 def hash_password(password: str) -> str:

@@ -69,6 +69,20 @@ class Membership(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    added_by: Mapped[str] = mapped_column(String(32), default="")      # user id; "" = created with the workspace
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PlatformAudit(Base):
+    """Audit trail for actions that are not about one workspace (account managers created, users deactivated)."""
+    __tablename__ = "platform_audit"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    actor: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(64))
+    target_user: Mapped[str] = mapped_column(String(32), default="")
+    tenant_id: Mapped[str] = mapped_column(String(32), default="")
+    detail: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
 # --------------------------------------------------------------------------
@@ -151,11 +165,28 @@ class LLMCall(TenantScoped, Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
-    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)       # provider response time
+    pace_wait_ms: Mapped[int] = mapped_column(Integer, default=0)     # waiting in our per-model pacing before the call
+    retry_wait_ms: Mapped[int] = mapped_column(Integer, default=0)    # sleeping after 429s / transient errors
+    route_note: Mapped[str] = mapped_column(String(300), default="")  # spillover or skipped models, if any
     retries: Mapped[int] = mapped_column(Integer, default=0)
     cached: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(16), default="ok")  # ok|error|fallback
     error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class ExternalCall(TenantScoped, Base):
+    """Cost ledger for paid non-model services: web search credits, contact lookups, sends."""
+    __tablename__ = "external_calls"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    node_key: Mapped[str] = mapped_column(String(64), default="")
+    provider: Mapped[str] = mapped_column(String(32))        # tavily|gemini_search|hunter|gmail
+    operation: Mapped[str] = mapped_column(String(32))       # search|domain_search|verify|send
+    units: Mapped[float] = mapped_column(Float, default=1.0) # provider credits used
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)  # at the list price in config (EXTERNAL_PRICES)
+    status: Mapped[str] = mapped_column(String(16), default="ok")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 

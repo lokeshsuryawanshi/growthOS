@@ -150,8 +150,10 @@ async def policy_context(tenant_id: str, include_previous_posts: bool = True) ->
     if include_previous_posts:
         with tenant_scope(tenant_id):
             async with get_db().reader() as s:
+                # Blocked attempts never reached anyone, so a redraft is not a "duplicate" of them.
                 previous = [t for (t,) in (await s.execute(
-                    select(Post.text).where(Post.status.notin_(["rejected"])).order_by(Post.created_at.desc()).limit(40)))]
+                    select(Post.text).where(Post.status.notin_(["rejected", "blocked"]))
+                    .order_by(Post.created_at.desc()).limit(40)))]
     return PolicyContext(
         tenant_name=intake.get("company_name", ""), competitors=sorted(set(competitors)),
         banned_topics=pol.get("banned_topics", []),

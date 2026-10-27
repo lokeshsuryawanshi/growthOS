@@ -95,6 +95,8 @@ async def test_scope_propagates_into_concurrent_tasks(db):
 
 
 async def test_wal_pragmas_applied(db):
+    if not db.url.startswith("sqlite"):
+        pytest.skip("SQLite-only settings")
     async with db.reader() as s:
         mode = (await s.execute(text("PRAGMA journal_mode"))).scalar_one()
         timeout = (await s.execute(text("PRAGMA busy_timeout"))).scalar_one()

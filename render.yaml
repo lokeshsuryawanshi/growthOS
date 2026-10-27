@@ -1,4 +1,5 @@
-# Render blueprint. A persistent disk requires a paid instance type.
+# Render blueprint for a PAID instance with a persistent disk (data survives restarts). For the free plan use
+# render.free.yaml instead.
 services:
   - type: web
     name: growth-os
