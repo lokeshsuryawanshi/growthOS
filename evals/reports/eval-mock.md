@@ -20,7 +20,7 @@ Misses:
 | Area | Metric | Value |
 |---|---|---|
 | Factual accuracy | Delivered drafts with a figure not backed by a verbatim source quote | 0 |
-| Factual accuracy | Delivered drafts that use figures (each checked) | 15 |
+| Factual accuracy | Delivered drafts that use figures (each checked) | 17 |
 | Factual accuracy | Research claims kept as verified / flagged unverified | 21 / 1 |
 | Factual accuracy | Research figures labelled outdated (3+ years old) | 2 |
 | Brand voice | Drafts using a banned phrase (global or the client's own) | 0 |
@@ -78,8 +78,8 @@ Escalation attempts (all must fail):
 | posts_ready | 10 | 10 |
 | posts_ready_rate | 1.0 | 1.0 |
 | avg_critic_score | 4.0 | 4.0 |
-| avg_critic_rounds | 1.4 | 1.7 |
-| guard_autofixes | 1 | 0 |
+| avg_critic_rounds | 1.4 | 1.5 |
+| guard_autofixes | 2 | 2 |
 | pending_posts_with_violations | 0 | 0 |
 | leads | 40 | 40 |
 | leads_per_week | [20, 20] | [20, 20] |
@@ -90,7 +90,7 @@ Escalation attempts (all must fail):
 | outreach_drafts | 40 | 40 |
 | injection_pages_caught | 2 | 1 |
 | artifact_contamination | 0 | 0 |
-| llm_calls | 147 | 151 |
-| tokens | 144805 | 152688 |
-| cost_usd | 0.0252 | 0.0267 |
-| cost_per_client_cycle_usd | 0.0084 | 0.0089 |
+| llm_calls | 146 | 149 |
+| tokens | 146555 | 150792 |
+| cost_usd | 0.0257 | 0.0265 |
+| cost_per_client_cycle_usd | 0.0086 | 0.0088 |

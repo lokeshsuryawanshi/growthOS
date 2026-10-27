@@ -24,7 +24,7 @@
         "posts_ready_rate": 1.0,
         "avg_critic_score": 4.0,
         "avg_critic_rounds": 1.4,
-        "guard_autofixes": 1,
+        "guard_autofixes": 2,
         "pending_posts_with_violations": 0,
         "leads": 40,
         "leads_per_week": [
@@ -38,10 +38,10 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 2,
         "artifact_contamination": 0,
-        "llm_calls": 147,
-        "tokens": 144805,
-        "cost_usd": 0.0252,
-        "cost_per_client_cycle_usd": 0.0084
+        "llm_calls": 146,
+        "tokens": 146555,
+        "cost_usd": 0.0257,
+        "cost_per_client_cycle_usd": 0.0086
       },
       "shiftwise": {
         "run_status": [
@@ -56,8 +56,8 @@
         "posts_ready": 10,
         "posts_ready_rate": 1.0,
         "avg_critic_score": 4.0,
-        "avg_critic_rounds": 1.7,
-        "guard_autofixes": 0,
+        "avg_critic_rounds": 1.5,
+        "guard_autofixes": 2,
         "pending_posts_with_violations": 0,
         "leads": 40,
         "leads_per_week": [
@@ -71,17 +71,17 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 1,
         "artifact_contamination": 0,
-        "llm_calls": 151,
-        "tokens": 152688,
-        "cost_usd": 0.0267,
-        "cost_per_client_cycle_usd": 0.0089
+        "llm_calls": 149,
+        "tokens": 150792,
+        "cost_usd": 0.0265,
+        "cost_per_client_cycle_usd": 0.0088
       }
     },
     "calendar_valid": 1,
     "posts_ready_rate": 1.0,
     "avg_critic_score": 4.0,
     "leads_week_in_range_rate": 1.0,
-    "cost_per_client_cycle_usd": 0.0089,
+    "cost_per_client_cycle_usd": 0.0088,
     "pending_posts_with_violations": 0,
     "lead_policy_violations": 0,
     "explicit_low_fit_kept": 0,
@@ -89,7 +89,7 @@
   },
   "quality": {
     "quality_delivered_posts": 20,
-    "quality_posts_with_figures": 15,
+    "quality_posts_with_figures": 17,
     "quality_ungrounded_figure_posts": 0,
     "quality_banned_phrase_posts": 0,
     "quality_avoided_word_posts": 0,
