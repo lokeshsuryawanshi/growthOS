@@ -43,6 +43,8 @@ async def test_fixture_searches_cost_nothing_and_are_not_recorded(db):
 
 
 async def test_progress_estimates_time_left_along_the_critical_path(db):
+    from app.services import progress
+    progress._cache.clear()                  # medians are cached per process; this test's database has no history
     set_gateway(LLMGateway())
     orch = Orchestrator()
     set_orchestrator(orch)

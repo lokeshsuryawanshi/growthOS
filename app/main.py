@@ -114,4 +114,5 @@ async def integration_errors(request: Request, exc: IntegrationError):
 @app.get("/healthz")
 async def healthz():
     s = get_settings()
-    return {"ok": True, "env": s.app_env, "llm_mode": s.effective_llm_mode, "fixtures": s.fixtures_allowed}
+    return {"ok": True, "env": s.app_env, "llm_mode": s.effective_llm_mode, "fixtures": s.fixtures_allowed,
+            "database": s.database_url.split(":", 1)[0].split("+")[0], "ephemeral_storage": s.ephemeral_storage}

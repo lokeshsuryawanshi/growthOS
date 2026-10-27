@@ -2,7 +2,9 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+import re
+
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -61,7 +63,8 @@ class Settings(BaseSettings):
     model_limits_json: str = ""  # override MODEL_LIMITS, e.g. {"gemini-3.5-flash-lite": {"tpm": 250000, "rpm": 15}}
 
     # --- storage -----------------------------------------------------------
-    database_url: str = "sqlite+aiosqlite:///./growthos.db"
+    database_url: str = "sqlite+aiosqlite:///./growthos.db"   # or postgres://... (any hosted Postgres URL works as given)
+    ephemeral_storage_override: bool | None = Field(None, validation_alias=AliasChoices("EPHEMERAL_STORAGE"))
 
     # --- auth --------------------------------------------------------------
     jwt_secret: str = DEV_JWT_SECRET
@@ -94,6 +97,27 @@ class Settings(BaseSettings):
     draft_attempts: int = 3                            # fresh drafts per slot until one passes guardrails and the bar
     content_time_budget_s: float = 270.0               # no new redraft attempt starts after this (in-flight ones finish)
     outreach_daily_send_cap: int = 25
+
+    @field_validator("database_url")
+    @classmethod
+    def _async_driver(cls, v: str) -> str:
+        """Accept the URL hosted Postgres providers hand out (postgres://...?sslmode=require) as is."""
+        v = (v or "").strip()
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                v = "postgresql+asyncpg://" + v[len(prefix):]
+        if v.startswith("postgresql+asyncpg://"):
+            v = re.sub(r"([?&])sslmode=(require|verify-full|verify-ca|prefer)", r"\1ssl=\2", v)
+            v = re.sub(r"[?&]channel_binding=\w+", "", v)
+        return v
+
+    @property
+    def ephemeral_storage(self) -> bool:
+        """SQLite in /tmp (e.g. the free Render plan): data is lost on redeploy, restart and idle spin-down.
+        EPHEMERAL_STORAGE=true/false overrides the guess."""
+        if self.ephemeral_storage_override is not None:
+            return self.ephemeral_storage_override
+        return self.database_url.startswith("sqlite") and "/tmp/" in self.database_url
 
     @property
     def fixtures_allowed(self) -> bool:
@@ -152,6 +176,9 @@ class Settings(BaseSettings):
             warnings.append("GROQ_API_KEY is not set: research and drafting are unavailable until it is.")
         if self.app_env == "production" and not self.app_base_url.startswith("https://"):
             warnings.append("APP_BASE_URL is not https: session cookies are not marked Secure.")
+        if self.ephemeral_storage:
+            warnings.append("The database is on ephemeral storage: accounts and data reset on redeploy, restart or idle "
+                            "spin-down. Set DATABASE_URL to a hosted Postgres to keep them.")
         return warnings
 
 

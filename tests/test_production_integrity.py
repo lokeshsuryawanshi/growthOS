@@ -104,7 +104,8 @@ def prod_server(tmp_path_factory):
 def test_production_boots_empty_with_no_demo_accounts(prod_server):
     base, db = prod_server
     h = httpx.get(base + "/healthz").json()
-    assert h == {"ok": True, "env": "production", "llm_mode": "unconfigured", "fixtures": False}
+    assert h == {"ok": True, "env": "production", "llm_mode": "unconfigured", "fixtures": False, "database": "sqlite",
+                 "ephemeral_storage": False}
     for email in ("admin@growthos.example", "am.sam@growthos.example", "priya@ledgerloop.example"):
         r = httpx.post(base + "/api/auth/login", json={"email": email, "password": "growthos-demo"})
         assert r.status_code == 401, email
@@ -139,3 +140,18 @@ def test_production_user_journey_produces_no_synthetic_output(prod_server):
 
     # Sending is impossible without a connected Gmail, whatever the role.
     assert httpx.get(f"{base}/portal/{tid}?tab=leads", cookies={"growthos_token": h["Authorization"][7:]}).status_code == 200
+
+
+def test_hosted_postgres_urls_are_accepted_as_given():
+    from app.core.config import Settings
+    s = Settings(app_env="test", database_url="postgres://u:p@ep-1.neon.tech/db?sslmode=require&channel_binding=require")
+    assert s.database_url == "postgresql+asyncpg://u:p@ep-1.neon.tech/db?ssl=require"
+    assert Settings(app_env="test", database_url="sqlite+aiosqlite:////tmp/g.db").database_url == "sqlite+aiosqlite:////tmp/g.db"
+
+
+def test_tmp_sqlite_is_flagged_as_ephemeral_storage():
+    from app.core.config import Settings
+    assert Settings(app_env="test", database_url="sqlite+aiosqlite:////tmp/growthos.db").ephemeral_storage
+    assert not Settings(app_env="test", database_url="sqlite+aiosqlite:////data/growthos.db").ephemeral_storage
+    assert not Settings(app_env="test", database_url="postgres://u@h/db").ephemeral_storage
+    assert Settings(app_env="test", database_url="sqlite+aiosqlite:////data/g.db", EPHEMERAL_STORAGE="true").ephemeral_storage

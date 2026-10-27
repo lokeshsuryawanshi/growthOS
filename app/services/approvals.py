@@ -185,7 +185,10 @@ async def send_outreach(p: Principal, tenant_id: str, msg_id: str) -> OutreachMe
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     with tenant_scope(tenant_id):
         async with get_db().session() as s:
-            msg = (await s.execute(select(OutreachMessage).where(OutreachMessage.id == msg_id))).scalars().first()
+            # Row lock: on Postgres two clicks would otherwise both read 'approved' and both send (SQLite serialises
+            # writers with BEGIN IMMEDIATE, so this was invisible there). The second click waits, then sees 'sending'.
+            msg = (await s.execute(select(OutreachMessage).where(OutreachMessage.id == msg_id)
+                                   .with_for_update())).scalars().first()
             if msg is None:
                 raise NotFound("message not found")
             if msg.status != "approved":

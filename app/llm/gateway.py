@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import MODEL_PRICES, Settings, get_settings
 from app.core.tenancy import tenant_scope
@@ -187,11 +188,14 @@ class LLMGateway:
         return LLMResponse(**row.response) if row else None
 
     async def _cache_put(self, tenant_id: str, key: str, resp: LLMResponse) -> None:
-        with tenant_scope(tenant_id):
-            async with get_db().session() as s:
-                exists = (await s.execute(select(LLMCache.id).where(LLMCache.key == key))).first()
-                if not exists:
-                    s.add(LLMCache(key=key, response=resp.model_dump()))
+        try:
+            with tenant_scope(tenant_id):
+                async with get_db().session() as s:
+                    exists = (await s.execute(select(LLMCache.id).where(LLMCache.key == key))).first()
+                    if not exists:
+                        s.add(LLMCache(key=key, response=resp.model_dump()))
+        except IntegrityError:
+            pass        # a parallel call cached the same answer first (possible on Postgres); the result is the same
 
     # -- ledger --------------------------------------------------------------------
     async def _ledger(self, ctx: CallContext, req: LLMRequest, resp: LLMResponse | None, status: str,

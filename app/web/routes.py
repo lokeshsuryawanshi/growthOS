@@ -69,7 +69,8 @@ async def render(request: Request, name: str, me: Principal | None, status_code:
     my_tenants = await visible_tenants(me) if me else []
     flash, kind = _flash_in(request)
     resp = templates.TemplateResponse(request, name, {"me": me, "my_tenants": my_tenants, "flash": flash, "flash_kind": kind,
-                                                      "demo_mode": get_settings().app_env == "demo", **ctx},
+                                                      "demo_mode": get_settings().app_env == "demo",
+                                                      "ephemeral": get_settings().ephemeral_storage, **ctx},
                                       status_code=status_code)
     if flash:
         resp.delete_cookie(FLASH)
