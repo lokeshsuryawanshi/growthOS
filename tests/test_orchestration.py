@@ -186,3 +186,27 @@ async def test_budget_and_pause_exceptions_are_not_retried(world, monkeypatch):
     monkeypatch.setitem(engine.HANDLERS, "ingest", paused)
     rid = await start(orch, tid)
     assert await orch.execute(tid, rid) == "cancelled" and state["n"] == 1     # no retry; the run stops
+
+
+async def test_a_node_starts_as_soon_as_its_own_dependencies_finish(world, handlers):
+    """No waves: trends needs only market, so it must not wait for a slow competitors step."""
+    db, ids, orch = world
+    tid = ids["ledgerloop"]
+    _, wrap = handlers
+    log: list[str] = []
+    real_comp, real_trends = engine.HANDLERS["competitors"], engine.HANDLERS["trends"]
+
+    async def slow_competitors(n):
+        await asyncio.sleep(1.0)
+        out = await real_comp(n)
+        log.append("competitors_done")
+        return out
+
+    async def trends(n):
+        log.append("trends_started")
+        return await real_trends(n)
+
+    wrap("competitors", slow_competitors)
+    wrap("trends", trends)
+    assert await orch.execute(tid, await start(orch, tid)) == "succeeded"
+    assert log.index("trends_started") < log.index("competitors_done")

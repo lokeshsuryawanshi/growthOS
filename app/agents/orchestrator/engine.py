@@ -336,23 +336,36 @@ class Orchestrator:
         if tenant is None or tenant.kill_switch:
             return await self._finish(tenant_id, run_id, "cancelled", "tenant kill switch is on")
 
-        while True:
-            nodes = await self._nodes(tenant_id, run_id)
-            by_key = {n.key: n for n in nodes}
-            for n in nodes:  # propagate failures downstream
-                if n.status == "pending" and any(by_key[d].status in ("failed", "blocked") for d in n.deps):
-                    await self._set_node(tenant_id, n.id, status="blocked", error="upstream failed")
-                    n.status = "blocked"
-            ready = [n for n in nodes if n.status == "pending"
-                     and all(by_key[d].status in ("succeeded", "skipped") for d in n.deps)]
-            if cancel.is_set():
-                return await self._finish(tenant_id, run_id, "cancelled", "cancelled")
-            if not ready:
-                if any(n.status == "waiting_human" for n in nodes):
-                    await self._set_run(tenant_id, run_id, status="waiting_human")
-                    return "waiting_human"
-                break
-            await asyncio.gather(*[self._run_node(tenant_id, run_id, n, params, budget, cancel) for n in ready])
+        # Event-driven: a node starts the moment its own dependencies have succeeded, not when a whole "wave" of
+        # siblings has finished (e.g. trends starts as soon as market is done, without waiting for competitors).
+        running: dict[str, asyncio.Task] = {}
+        try:
+            while True:
+                nodes = await self._nodes(tenant_id, run_id)
+                by_key = {n.key: n for n in nodes}
+                for n in nodes:  # propagate failures downstream
+                    if n.status == "pending" and any(by_key[d].status in ("failed", "blocked") for d in n.deps):
+                        await self._set_node(tenant_id, n.id, status="blocked", error="upstream failed")
+                        n.status = "blocked"
+                if not cancel.is_set():
+                    for n in nodes:
+                        if n.status == "pending" and n.key not in running and \
+                                all(by_key[d].status in ("succeeded", "skipped") for d in n.deps):
+                            running[n.key] = asyncio.create_task(
+                                self._run_node(tenant_id, run_id, n, params, budget, cancel))
+                if not running:
+                    if cancel.is_set():
+                        return await self._finish(tenant_id, run_id, "cancelled", "cancelled")
+                    if any(n.status == "waiting_human" for n in nodes):
+                        await self._set_run(tenant_id, run_id, status="waiting_human")
+                        return "waiting_human"
+                    break
+                done, _ = await asyncio.wait(running.values(), return_when=asyncio.FIRST_COMPLETED)
+                for key in [k for k, t in running.items() if t in done]:
+                    running.pop(key).result()       # node errors are recorded on the node; anything else is a bug
+        finally:
+            for t in running.values():
+                t.cancel()
 
         nodes = await self._nodes(tenant_id, run_id)
         failed = [n.key for n in nodes if n.status in ("failed", "blocked")]
