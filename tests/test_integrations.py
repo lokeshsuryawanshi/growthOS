@@ -93,6 +93,7 @@ async def test_search_fails_loudly_when_nothing_is_configured(monkeypatch):
 
 async def test_search_falls_back_and_labels_the_provider(monkeypatch):
     monkeypatch.setattr(get_settings(), "tavily_api_key", "tv-key")
+    monkeypatch.setattr(get_settings(), "search_providers", "gemini_search,tavily")
     ws = WebSearch()
 
     async def gemini_over_quota(q):
@@ -105,6 +106,18 @@ async def test_search_falls_back_and_labels_the_provider(monkeypatch):
     assert [h.url for h in res.hits] == ["https://x.example/a"]
     # the quota failure is remembered, so the next query does not waste a call on the dead provider
     assert ws._usable("gemini_search") is False
+
+
+async def test_tavily_is_tried_first_by_default(monkeypatch):
+    monkeypatch.setattr(get_settings(), "tavily_api_key", "tv-key")
+    monkeypatch.setattr(get_settings(), "google_api_key", "g-key")
+    ws = WebSearch()
+
+    async def gemini_should_not_run(q):
+        raise AssertionError("Gemini grounding was called although Tavily answered")
+    monkeypatch.setattr(ws, "_gemini", gemini_should_not_run)
+    transport(lambda r: httpx.Response(200, json={"answer": "", "results": [{"title": "T", "url": "https://x.example/b", "content": "c"}]}))
+    assert (await ws.search("q")).provider == "tavily"
 
 
 async def test_search_reports_every_provider_failure(monkeypatch):

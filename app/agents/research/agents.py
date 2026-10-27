@@ -33,7 +33,7 @@ from app.core.tenancy import tenant_scope
 from app.db.audit import incident
 from app.db.models import KnowledgeDoc
 from app.db.session import get_db
-from app.guardrails.input_guard import sanitize, scan
+from app.guardrails.input_guard import MODEL_VISIBLE_CHARS, sanitize, scan
 from app.integrations.errors import IntegrationError
 from app.integrations.research import get_research
 
@@ -86,8 +86,11 @@ _SEARCH_CACHE: dict[tuple[str, str], tuple[float, object]] = {}
 SEARCH_CACHE_TTL_S = 12 * 3600
 
 
-async def _web_search(args: SearchArgs, ctx: AgentContext):
-    """One search, cached per client for 12 hours (a retried step or the next run does not pay for it again)."""
+async def _web_search(args: SearchArgs, ctx: AgentContext, with_answer: bool = True):
+    """One search, cached per client for 12 hours (a retried step or the next run does not pay for it again).
+
+    `with_answer=False` drops the search engine's own summary without scanning it (research works from results and
+    pages, so scanning a summary nobody reads would only cost classifier calls)."""
     st = research_state(ctx)
     key = (ctx.tenant_id, re.sub(r"\s+", " ", args.query.strip().lower()))
     hit = _SEARCH_CACHE.get(key)
@@ -101,7 +104,7 @@ async def _web_search(args: SearchArgs, ctx: AgentContext):
         if note not in st["fallbacks"]:
             st["fallbacks"].append(note)
     answer = ""
-    if res.answer:
+    if res.answer and with_answer:
         verdict = await scan(res.answer, ctx.call)
         answer = "[withheld: flagged as prompt injection]" if verdict.quarantined else verdict.clean_text[:3000]
         if not verdict.quarantined:
@@ -162,8 +165,8 @@ async def _fetch_page(args: FetchArgs, ctx: AgentContext):
     if doc.quarantined:
         return {"url": url, "status": "quarantined",
                 "text": "[content withheld: this page contained instructions aimed at AI systems]"}
-    st["texts"][_norm(url)] = doc.content
-    return {"url": url, "title": doc.title, "text": doc.content[:4000]}
+    st["texts"][_norm(url)] = doc.content              # full text: for checking claims in code
+    return {"url": url, "title": doc.title, "text": doc.content[:MODEL_VISIBLE_CHARS]}   # what a model may read
 
 
 # Kept for tool-loop agents (and tests); the research agents below call the same functions from code.
@@ -217,7 +220,7 @@ async def gather_evidence(agent: str, goal: str, brief: str, ctx: AgentContext, 
         ctx.event(agent, "research_step", step=step, queries=new_q, read=to_read, done=decision.done)
         if not new_q and not to_read:
             break
-        searched = await asyncio.gather(*[_web_search(SearchArgs(query=q), ctx) for q in new_q])
+        searched = await asyncio.gather(*[_web_search(SearchArgs(query=q), ctx, with_answer=False) for q in new_q])
         queries += new_q
         for out in searched:
             for r in out["results"]:

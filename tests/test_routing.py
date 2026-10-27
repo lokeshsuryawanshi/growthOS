@@ -107,8 +107,8 @@ async def test_pacing_wait_is_recorded_separately_from_latency(db, tenant):
 
 
 async def test_bucket_requests_per_minute_and_provider_sync():
-    b = TokenBucket(tokens_per_minute=60000, requests_per_minute=120)   # 2 requests/s
-    for _ in range(120):
+    b = TokenBucket(tokens_per_minute=60000, requests_per_minute=120)   # 2 requests/s, burst of 60
+    for _ in range(int(b.req_capacity)):
         await b.acquire(1)
     assert b.estimate_wait(1) > 0.3                                       # the request budget is spent
     b2 = TokenBucket(tokens_per_minute=8000)

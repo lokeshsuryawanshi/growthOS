@@ -1,6 +1,7 @@
 """Web search with an honest, labelled fallback chain.
 
-Order: Gemini Google-Search grounding -> Tavily. Both need a key; there is deliberately no scraping fallback.
+Order: SEARCH_PROVIDERS (default Tavily, then Gemini Google-Search grounding). Both need a key; there is
+deliberately no scraping fallback.
 Every response says which provider produced it and which providers were skipped and why, so the UI can show
 provenance. If no provider can answer the caller gets an IntegrationError with the fix. There is no canned fallback.
 """
@@ -95,8 +96,10 @@ class WebSearch:
     # -- chain -----------------------------------------------------------------
     async def search(self, query: str) -> SearchResponse:
         s = get_settings()
-        chain = [("gemini_search", self._gemini, bool(s.google_api_key)),
-                 ("tavily", self._tavily, bool(s.tavily_api_key))]
+        providers = {"gemini_search": (self._gemini, bool(s.google_api_key)),
+                     "tavily": (self._tavily, bool(s.tavily_api_key))}
+        order = [x.strip() for x in s.search_providers.split(",") if x.strip() in providers] or list(providers)
+        chain = [(name, *providers[name]) for name in order]
         skipped: list[str] = []
         last: IntegrationError | None = None
         for name, fn, configured in chain:

@@ -77,7 +77,8 @@ class TokenBucket:
         self.capacity = float(tokens_per_minute)
         self.tokens = float(tokens_per_minute)
         self.rate = tokens_per_minute / 60.0
-        self.req_capacity = float(requests_per_minute or 0)
+        # Burst of half a minute's requests: Groq answered 429 when a full minute's worth arrived at once.
+        self.req_capacity = max(1.0, (requests_per_minute or 0) / 2) if requests_per_minute else 0.0
         self.reqs = self.req_capacity
         self.req_rate = (requests_per_minute or 0) / 60.0
         self.blocked_until = 0.0          # set after a 429 that names a wait
@@ -158,7 +159,7 @@ class GroqProvider(Provider):
             kwargs["response_format"] = {"type": "json_object"}
         try:
             raw = await self.client.chat.completions.with_raw_response.create(**kwargs)
-            r = raw.parse()
+            r = await raw.parse()          # async client: parse() is a coroutine
         except groq.RateLimitError as e:
             ra = e.response.headers.get("retry-after") if e.response is not None else None
             raise RateLimited(str(e), float(ra) if ra else retry_hint(str(e)), daily=is_daily_limit(str(e))) from e

@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     judge_model: str = "gemini-3.5-flash-lite"       # judge (Gemini), falls back to judge_fallback_model
     judge_fallback_model: str = "qwen/qwen3.8-27b"
     research_model: str = "gemini-3.5-flash-lite"    # Google Search grounding (web search provider)
+    search_providers: str = "tavily,gemini_search"   # web search fallback order (Tavily first: free tier, no billing)
     # Tier -> fallback chain, "provider:model" comma-separated. Empty = the default chain built from the models above
     # (see Settings.route_chain). Free-tier limits are per model, so each tier leads with a different model and spills
     # over to the next one when its own limit would make the call wait (route_spill_wait_s).

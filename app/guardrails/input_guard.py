@@ -75,10 +75,10 @@ def heuristic_score(text: str) -> tuple[float, list[str]]:
     return min(score, 1.0), hits
 
 
-# Models are only ever shown the start of a stored page (research reads 4,000 characters, writers 1,500), so the
-# classifier scores that part; the regex heuristics still read everything.
-MODEL_VISIBLE_CHARS = 4000
+# Models are only ever shown the start of a stored page (research and writers read at most 1,800 characters of it),
+# so the classifier scores exactly that part, one call per page; the regex heuristics still read everything.
 CHUNK = 1800             # Prompt Guard's context is short: score chunks and keep the maximum
+MODEL_VISIBLE_CHARS = CHUNK
 
 
 async def _classify(chunk: str, ctx: CallContext) -> float:
