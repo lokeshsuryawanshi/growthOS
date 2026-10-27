@@ -159,7 +159,7 @@ async def home(request: Request):
 def _blank() -> dict:
     v = {k: "" for k in ("company_name", "website", "industry", "company", "target_customers", "geographies", "known_competitors",
                          "founder_name", "linkedin_url", "tone", "topics_to_own", "topics_to_avoid", "banned_phrases",
-                         "disclaimer_text", "disclaimer_triggers", "facts", "do_not_contact", "primary_goal")}
+                         "facts", "primary_goal")}
     v.update(founder_title="Founder", posts_per_week=5, leads_per_week_min=10, leads_per_week_max=20)
     v.update({f"sample_{i}": "" for i in range(1, 6)})
     return v

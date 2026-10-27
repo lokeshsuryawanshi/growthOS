@@ -19,7 +19,7 @@ FORM = {
     "founder_title": "CEO", "linkedin_url": "", "sample_1": SAMPLE, "sample_2": SAMPLE.replace("faster", "better"),
     "tone": "plain and a bit dry", "topics_to_own": "incident response\non-call health", "topics_to_avoid": "politics",
     "banned_phrases": "game-changer", "facts": "We reduced median time to diagnosis from 41 to 9 minutes for 30 customers",
-    "do_not_contact": "ex-customer@old.example\nblocked.example\nSome Company", "primary_goal": "Inbound demo requests",
+    "primary_goal": "Inbound demo requests",
     "posts_per_week": "5", "leads_per_week_min": "10", "leads_per_week_max": "20",
 }
 
@@ -85,7 +85,7 @@ async def test_onboarding_persists_exactly_what_was_entered(client, db):
     prof = (await client.get(f"/api/tenants/{tid}/profile", headers=h)).json()
     assert prof["company_name"] == "Brightwave Labs" and prof["website"] == "https://brightwave.example"
     assert prof["known_competitors"].splitlines() == ["OtherCo | https://otherco.example", "ThirdCo"]
-    assert prof["do_not_contact"].splitlines() == ["ex-customer@old.example", "blocked.example", "some company"]
+    assert "do_not_contact" not in prof and "disclaimer_text" not in prof     # removed from onboarding
     assert prof["sample_1"] == SAMPLE and prof["sample_3"] == "" and prof["posts_per_week"] == 5
     with tenant_scope(tid):
         async with db.reader() as s:

@@ -12,7 +12,7 @@ from app.core.config import get_settings
 from app.core.security import ForbiddenError, Principal, authorize, hash_password
 from app.core.tenancy import tenant_scope
 from app.db.audit import audit
-from app.db.models import ClientProfile, KnowledgeDoc, Membership, SuppressionEntry, Tenant, User
+from app.db.models import ClientProfile, KnowledgeDoc, Membership, Tenant, User
 from app.db.session import get_db
 from app.integrations.hunter import clean_domain
 
@@ -59,10 +59,7 @@ class OnboardingForm(BaseModel):
     topics_to_own: list[str] = Field(default_factory=list)
     topics_to_avoid: list[str] = Field(default_factory=list)
     banned_phrases: list[str] = Field(default_factory=list)
-    disclaimer_text: str = Field(default="", max_length=400)
-    disclaimer_triggers: list[str] = Field(default_factory=list)
     facts: list[str] = Field(default_factory=list)
-    do_not_contact: list[str] = Field(default_factory=list)
     primary_goal: str = Field(default="", max_length=300)
     posts_per_week: int = Field(default=5, ge=3, le=7)
     leads_per_week_min: int = Field(default=10, ge=1, le=40)
@@ -103,8 +100,7 @@ class OnboardingForm(BaseModel):
             founder_title=(f.get("founder_title") or "Founder").strip(), linkedin_url=f.get("linkedin_url", ""),
             samples=samples, tone=(f.get("tone") or "").strip(), topics_to_own=ml("topics_to_own", limit=8),
             topics_to_avoid=ml("topics_to_avoid", limit=8), banned_phrases=ml("banned_phrases", limit=12),
-            disclaimer_text=(f.get("disclaimer_text") or "").strip(), disclaimer_triggers=ml("disclaimer_triggers", limit=8, maxlen=60),
-            facts=ml("facts", limit=12, maxlen=300), do_not_contact=ml("do_not_contact", limit=200),
+            facts=ml("facts", limit=12, maxlen=300),
             primary_goal=(f.get("primary_goal") or "").strip(), posts_per_week=int(f.get("posts_per_week") or 5),
             leads_per_week_min=int(f.get("leads_per_week_min") or 10), leads_per_week_max=int(f.get("leads_per_week_max") or 20))
 
@@ -131,22 +127,7 @@ def intake_and_policy(f: OnboardingForm) -> tuple[dict, dict]:
               "goals": {"primary_goal": f.primary_goal, "posts_per_week": f.posts_per_week,
                         "leads_per_week_min": f.leads_per_week_min, "leads_per_week_max": f.leads_per_week_max}}
     policy: dict[str, Any] = {"banned_topics": f.topics_to_avoid, "banned_phrases": f.banned_phrases}
-    if f.disclaimer_text:
-        policy["required_disclaimer"] = {"text": f.disclaimer_text, "triggers": f.disclaimer_triggers or [f.industry]}
     return intake, policy
-
-
-def _suppression(items: list[str]) -> list[SuppressionEntry]:
-    out = []
-    for it in items:
-        v = it.strip().lower()
-        if EMAIL_RE.match(v):
-            out.append(SuppressionEntry(kind="email", value=v, reason="client do-not-contact list"))
-        elif clean_domain(v):
-            out.append(SuppressionEntry(kind="domain", value=clean_domain(v), reason="client do-not-contact list"))
-        else:
-            out.append(SuppressionEntry(kind="company", value=v, reason="client do-not-contact list"))
-    return out
 
 
 def slugify(name: str) -> str:
@@ -200,8 +181,6 @@ async def create_workspace(p: Principal, form: OnboardingForm) -> Tenant:
         async with get_db().session() as s:
             s.add(ClientProfile(intake=intake, policy=policy))
             _write_docs(s, form)
-            for e in _suppression(form.do_not_contact):
-                s.add(e)
             audit(s, p.user_id, "tenant.onboarded", "tenant", tid)
     return t
 
@@ -226,9 +205,6 @@ async def update_profile(p: Principal, tenant_id: str, form: OnboardingForm) -> 
             await s.execute(delete(KnowledgeDoc).where(KnowledgeDoc.kind.in_(["founder_sample", "intake_note"]),
                                                        KnowledgeDoc.provider == "client"))
             _write_docs(s, form)
-            await s.execute(delete(SuppressionEntry).where(SuppressionEntry.reason == "client do-not-contact list"))
-            for e in _suppression(form.do_not_contact):
-                s.add(e)
             audit(s, p.user_id, "profile.updated", "tenant", tenant_id, changed=changed)
     async with get_db().session() as s:
         t = await s.get(Tenant, tenant_id)
@@ -243,8 +219,6 @@ async def profile_as_form_values(tenant_id: str) -> dict[str, Any]:
             samples = [d.content for d in (await s.execute(select(KnowledgeDoc).where(
                 KnowledgeDoc.kind == "founder_sample").order_by(KnowledgeDoc.created_at))).scalars()]
             facts = (await s.execute(select(KnowledgeDoc).where(KnowledgeDoc.kind == "intake_note"))).scalars().first()
-            sup = (await s.execute(select(SuppressionEntry).where(
-                SuppressionEntry.reason == "client do-not-contact list"))).scalars().all()
     i, pol = prof.intake, prof.policy or {}
     g = i.get("goals") if isinstance(i.get("goals"), dict) else {"primary_goal": i.get("goals") or ""}
     comp_urls = i.get("competitor_urls", [])
@@ -256,9 +230,7 @@ async def profile_as_form_values(tenant_id: str) -> dict[str, Any]:
          "linkedin_url": i.get("linkedin_url", ""), "tone": i.get("tone", ""),
          "topics_to_own": "\n".join(i.get("topics_to_own", [])), "topics_to_avoid": "\n".join(i.get("topics_to_avoid", [])),
          "banned_phrases": "\n".join(pol.get("banned_phrases", [])),
-         "disclaimer_text": (pol.get("required_disclaimer") or {}).get("text", ""),
-         "disclaimer_triggers": "\n".join((pol.get("required_disclaimer") or {}).get("triggers", [])),
-         "facts": facts.content if facts else "", "do_not_contact": "\n".join(x.value for x in sup),
+         "facts": facts.content if facts else "",
          "primary_goal": g.get("primary_goal", ""), "posts_per_week": g.get("posts_per_week", 5),
          "leads_per_week_min": g.get("leads_per_week_min", 10), "leads_per_week_max": g.get("leads_per_week_max", 20)}
     for n in range(1, 6):
