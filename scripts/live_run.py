@@ -39,7 +39,13 @@ def _prepare_env(args) -> None:
         sys.exit("GROQ_API_KEY (or --groq-key-var) and TAVILY_API_KEY must be set in .env")
     os.environ["APP_ENV"] = "production"
     os.environ["LLM_MODE"] = "live"
-    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{Path(args.db).resolve()}"
+    if args.database_url_var:                    # e.g. TEST_DATABASE_URL: a Neon test branch, never the live one
+        url = env.get(args.database_url_var) or ""
+        if not url or url.split("@")[-1].split("/")[0] == (env.get("DATABASE_URL") or "").split("@")[-1].split("/")[0]:
+            sys.exit(f"{args.database_url_var} is empty or names the production database host")
+        os.environ["DATABASE_URL"] = url
+    else:
+        os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{Path(args.db).resolve()}"
 
 
 async def wait_run(tid: str, rid: str, poll: float = 1.0, also_wait: tuple[str, ...] = ()) -> str:
@@ -119,7 +125,7 @@ async def main(args) -> int:
                                                           Tenant.name == profile["company_name"]))).scalars().first()
     if tenant is None:
         if args.reuse:
-            sys.exit(f"no client {profile['company_name']} in {args.db}")
+            sys.exit(f"no client {profile['company_name']} in this database")
         tenant = await accounts.create_client(p, accounts.OnboardingForm.from_form(profile))
     saved = await keys.list_keys(p.user_id)
     for provider, kind in (("groq", "llm"), ("tavily", "search"), ("hunter", "contacts")):
@@ -171,7 +177,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--profile", required=True, help="a voice_samples JSON (its client_profile) or an onboarding form JSON")
     ap.add_argument("--reuse", action="store_true", help="the client must already exist in --db")
-    ap.add_argument("--db", required=True)
+    ap.add_argument("--db", default="", help="SQLite file for this run (or use --database-url-var)")
+    ap.add_argument("--database-url-var", default="", help="name of a .env variable holding a Postgres URL (tests only)")
     ap.add_argument("--groq-key-var", default="")
     ap.add_argument("--runs", default="discovery,content,leads")
     ap.add_argument("--out", default="loadtest/reports/live-run")
