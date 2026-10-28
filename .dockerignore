@@ -6,3 +6,6 @@
 data
 __pycache__
 .pytest_cache
+AGENT_PROMPT.md
+AGENT_PLAN_V2.md
+coding-round-links.md

@@ -24,7 +24,7 @@
     "lead_screen_recall_missing_contact": {"min": 1.0},
     "lead_screen_duplicates_kept": {"max": 0},
     "lead_screen_fit_false_rejections": {"max": 0},
-    "isolation_routes": {"min": 12},
+    "isolation_routes": {"min": 14},
     "cross_account_access_violations": {"max": 0},
     "session_escalations": {"max": 0},
     "cross_account_page_leaks": {"max": 0},

@@ -2,5 +2,5 @@
 {% from "_macros.html" import empty %}
 {% block title %}{{ tenant.name }} · Growth OS{% endblock %}
 {% block content %}
-{% include "portal/" ~ tab ~ ".html" %}
+{% include "portal/" ~ (page or tab) ~ ".html" %}
 {% endblock %}

@@ -27,14 +27,28 @@ import pytest
 from app.db.session import Database, set_db
 
 
+_pg_schema_ready = False
+
+
 @pytest.fixture
 async def db(tmp_path):
-    """SQLite per test by default. TEST_DATABASE_URL=postgresql+asyncpg://... runs the same tests on Postgres."""
+    """SQLite per test by default. TEST_DATABASE_URL=postgres://... runs the same tests on Postgres: the schema is
+    rebuilt once per session, and every table is emptied before each test (one TRUNCATE, fast over the network)."""
+    global _pg_schema_ready
     url = os.environ.get("TEST_DATABASE_URL") or f"sqlite+aiosqlite:///{tmp_path}/test.db"
     database = Database(url)
-    if not url.startswith("sqlite"):
-        await database.drop_all()
-    await database.create_all()
+    if url.startswith("sqlite"):
+        await database.create_all()
+    else:
+        if not _pg_schema_ready:
+            await database.drop_all()
+            await database.create_all()
+            _pg_schema_ready = True
+        from sqlalchemy import text
+        from app.db.models import Base
+        names = ", ".join(t.name for t in Base.metadata.sorted_tables)
+        async with database.write_engine.begin() as conn:
+            await conn.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
     set_db(database)
     yield database
     await database.dispose()

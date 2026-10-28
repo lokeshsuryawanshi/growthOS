@@ -1,0 +1,10 @@
+<div class="pagehead"><div><a class="sub" href="/portal/{{ tenant.id }}?tab=calendar">&larr; Back to the calendar</a>
+  <h1>{{ slot.topic }}</h1>
+  <div class="sub">{{ slot.publish_date.strftime('%A %d %B %Y') }} · planned, not written yet</div></div></div>
+<section class="panel stack">
+  <div class="row"><span class="pill accent">{{ slot.pillar }}</span><span class="pill">{{ slot.format.replace('_', ' ') }}</span><span class="pill {{ slot.status }}">{{ slot.status }}</span></div>
+  {% if slot.angle %}<div><b>Brief</b><p>{{ slot.angle }}</p></div>{% endif %}
+  {% if slot.trend_ref %}<div class="sub"><b>Trend it builds on:</b> {{ slot.trend_ref }}</div>{% endif %}
+  <p class="sub">Posts are written a week at a time. This one will appear here, ready to review, after the week it belongs to is written.</p>
+  {% if ws.can_content %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="content"><button class="primary">Write this week's posts</button></form>{% endif %}
+</section>

@@ -390,6 +390,7 @@ async def portal(request: Request, tid: str, tab: str = "overview", run: str | N
     elif tab == "calendar":
         weeks = await queries.calendar(tid)
         ctx["weeks"] = [{"week": w["week"], "by_day": {s.publish_date.weekday(): s for s in w["slots"]}} for w in weeks]
+        ctx["slot_posts"] = await queries.slot_posts(tid)
     elif tab == "leads":
         ctx.update(leads=await queries.leads(tid), dms=dms, rejections=await queries.rejections(tid, 100),
                    intake=await intake_of(tid))
@@ -405,6 +406,37 @@ async def portal(request: Request, tid: str, tab: str = "overview", run: str | N
                        usage=await queries.run_usage(tid, rid),
                        progress=await progress_service.run_progress(tid, d["run"], d["nodes"]), targets=k["targets"])
     return await render(request, "portal.html", me, **ctx)
+
+
+@router.get("/portal/{tid}/posts/{pid}", response_class=HTMLResponse)
+async def post_page(request: Request, tid: str, pid: str):
+    """One finished post, as it will look on LinkedIn, with everything needed to decide on it."""
+    me = await need_login(request)
+    tenant = await tenant_or_404(me, tid)
+    row = await queries.post(tid, pid)
+    if row is None or row["post"].status == "blocked":
+        raise HTTPException(404, "not found")
+    k = await tenant_kpis(tid)
+    return await render(request, "portal.html", me, tenant=tenant, tab="calendar", page="post", k=k, section="portal",
+                        ws=await workspace_state(tid, k), nav_counts={}, post=row["post"], slot=row["slot"],
+                        founder=await _founder(tenant))
+
+
+@router.get("/portal/{tid}/slots/{sid}", response_class=HTMLResponse)
+async def slot_page(request: Request, tid: str, sid: str):
+    """A calendar slot: its post if one is written, otherwise the plan for it."""
+    me = await need_login(request)
+    await tenant_or_404(me, tid)
+    sl = await queries.slot(tid, sid)
+    if sl is None:
+        raise HTTPException(404, "not found")
+    post = (await queries.slot_posts(tid)).get(sid)
+    if post is not None:
+        return RedirectResponse(f"/portal/{tid}/posts/{post.id}", status_code=303)
+    tenant = await tenant_or_404(me, tid)
+    k = await tenant_kpis(tid)
+    return await render(request, "portal.html", me, tenant=tenant, tab="calendar", page="slot", k=k, section="portal",
+                        ws=await workspace_state(tid, k), nav_counts={}, slot=sl)
 
 
 @router.get("/ui/{tid}/runs/{rid}/progress", response_class=HTMLResponse)

@@ -50,13 +50,14 @@ async def _world():
 async def _ids(tid: str) -> dict:
     from sqlalchemy import select
     from app.core.tenancy import tenant_scope
-    from app.db.models import OutreachMessage, Post, Run
+    from app.db.models import CalendarSlot, OutreachMessage, Post, Run
     from app.db.session import get_db
     with tenant_scope(tid):
         async with get_db().reader() as s:
             return {"tid": tid, "pid": (await s.execute(select(Post.id))).scalars().first(),
                     "mid": (await s.execute(select(OutreachMessage.id))).scalars().first(),
-                    "rid": (await s.execute(select(Run.id).where(Run.kind == "discovery"))).scalars().first()}
+                    "rid": (await s.execute(select(Run.id).where(Run.kind == "discovery"))).scalars().first(),
+                    "sid": (await s.execute(select(CalendarSlot.id))).scalars().first()}
 
 
 async def _fingerprint(tid: str) -> str:
@@ -98,7 +99,8 @@ def client_routes():
 
 def _fill(path: str, ids: dict) -> str:
     key = "strategy_review" if path.endswith("/approve/{key}") else "market"
-    return path.format(tid=ids["tid"], pid=ids["pid"] or "x", mid=ids["mid"] or "x", rid=ids["rid"] or "x", key=key)
+    return path.format(tid=ids["tid"], pid=ids["pid"] or "x", mid=ids["mid"] or "x", rid=ids["rid"] or "x",
+                       sid=ids["sid"] or "x", key=key)
 
 
 def _token(sub: str, secret: str, minutes: int = 60, alg: str = "HS256") -> str:

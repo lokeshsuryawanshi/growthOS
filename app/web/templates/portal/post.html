@@ -1,0 +1,5 @@
+<div class="pagehead"><div><a class="sub" href="/portal/{{ tenant.id }}?tab=calendar">&larr; Back to the calendar</a>
+  <h1>{{ slot.topic if slot else 'Post' }}</h1>
+  <div class="sub">{{ slot.publish_date.strftime('%A %d %B %Y') if slot else 'Not on the calendar' }}{% if slot %} · {{ slot.pillar }} · {{ slot.format.replace('_', ' ') }}{% endif %}</div></div></div>
+{% if slot and (slot.angle or slot.trend_ref) %}<div class="prov"><b>The plan for this slot</b>{{ slot.angle }}{% if slot.trend_ref %}<div class="sub">Trend: {{ slot.trend_ref }}</div>{% endif %}</div>{% endif %}
+{% include "partials/post_card.html" %}

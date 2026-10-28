@@ -38,6 +38,19 @@ async def calendar(tenant_id: str) -> list[dict[str, Any]]:
     return [{"week": w, "slots": v} for w, v in sorted(weeks.items())]
 
 
+async def slot_posts(tenant_id: str) -> dict[str, Post]:
+    """The newest post shown to the operator for each calendar slot (blocked drafts are never shown)."""
+    out: dict[str, Post] = {}
+    for p in await _all(tenant_id, select(Post).where(Post.slot_id.is_not(None), Post.status != "blocked")
+                        .order_by(Post.created_at)):
+        out[p.slot_id] = p
+    return out
+
+
+async def slot(tenant_id: str, slot_id: str) -> CalendarSlot | None:
+    return (await _all(tenant_id, select(CalendarSlot).where(CalendarSlot.id == slot_id)) or [None])[0]
+
+
 async def leads(tenant_id: str) -> list[dict[str, Any]]:
     with tenant_scope(tenant_id):
         async with get_db().reader() as s:

@@ -112,3 +112,52 @@ async def test_outreach_buttons_follow_approval(world):
     r = await client.post(f"/ui/{tid}/outreach/{msg.id}/sent")
     assert "Marked as sent" in r.text
     assert (await first(db, tid, OutreachMessage, OutreachMessage.id == msg.id)).status == "sent"
+
+
+async def test_every_calendar_card_opens_its_post_or_its_plan(world):
+    client, ids, db = world
+    tid = ids["ledgerloop"]
+    page = (await client.get(f"/portal/{tid}?tab=calendar")).text
+    links = re.findall(rf'<a class="slot link" href="(/portal/{tid}/(?:posts|slots)/[0-9a-f]+)"', page)
+    from app.db.models import CalendarSlot
+    with tenant_scope(tid):
+        async with db.reader() as s:
+            n_slots = len((await s.execute(select(CalendarSlot))).scalars().all())
+    assert len(links) == n_slots >= 40                                     # every slot on the 8-week calendar is a link
+    posts = [u for u in links if "/posts/" in u]
+    planned = [u for u in links if "/slots/" in u]
+    assert posts and planned
+    for url in posts:
+        r = await client.get(url)
+        assert r.status_code == 200 and "Back to the calendar" in r.text and 'class="li"' in r.text, url
+        assert "Why this post" in r.text and "Editor score" in r.text
+    r = await client.get(planned[0])
+    assert r.status_code == 200 and "planned, not written yet" in r.text and "Brief" in r.text
+    # a slot that has a post redirects to the post
+    post_slot = (await first(db, tid, Post, Post.status == "pending_approval")).slot_id
+    r = await client.get(f"/portal/{tid}/slots/{post_slot}")
+    assert r.status_code == 303 and "/posts/" in r.headers["location"]
+
+
+async def test_the_post_page_takes_decisions_in_place(world):
+    client, ids, db = world
+    tid = ids["ledgerloop"]
+    post = await first(db, tid, Post, Post.status == "pending_approval")
+    page = (await client.get(f"/portal/{tid}/posts/{post.id}")).text
+    assert f'hx-post="/ui/{tid}/posts/{post.id}"' in page and "Approve" in page and "Edit the text" in page
+    r = await client.post(f"/ui/{tid}/posts/{post.id}", data={"action": "approve"})
+    assert "Copy post" in r.text and "I posted it" in r.text
+
+
+async def test_posts_and_slots_of_another_account_are_404(world):
+    client, ids, db = world
+    tid = ids["ledgerloop"]
+    post = await first(db, tid, Post, Post.status == "pending_approval")
+    async with client_for(app) as other:
+        await sign_in(other, "stranger2@example.com")
+        mine = await add_client(other)
+        for url in (f"/portal/{tid}/posts/{post.id}", f"/portal/{tid}/slots/{post.slot_id}",
+                    f"/portal/{mine}/posts/{post.id}", f"/portal/{mine}/slots/{post.slot_id}"):
+            assert (await other.get(url)).status_code == 404, url
+    assert (await client.get(f"/portal/{tid}/posts/nope")).status_code == 404
+    assert (await client.get(f"/portal/{tid}/slots/nope")).status_code == 404

@@ -207,3 +207,35 @@ def test_migrations_match_the_models(tmp_path):
 def test_an_empty_optional_setting_in_env_does_not_stop_startup():
     from app.core.config import Settings
     assert Settings(_env_file=None, app_env="test", EPHEMERAL_STORAGE="", database_url="sqlite+aiosqlite:////tmp/x.db").ephemeral_storage
+
+
+def test_the_v2_migration_runs_on_a_v1_database_with_data(tmp_path):
+    """v1 schema (0004) with a password account, its workspace, a membership, a post and a Gmail credential: upgrading
+    to head must succeed, reshape the tables and remove the v1 rows (password accounts can never sign in again)."""
+    import sqlite3
+    from app.db.migrate import upgrade_sync
+    db = tmp_path / "v1.db"
+    url = f"sqlite+aiosqlite:///{db}"
+    upgrade_sync(url, "0004")
+    con = sqlite3.connect(db)
+    con.execute("insert into tenants values ('t1','acme','Acme','SaaS','Ann','active',25.0,0,0,'2026-10-01')")
+    con.execute("insert into users values ('u1','ann@acme.example','Ann','$2b$hash','client_owner',1,'2026-10-01')")
+    con.execute("insert into memberships (id, user_id, tenant_id, added_by, created_at) values ('m1','u1','t1','', '2026-10-01')")
+    con.execute("insert into posts (id, tenant_id, pillar, text, hashtags, sources, claims, rationale, critic_score, "
+                "critic_feedback, rounds, guardrail_report, status, approved_text, reviewer_note, created_at) values "
+                "('p1','t1','', 'hello', '[]','[]','[]','',0,'{}',0,'{}','drafting','','','2026-10-01')")
+    con.execute("insert into integration_credentials (id, tenant_id, provider, account_email, secret_enc, scopes, status, "
+                "last_error, connected_by, created_at, updated_at) values ('c1','t1','gmail','a@b','x','s','connected','',"
+                "'u1','2026-10-01','2026-10-01')")
+    con.commit()
+    con.close()
+    upgrade_sync(url)
+    con = sqlite3.connect(db)
+    tables = {r[0] for r in con.execute("select name from sqlite_master where type='table'")}
+    assert {"memberships", "platform_audit", "integration_credentials"}.isdisjoint(tables)
+    assert {"account_secrets", "account_events"} <= tables
+    cols = {r[1] for r in con.execute("pragma table_info(users)")}
+    assert "google_sub" in cols and "password_hash" not in cols and "role" not in cols
+    assert "owner_user_id" in {r[1] for r in con.execute("pragma table_info(tenants)")}
+    assert [con.execute(f"select count(*) from {t}").fetchone()[0] for t in ("users", "tenants", "posts")] == [0, 0, 0]
+    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0005"

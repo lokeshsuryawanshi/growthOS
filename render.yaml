@@ -1,37 +1,29 @@
-# Render blueprint for a PAID instance with a persistent disk (data survives restarts). For the free plan use
-# render.free.yaml instead.
+# Render blueprint: one free Docker web service. Data lives in a hosted Postgres (Neon), so the free plan's ephemeral
+# disk and idle spin-down lose nothing. The server holds no AI, search or contact keys: operators save their own.
+# Deploy: Render dashboard -> New -> Blueprint -> this repo. Then fill the "sync: false" values in the Environment tab.
+# After every deploy: python scripts/check_deploy.py https://<your-service>.onrender.com
 services:
   - type: web
     name: growth-os
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /healthz
-    disk:
-      name: growthos-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: APP_ENV
         value: production
       - key: DATABASE_URL
-        value: sqlite+aiosqlite:////data/growthos.db   # a NEW empty database on the persistent disk
+        sync: false          # Neon connection string as given (postgres://...-pooler...?sslmode=require)
       - key: APP_BASE_URL
-        sync: false          # e.g. https://growth-os.onrender.com
+        sync: false          # https://<your-service>.onrender.com
       - key: JWT_SECRET
         generateValue: true
-      - key: GROQ_API_KEY
-        sync: false
-      - key: TAVILY_API_KEY
-        sync: false
-      - key: GOOGLE_API_KEY
-        sync: false
-      - key: HUNTER_API_KEY
-        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false          # a Fernet key; keep it stable or saved API keys can no longer be read
       - key: GOOGLE_OAUTH_CLIENT_ID
         sync: false
       - key: GOOGLE_OAUTH_CLIENT_SECRET
-        sync: false
-      - key: GOOGLE_REDIRECT_URI
-        sync: false          # APP_BASE_URL/oauth/google/callback, also added in Google Cloud
-      - key: SIGNUP_INVITE_CODE
-        sync: false          # optional: gate signup for the interview link
+        sync: false          # redirect URI in Google Cloud: APP_BASE_URL/auth/google/callback
+      - key: CONTACT_EMAIL
+        sync: false          # shown on /login/policy
+      - key: ALLOWED_EMAILS
+        sync: false          # optional: only these Google accounts may sign in

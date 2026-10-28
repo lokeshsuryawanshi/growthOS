@@ -18,7 +18,7 @@ async def test_guardrail_eval_meets_baseline():
 async def test_isolation_eval_finds_no_violations_and_catches_every_mutation():
     from evals.isolation import eval_isolation
     r = await eval_isolation(mutations=True)
-    assert r["isolation_routes"] >= 12 and r["isolation_checks"] >= 50
+    assert r["isolation_routes"] >= 14 and r["isolation_checks"] >= 50
     assert r["cross_account_access_violations"] == r["session_escalations"] == r["cross_account_page_leaks"] == 0, \
         r["isolation_failures"]
     assert r["secret_exposure_findings"] == 0, r["secret_findings"]

@@ -6,7 +6,11 @@
       <div class="wk">Week of<br><b style="color:var(--ink)">{{ w.week }}</b></div>
       {% for d in range(7) %}
         {% set s = w.by_day.get(d) %}
-        {% if s %}<div class="slot"><span class="p">{{ s.publish_date.strftime('%a') }} · {{ s.pillar }}</span>{{ s.topic }}<span class="pill {{ s.status }}">{{ s.status }}</span></div>
+        {% if s %}{% set sp = slot_posts.get(s.id) %}
+        <a class="slot link" href="{{ '/portal/%s/posts/%s' % (tenant.id, sp.id) if sp else '/portal/%s/slots/%s' % (tenant.id, s.id) }}"
+           aria-label="{{ s.publish_date.strftime('%a %d %b') }}: {{ s.topic }} ({{ 'open the post' if sp else 'planned' }})">
+          <span class="p">{{ s.publish_date.strftime('%a') }} · {{ s.pillar }}</span>{{ s.topic }}
+          <span class="pill {{ sp.status if sp else s.status }}">{{ ('ready to post' if sp.status == 'scheduled' else sp.status.replace('_', ' ')) if sp else s.status }}</span></a>
         {% else %}<div class="slot none"></div>{% endif %}
       {% endfor %}
     </div>
