@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 from app.llm.gateway import get_gateway
 from app.llm.providers import register_mock
-from app.llm.types import CallContext, LLMRequest
+from app.llm.types import CallContext, LLMRequest, LLMUnavailable
 
 QUARANTINE_THRESHOLD = 0.8
 
@@ -82,9 +82,17 @@ MODEL_VISIBLE_CHARS = CHUNK
 
 
 async def _classify(chunk: str, ctx: CallContext) -> float:
-    resp = await get_gateway().complete(LLMRequest(agent="input_guard", tier="guard",
-                                                   messages=[{"role": "user", "content": chunk}],
-                                                   max_tokens=16, cacheable=True), ctx)
+    try:
+        resp = await get_gateway().complete(LLMRequest(agent="input_guard", tier="guard",
+                                                       messages=[{"role": "user", "content": chunk}],
+                                                       max_tokens=16, cacheable=True), ctx)
+    except LLMUnavailable as e:
+        # Prompt Guard reads about 512 tokens; dense text (URLs, numbers, other scripts) can exceed that in 1,800
+        # characters. Score the halves instead of failing the step (found on a live lead run).
+        if "reduce the length" in str(e).lower() and len(chunk) > 300:
+            mid = len(chunk) // 2
+            return max(await _classify(chunk[:mid], ctx), await _classify(chunk[mid:], ctx))
+        raise
     try:
         return float((resp.content or "0").strip())
     except ValueError:
