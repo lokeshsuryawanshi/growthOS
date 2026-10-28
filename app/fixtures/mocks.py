@@ -184,7 +184,10 @@ def _shares(n: int) -> list[int]:
 def _strategist(req: LLMRequest) -> dict:
     md = req.metadata
     intake = md.get("intake", {})
-    topics = (intake.get("topics_to_own") or ["Industry insight", "Practical how-to", "Founder lessons"])[:4]
+    topics = (list(intake.get("topics_to_own") or []) + ["Industry insight", "Practical how-to", "Founder lessons"])[:4]
+    topics = list(dict.fromkeys(topics))[:4]
+    goals = intake.get("goals")
+    goals = goals.get("primary_goal") if isinstance(goals, dict) else goals
     trends = [t["name"] for t in (md.get("trend_report") or {}).get("trends", [])]
     white = (md.get("competitor_matrix") or {}).get("whitespace", [])
     shares = _shares(len(topics))
@@ -196,7 +199,7 @@ def _strategist(req: LLMRequest) -> dict:
                                        f"Owns: {white[0] if white else 'clear operating advice'}.",
                         "pillars": pillars, "format_mix": {"story": 30, "how_to": 25, "opinion": 20, "data_insight": 15,
                                                            "carousel_outline": 10},
-                        "posts_per_week": 5, "goals": [intake.get("goals") or "Build authority and pipeline"]}}
+                        "posts_per_week": 5, "goals": [goals or "Build authority and pipeline"]}}
 
 
 TITLE_EXPANSION = {
