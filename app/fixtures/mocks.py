@@ -277,7 +277,7 @@ def _calendar(req: LLMRequest) -> dict:
 # ----------------------------------------------------------------- content ----
 OPENERS = ["Here's something I keep seeing.", "A quick story from this week.", "Unpopular opinion, maybe.",
            "I got this wrong for years.", "Most advice on this is too vague to use.", "Let me be specific.",
-           "A customer asked me this on Tuesday.", "Three years ago I'd have disagreed with this.",
+           "Here is a question worth asking this week.", "Three years ago I'd have disagreed with this.",
            "This one is for the operators.", "Short post, practical point."]
 CLOSERS = ["What's the version of this you've seen?", "Curious how others handle it.",
            "If this is you, start small this week.", "Tell me where I'm wrong.", "Worth trying for one month.",
