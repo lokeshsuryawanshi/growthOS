@@ -159,3 +159,15 @@ def test_invented_anecdotes_and_borrowed_examples_are_caught_in_model_drafts():
     assert not {v.rule for v in check_post(clean, [], p, claims=[]).violations} & {"invented_anecdote", "reuses_founder_example"}
     human = check_post(story, [], p, claims=None)                         # the operator's own edit may tell a true story
     assert not any(v.rule == "invented_anecdote" for v in human.violations)
+
+
+def test_a_copied_sentence_inside_a_new_post_is_caught():
+    """Found live: a post reused a whole paragraph of the founder's sample in the middle of new text."""
+    from app.guardrails.output_guard import PolicyContext, check_copying
+    sample = ("We tried to implement OKRs four separate times at WP Engine; sometimes inside a single team, sometimes for "
+              "a department, sometimes across the entire company. We failed every time.")
+    p = PolicyContext("WP Engine", founder_samples=[sample])
+    post = ("Scaling is a state of mind. " * 10 + "We tried to implement OKRs four separate times at WP Engine; "
+            "sometimes inside a single team. " + "Structure beats frameworks. " * 10)
+    assert any(v.rule == "copies_founder_sample" for v in check_copying(post, p))
+    assert not check_copying("Scaling is a state of mind. Structure beats frameworks, most of the time. " * 6, p)

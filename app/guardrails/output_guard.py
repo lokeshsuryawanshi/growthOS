@@ -207,10 +207,14 @@ def check_copying(text: str, p: PolicyContext) -> list[Violation]:
             v.append(Violation(rule="copied_founder_hook", severity="high",
                                detail="opens with a line taken from the founder's own sample posts; write a new hook"))
             break
+    mine = _shingles(text, 8)
     for full in p.founder_samples:
-        if jaccard(text, full) >= 0.3:
+        shared = mine & _shingles(full, 8)
+        if jaccard(text, full) >= 0.3 or shared:
+            quote = max(shared, key=len) if shared else ""
             v.append(Violation(rule="copies_founder_sample", severity="high",
-                               detail="overlaps heavily with one of the founder's existing posts"))
+                               detail="repeats the founder's own words" + (f' ("{quote}...")' if quote else "") +
+                                      "; write new sentences"))
             break
     reused = reused_examples(text, p)
     if reused:
