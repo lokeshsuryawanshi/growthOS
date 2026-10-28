@@ -534,6 +534,7 @@ def broaden_suggestion(dropped: dict[str, int], found: int) -> str:
     top = max(dropped, key=dropped.get) if dropped else ""
     return {"region": "Include neighbouring regions: many companies found were outside the target region.",
             "low_fit": "Widen the ideal customer profile (adjacent industries, a wider company size).",
+            "size": "Relax the company-size range: many companies found were bigger or smaller than the profile.",
             "no_contact_route": "Keep searching: many companies qualified but published no way to reach a person.",
             "competitor": "Exclude the competitors' own lists and search other directories.",
             "duplicate": "Search new sources: most companies found were already in your leads.",

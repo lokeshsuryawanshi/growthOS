@@ -181,6 +181,19 @@ async def test_a_thin_web_presence_explains_each_drop(client, monkeypatch):
     assert "reach a person" in stats["suggestion"] or stats["suggestion"]
 
 
+async def test_companies_clearly_outside_the_size_range_are_dropped_unless_broadened(client, monkeypatch):
+    def qualifier(req):
+        return {"content": {"scores": [{"prospect_id": p["id"], "fit_score": 90, "size": "too_big",
+                                        "evidence": [p.get("about") or p["company"]]} for p in req.metadata["batch"]]}}
+    monkeypatch.setitem(MOCK_RESPONDERS, "qualifier", qualifier)
+    web = Web(results=[hit("Roasters", "https://news.example/roasters", "Hilltop Roast is hiring a head of operations")],
+              pages={"hilltoproast.example": homepage("Hilltop Roast", "<p>hello@hilltoproast.example</p>")})
+    http.set_transport(httpx.MockTransport(web.handler))
+    stats = await find_leads("t1", ctx(), __import__("datetime").date(2026, 11, 2))
+    assert stats["dropped"].get("size") and (await leads(client))[0] == {}
+    assert "size range" in stats["suggestion"]
+
+
 async def test_broaden_skips_the_region_filter(client):
     web = Web(results=[hit("Roasters", "https://news.example/roasters", "Kaffee Haus roasts in Berlin")],
               pages={"kaffeehaus.de": homepage("Kaffee Haus", "<p>kontakt@kaffeehaus.de</p>")})

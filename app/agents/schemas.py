@@ -178,6 +178,7 @@ class LeadScore(BaseModel):
     segment: str = ""
     evidence: list[str] = Field(default_factory=list, max_length=4)
     disqualifiers: list[str] = Field(default_factory=list, max_length=4)
+    size: str = Field(default="unknown", description="fits | too_big | too_small | unknown, against the ICP's size range")
 
 
 class LeadScores(BaseModel):
