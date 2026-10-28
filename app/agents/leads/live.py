@@ -53,8 +53,9 @@ CONTACT_PAGE = re.compile(r"(?i)/(about|team|people|leadership|founders?|company
                           r"contact|press|news|media)(?:[-/_.]|$)")
 EMAIL = re.compile(r"(?<![\w.+-])([A-Za-z0-9._%+-]{1,64})@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
 ROLE_INBOX = {"info", "hello", "hi", "contact", "sales", "team", "press", "media", "partnerships", "partners",
-              "business", "founders", "office", "enquiries", "inquiries", "support", "marketing", "bd", "growth",
-              "general", "admin", "connect"}
+              "business", "founders", "office", "enquiries", "inquiries", "enquiry", "inquiry", "support", "marketing",
+              "bd", "growth", "general", "admin", "connect", "studio", "projects", "project", "work", "newbusiness",
+              "new", "ask", "talk", "start", "go", "help", "careers", "jobs", "mail", "contactus", "letstalk"}
 CCTLD = {"in": "india", "uk": "uk", "de": "germany", "fr": "france", "es": "spain", "it": "italy", "nl": "netherlands",
          "sg": "singapore", "au": "australia", "ca": "canada", "jp": "japan", "br": "brazil", "se": "sweden",
          "ch": "switzerland", "ie": "ireland", "nz": "new zealand", "ae": "uae", "za": "south africa", "mx": "mexico"}
@@ -302,11 +303,34 @@ async def read_homepages(ctx: AgentContext, cands: list[dict], budget: SearchBud
                 return
         verdict = await scan(page.text[:1800], ctx.call)
         c["about"] = "" if verdict.quarantined else re.sub(r"\s+", " ", f"{page.title}. {verdict.clean_text}")[:500]
+        c["name"] = better_name(c["name"], c["domain"], page.title)
         c["_links"] = page.links
         c["_home_text"] = page.text[:20000]
         c["_home_url"] = page.final_url
         f["homepages_read"] += 1
     await asyncio.gather(*[one(c) for c in cands])
+
+
+def _root(domain: str) -> str:
+    parts = domain.split(".")
+    return parts[-3] if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "ac") else parts[-2] if len(parts) >= 2 else domain
+
+
+def better_name(name: str, domain: str, title: str) -> str:
+    """A list page's link label is often not the company's name ("catalogue of works"). Keep it only if it matches
+    the domain; otherwise use the part of the company's own page title that does, or the domain itself."""
+    root = re.sub(r"[^a-z0-9]", "", _root(domain).lower())
+
+    def matches(text: str) -> bool:
+        t = re.sub(r"[^a-z0-9]", "", text.lower())
+        return bool(t) and (t in root or root in t or (len(t) >= 4 and t[:4] == root[:4]))
+    if matches(name):
+        return name
+    for seg in re.split(r"\s[|\-–—:·]\s|\s[|–—·]|[|–—·]\s", title or ""):
+        seg = seg.strip()
+        if seg and len(seg) <= 60 and matches(seg):
+            return seg
+    return _root(domain).replace("-", " ").title()
 
 
 def region_mismatch(c: dict, targets: list[str]) -> bool:
@@ -336,6 +360,22 @@ class People(BaseModel):
 
 SENIOR = re.compile(r"(?i)\b(founder|co-?founder|ceo|chief|president|owner|managing director|md|head of|vp|"
                     r"vice president|director|partner|cmo|cto|coo|cro|principal|general manager)\b")
+
+
+def clean_name(name: str) -> str:
+    """Letters, spaces, hyphens, apostrophes and dots only (no emoji or decorations), at most 200 characters."""
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s.'\-]", "", name, flags=re.UNICODE)).strip()[:200]
+
+
+def works_here(role: str, company: str, domain: str) -> bool:
+    """False when the role names another organisation ("Director at JLL", "Co-Founder @ Floresco"): a testimonial or
+    a partner, not someone at this company."""
+    m = re.search(r"(?i)(?:\s@\s?|\sat\s|,\s*)([A-Z][\w&.-]+(?:\s[A-Z][\w&.-]+)*)\s*$", role.strip())
+    if not m:
+        return not re.search(r"\b[A-Z]{2,5}\b$", role.strip()) or company.lower().startswith(role.strip().split()[-1].lower())
+    other = re.sub(r"[^a-z0-9]", "", m.group(1).lower())
+    mine = re.sub(r"[^a-z0-9]", "", company.lower()) + " " + re.sub(r"[^a-z0-9]", "", _root(domain).lower())
+    return bool(other) and (other in mine or mine.split()[0] in other)
 
 
 def site_emails(text: str, links: list[tuple[str, str]], domain: str) -> list[str]:
@@ -417,7 +457,10 @@ async def contact_route(ctx: AgentContext, c: dict, titles: list[str], budget: S
 
     # (a) a named person on the company's own pages
     person = None
-    team_text = [(u, t) for u, t in pages if SENIOR.search(t)]
+    home = c.get("_home_url") or "https://" + domain
+    # people only from the company's own about/team/leadership/press pages: a homepage's names are often customers
+    # quoted in testimonials
+    team_text = [(u, t) for u, t in pages if u != home and SENIOR.search(t)]
     if team_text:
         scanned = [(u, (await scan(t[:3000], ctx.call)).clean_text) for u, t in team_text[:3]]
         block = "\n\n".join(f"[{u}]\n{t}" for u, t in scanned)
@@ -432,14 +475,15 @@ async def contact_route(ctx: AgentContext, c: dict, titles: list[str], budget: S
         page_text = {u: t for u, t in pages}
         verified = [p for p in res.output.people
                     if p.page_url in page_text and p.name.strip() and p.name.lower() in page_text[p.page_url].lower()
-                    and (not p.role or p.role.lower()[:20] in page_text[p.page_url].lower())]
+                    and (not p.role or p.role.lower()[:20] in page_text[p.page_url].lower())
+                    and SENIOR.search(p.role) and works_here(p.role, c["name"], domain)]
         want = {w for t in titles for w in re.findall(r"[a-z]{3,}", t.lower())}
         verified.sort(key=lambda p: (bool(SENIOR.search(p.role)), len(want & set(re.findall(r"[a-z]{3,}", p.role.lower())))),
                       reverse=True)
         person = verified[0] if verified else None
     if person:
         email = _person_email(person.name, emails)
-        c.update(full_name=person.name[:200], title=person.role[:200], contact_url=person.page_url,
+        c.update(full_name=clean_name(person.name), title=person.role[:200], contact_url=person.page_url,
                  email=email, email_status="published" if email else "",
                  contact_source="site_email" if email else "team_page", contact_confidence="high" if email else "medium")
     elif emails:
@@ -458,7 +502,7 @@ async def contact_route(ctx: AgentContext, c: dict, titles: list[str], budget: S
             li = None
         if li:
             name, role, url = li
-            c.update(full_name=name[:200], title=role[:200], linkedin_url=url)
+            c.update(full_name=clean_name(name), title=role[:200], linkedin_url=url)
             if not c.get("contact_source"):
                 c.update(contact_source="linkedin_search", contact_url=url, contact_confidence="medium" if role else "low")
 

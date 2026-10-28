@@ -229,3 +229,14 @@ def test_every_query_family_has_a_fallback():
     fb = live.fallback_queries(ICP, INTAKE)
     assert set(fb) == set(live.FAMILIES) and all(re.search(r"\w", q) for q in fb.values())
     assert "Cropster" in fb["competitor_customers"]
+
+
+def test_names_from_link_labels_are_repaired_and_testimonials_are_not_staff():
+    assert live.better_name("catalogue of works", "mooveagency.com", "Moove Agency | Digital agency") == "Moove Agency"
+    assert live.better_name("case studies", "seahawkmedia.com", "") == "Seahawkmedia"
+    assert live.better_name("Bean Barn Roastery", "beanbarn.example", "") == "Bean Barn Roastery"
+    assert not live.works_here("Senior Director, Global Digital Marketing JLL", "Moove Agency", "mooveagency.com")
+    assert not live.works_here("Co-Founder @ Floresco", "Yellow Peach", "yellowpeach.co.uk")
+    assert live.works_here("Founder and Head Roaster", "Bean Barn", "beanbarn.example")
+    assert live.clean_name("Chris Januszewski \U0001F399️") == "Chris Januszewski"
+    assert live.is_role_inbox("studio@impactmedia.co.uk") and live.is_role_inbox("go@codal.com")
