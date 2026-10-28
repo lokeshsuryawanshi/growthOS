@@ -1,13 +1,12 @@
-"""Measure a real end-to-end run on real providers: fresh database, one workspace, research and strategy, then the
-content and lead runs side by side. Prints and saves where the time and tokens went.
+"""Measure a real end-to-end run on real providers through the same services the UI uses.
 
-  python scripts/live_run.py --profile path/to/profile.json [--db data/live.db] [--groq-key-var GROQ_API_KEY2]
-                             [--runs discovery,content,leads] [--out loadtest/reports/live-run]
+  python scripts/live_run.py --profile evals/datasets/voice_samples/seth_godin.json --db <path.db> \
+         [--groq-key-var GROQ_API_KEY2] [--runs discovery,content,leads] [--hunter] [--out <report path>]
 
-The profile is the onboarding form as JSON (same field names as the web form, samples as sample_1..sample_5).
-The strategy gate is approved by the script the moment it is reached, so human review time is not counted.
---groq-key-var picks which key from .env to use for this manual run (it is copied into GROQ_API_KEY for this process
-only; the app itself reads only GROQ_API_KEY and never rotates keys). Keys are never printed.
+Each profile gets its own account (so its own keys): the account is created the way Google sign-in creates one, the
+client from the profile's onboarding form, and the keys from .env are saved through app.services.keys (with the real
+validation call), exactly as an operator would paste them. Keys are never printed. The strategy gate is approved by
+the script at once so human review time is not counted. --reuse runs more steps for a client already in --db.
 """
 from __future__ import annotations
 
@@ -23,21 +22,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+KEYS: dict[str, str] = {}
 
 
 def _prepare_env(args) -> None:
+    """Server settings for this process; provider keys stay in this module and go into the account, not the env."""
     from dotenv import dotenv_values
     env = dotenv_values(ROOT / ".env")
-    if args.groq_key_var:
-        key = env.get(args.groq_key_var) or os.environ.get(args.groq_key_var)
-        if not key:
-            sys.exit(f"{args.groq_key_var} is not set")
-        os.environ["GROQ_API_KEY"] = key
-    if args.no_hunter:
-        os.environ["HUNTER_API_KEY"] = ""          # keep the monthly Hunter quota for measured runs
+    for name in ("JWT_SECRET", "ENCRYPTION_KEY"):
+        if env.get(name):
+            os.environ[name] = env[name]
+    KEYS["groq"] = env.get(args.groq_key_var or "GROQ_API_KEY") or ""
+    KEYS["tavily"] = env.get("TAVILY_API_KEY") or ""
+    KEYS["hunter"] = (env.get("HUNTER_API_KEY") or "") if args.hunter else ""
+    if not KEYS["groq"] or not KEYS["tavily"]:
+        sys.exit("GROQ_API_KEY (or --groq-key-var) and TAVILY_API_KEY must be set in .env")
     os.environ["APP_ENV"] = "production"
+    os.environ["LLM_MODE"] = "live"
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{Path(args.db).resolve()}"
-    os.environ.setdefault("LLM_MODE", "live")
 
 
 async def wait_run(tid: str, rid: str, poll: float = 1.0, also_wait: tuple[str, ...] = ()) -> str:
@@ -96,34 +98,38 @@ async def report_for(tid: str, rid: str) -> dict:
 
 
 async def main(args) -> int:
+    from sqlalchemy import select
     from app.agents.orchestrator.engine import get_orchestrator
+    from app.api.deps import load_principal
     from app.bootstrap import init_database
     from app.core.config import get_settings
+    from app.db.models import Tenant
     from app.db.session import get_db
-    from app.services import accounts, runs as run_service
+    from app.services import accounts, keys, runs as run_service
 
     s = get_settings()
-    assert s.effective_llm_mode == "live", "needs a Groq key"
     await init_database(get_db())
-    from app.core.security import Principal
-    if args.reuse:                          # run more steps for the workspace already in this database
-        from sqlalchemy import select
-        from app.db.models import Membership, Tenant, User
-        async with get_db().reader() as sess:
-            tenant = (await sess.execute(select(Tenant))).scalars().first()
-            user = (await sess.execute(select(User).join(Membership, Membership.user_id == User.id)
-                                       .where(Membership.tenant_id == tenant.id))).scalars().first()
-        p = Principal(user.id, user.name, user.role, frozenset([tenant.id]))
-    else:
-        profile = json.loads(Path(args.profile).read_text())
-        email = f"live-{int(time.time())}@example.com"
-        p = await accounts.signup(profile.get("founder_name", "Founder"), email, "live-run-password-123",
-                                  s.signup_invite_code)
-        tenant = await accounts.create_workspace(p, accounts.OnboardingForm.from_form(profile))
-    me = Principal(p.user_id, p.name, p.role, frozenset([tenant.id]))
+    doc = json.loads(Path(args.profile).read_text())
+    profile = doc.get("client_profile", doc)
+    slug = Path(args.profile).stem
+    email = f"live-{slug}@example.com"
+    p = await accounts.google_user(f"live:{slug}", email, profile.get("founder_name", slug))
+    async with get_db().reader() as sess:
+        tenant = (await sess.execute(select(Tenant).where(Tenant.owner_user_id == p.user_id,
+                                                          Tenant.name == profile["company_name"]))).scalars().first()
+    if tenant is None:
+        if args.reuse:
+            sys.exit(f"no client {profile['company_name']} in {args.db}")
+        tenant = await accounts.create_client(p, accounts.OnboardingForm.from_form(profile))
+    saved = await keys.list_keys(p.user_id)
+    for provider, kind in (("groq", "llm"), ("tavily", "search"), ("hunter", "contacts")):
+        if KEYS.get(provider) and (kind not in saved or saved[kind].status != "valid"):
+            await keys.save_key(p, kind, provider, KEYS[provider])        # the real check call, as in the UI
+    me = await load_principal(p.user_id)
     orch = get_orchestrator()
     out: dict = {"started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "company": tenant.name,
-                 "routes": {t: s.route_chain(t) for t in ("big", "research", "small", "extract", "judge", "guard")},
+                 "provider": "groq", "routes": {t: s.route_chain("groq", t) for t in
+                                                ("big", "research", "small", "extract", "judge", "guard")},
                  "runs": {}}
     kinds = args.runs.split(",")
     t_all = time.monotonic()
@@ -133,7 +139,7 @@ async def main(args) -> int:
         print("discovery:", st, flush=True)
         if st == "waiting_human":
             # the founder approves; the script does it at once so review time is not measured
-            await orch.approve_gate(tenant.id, rid, "strategy_review", p.user_id)
+            await orch.approve_gate(tenant.id, rid, "strategy_review", me.user_id)
             st = await wait_run(tenant.id, rid, also_wait=("waiting_human",))
         out["runs"]["discovery"] = await report_for(tenant.id, rid)
         print(json.dumps({k: v for k, v in out["runs"]["discovery"].items() if k != "nodes"}, indent=1), flush=True)
@@ -163,13 +169,13 @@ async def main(args) -> int:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--profile", default="")
-    ap.add_argument("--reuse", action="store_true", help="use the workspace already in --db (skip signup)")
-    ap.add_argument("--db", default=f"data/live-{int(time.time())}.db")
+    ap.add_argument("--profile", required=True, help="a voice_samples JSON (its client_profile) or an onboarding form JSON")
+    ap.add_argument("--reuse", action="store_true", help="the client must already exist in --db")
+    ap.add_argument("--db", required=True)
     ap.add_argument("--groq-key-var", default="")
     ap.add_argument("--runs", default="discovery,content,leads")
     ap.add_argument("--out", default="loadtest/reports/live-run")
-    ap.add_argument("--no-hunter", action="store_true")
+    ap.add_argument("--hunter", action="store_true", help="also save HUNTER_API_KEY (optional enrichment)")
     a = ap.parse_args()
     _prepare_env(a)
     sys.exit(asyncio.run(main(a)))

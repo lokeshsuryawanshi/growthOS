@@ -27,7 +27,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 FORM = {"action": "approve", "kind": "discovery", "text": "edited", "note": "a note long enough", "subject": "s",
-        "confirm": "", "cap": "1", "parts": "strategy"}
+        "confirm": "", "cap": "1", "parts": "strategy", "voice": "3"}
 
 
 async def _world():

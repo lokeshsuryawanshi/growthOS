@@ -1,0 +1,103 @@
+{
+ "person": "Arvid Kahl",
+ "public_role": "Bootstrapped founder (FeedbackPanda, Podscan); writes The Bootstrapped Founder",
+ "category": "very niche B2B product",
+ "note": "Short excerpts of public writing, used only as style test input. The writing belongs to its author. Nothing generated from it is published or attributed to them. Collected from the author's public feed or pages (robots.txt respected; no LinkedIn).",
+ "client_profile": {
+  "company_name": "Podscan",
+  "website": "podscan.fm",
+  "industry": "Niche B2B SaaS: podcast monitoring and transcript search",
+  "company": "Podscan monitors new podcast episodes, transcribes them, and alerts brands, PR teams and researchers when their name or topic is mentioned. It is now part of Audiohook.",
+  "target_customers": "PR and communications agencies, brand marketing teams and podcast advertising buyers who need to know when and where they are mentioned on podcasts.",
+  "geographies": "US\nUK\nGermany",
+  "known_competitors": "Listen Notes | https://www.listennotes.com\nPodchaser | https://www.podchaser.com",
+  "founder_name": "Arvid Kahl",
+  "founder_title": "Founder",
+  "tone": "Warm, reflective, honest about mistakes; teaches from his own bootstrapped journey; plain English.",
+  "topics_to_own": "bootstrapping\nbuilding with AI\ndata as a moat",
+  "topics_to_avoid": "politics",
+  "primary_goal": "Agencies and brands trying podcast monitoring",
+  "leads_per_week_min": "10",
+  "leads_per_week_max": "20",
+  "posts_per_week": "5",
+  "sample_1": "Building in public once helped me sell my company. Today, that same transparency could destroy yours.\n\nThat’s not hyperbole. I owe my entire career as a writer, podcaster, and founder to being radically transparent about my business. I shared my Stripe-verified monthly recurring revenue numbers with the world, and that visibility attracted financial and acquisition interest that ultimately led to the sale of my previous software business, FeedbackPanda. That exit put me on the map. It gave me financial independence. It’s the reason I have a podcast and a newsletter. If it hadn’t been for building in public and sharing my numbers, I probably wouldn’t be speaking or writing to anyone right now.\n\nSo when I tell you that the game has fundamentally changed, I need you to understand: I’m not saying this from the sidelines. I’m saying it as someone who benefited enormously from the old playbook and now watches founders follow it straight into danger.\n\nWhat Building in Public Used to Mean",
+  "sample_2": "A couple things happened these last weeks that brought into sharp focus just how naively we interact with agentic systems — to the point where we get surprised by the consequences of using them.\n\nAnthropic made it very clear in their terms and conditions that their Max plans — the $200 plan and all the others meant to work with tools like Claude Code, the Claude web app, or the desktop app — cannot be used to run any agentic system like Open Claw. They made it very clear that that’s not allowed. Even tools like Open Code, which is just a different harness for Claude Code, are having trouble allowing Claude Code to be called in its own operational loop. And then Google started banning people for using Open Claw to connect to Gmail. Their developer system also flat out stated that using their API for agentic harnesses is not allowed either.\n\nTwo of the bigger players in the space are acting quite differently from what OpenAI is doing — or seemingly allowing — and are shutting things down. And I believe it has almost nothing to do with actual token usage.",
+  "sample_3": "Here’s a question I’ve been sitting with lately: if building software keeps getting easier — and it clearly is — then what exactly are we building our businesses on?\n\nBecause conversations about the quality of vibe-coded or AI-engineered software aside, it is obvious that with LLM-originated tooling, writing complex software has become significantly easier. It hasn’t become completely solved. It’s still a process that requires an orchestrator — somebody who knows what the thing is going to be. And at this point, that isn’t just a technical capacity. It’s product management and customer development intersecting with engineering. But it’s pretty clear that as these tools get better, the process of creating code bases that, when deployed, become products people can purchase or services people can pay for — that is clearly moving towards a threshold where software engineering and running software businesses as we know them will change quite a bit. It’s still going to be a job that requires insight and capacity, but it doesn’t require ten people anymore to build something meaningful. It might just require three, or two, or maybe just one.",
+  "sample_4": "I’ve been using Claude Code for over half a year now, pretty much exclusively, to build my platform. Haven’t really deviated much to other tools. And I think I’ve gathered enough experience with the system that it’s time to share what I’ve learned about using Claude Code effectively to build a non-trivial Software as a Service application.\n\nHere’s what I’ve found: a lot of the value of Claude Code is in its configuration and correct prompting. When you’re just starting, you think the value is really in the code it generates. But honestly, most of the value of Claude Code is in the code it doesn’t generate—so you don’t have to throw it away. The better you are at setting a really solid system prompt, at executing the agentic loop correctly with the right permissions, the right interceptions, the right restrictions, the better your experience with Claude Code will be.\n\nLet Claude See Your Application\n\nFirst off, any plan of Claude Code will work for whatever you might need. But the moment you start using it more heavily—for feature building, for testing, for background processing—you’ll likely exceed the $20 a month plan. The Max plan tends to be what I’d recommend at this point, because then you can just keep it running. You’ll see why this matters in a second.",
+  "sample_5": "A while ago, I asked my Twitter friends to tell me what the most annoying and most infuriating piece of entrepreneurial advice is that they ever received. And overwhelmingly, “follow your passion” stood out as the one that frustrated them most.\n\nI’ve seen this particular piece of advice being given a lot by people who have made it—successful entrepreneurs who found success in the field they’re passionate about. And I may have, from time to time, hinted at the fact that this might not be too bad if followed carefully. But today, I want to dive into why I think this is actually nefarious and dangerous advice when followed blindly, and more importantly, what it can be decoded into that’s actually meaningful and helpful for you as a founder.\n\nThe Ambiguity Problem\n\nRight off the bat, “follow your passion” is such an ambiguous term. What does it actually mean? Should I do the thing that I always like doing and try to turn that into a business? Should I look at what people around me in my hobby or field of interest are building and build something like that? What does it really mean?"
+ },
+ "samples": [
+  {
+   "title": "The Increasing Risk of Building in Public",
+   "url": "https://thebootstrappedfounder.com/the-increasing-risk-of-building-in-public/",
+   "published": "Fri, 03 Apr 2026",
+   "excerpt": "Building in public once helped me sell my company. Today, that same transparency could destroy yours.\n\nThat’s not hyperbole. I owe my entire career as a writer, podcaster, and founder to being radically transparent about my business. I shared my Stripe-verified monthly recurring revenue numbers with the world, and that visibility attracted financial and acquisition interest that ultimately led to the sale of my previous software business, FeedbackPanda. That exit put me on the map. It gave me financial independence. It’s the reason I have a podcast and a newsletter. If it hadn’t been for building in public and sharing my numbers, I probably wouldn’t be speaking or writing to anyone right now.\n\nSo when I tell you that the game has fundamentally changed, I need you to understand: I’m not saying this from the sidelines. I’m saying it as someone who benefited enormously from the old playbook and now watches founders follow it straight into danger.\n\nWhat Building in Public Used to Mean",
+   "words": 164,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "AI Liability: The Landmines Under Your SaaS",
+   "url": "https://thebootstrappedfounder.com/ai-liability-the-landmines-under-your-saas/",
+   "published": "Fri, 20 Mar 2026",
+   "excerpt": "A couple things happened these last weeks that brought into sharp focus just how naively we interact with agentic systems — to the point where we get surprised by the consequences of using them.\n\nAnthropic made it very clear in their terms and conditions that their Max plans — the $200 plan and all the others meant to work with tools like Claude Code, the Claude web app, or the desktop app — cannot be used to run any agentic system like Open Claw. They made it very clear that that’s not allowed. Even tools like Open Code, which is just a different harness for Claude Code, are having trouble allowing Claude Code to be called in its own operational loop. And then Google started banning people for using Open Claw to connect to Gmail. Their developer system also flat out stated that using their API for agentic harnesses is not allowed either.\n\nTwo of the bigger players in the space are acting quite differently from what OpenAI is doing — or seemingly allowing — and are shutting things down. And I believe it has almost nothing to do with actual token usage.",
+   "words": 193,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Data Is the Only Moat",
+   "url": "https://thebootstrappedfounder.com/data-is-the-only-moat/",
+   "published": "Fri, 13 Mar 2026",
+   "excerpt": "Here’s a question I’ve been sitting with lately: if building software keeps getting easier — and it clearly is — then what exactly are we building our businesses on?\n\nBecause conversations about the quality of vibe-coded or AI-engineered software aside, it is obvious that with LLM-originated tooling, writing complex software has become significantly easier. It hasn’t become completely solved. It’s still a process that requires an orchestrator — somebody who knows what the thing is going to be. And at this point, that isn’t just a technical capacity. It’s product management and customer development intersecting with engineering. But it’s pretty clear that as these tools get better, the process of creating code bases that, when deployed, become products people can purchase or services people can pay for — that is clearly moving towards a threshold where software engineering and running software businesses as we know them will change quite a bit. It’s still going to be a job that requires insight and capacity, but it doesn’t require ten people anymore to build something meaningful. It might just require three, or two, or maybe just one.",
+   "words": 185,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "When Long-Term Investments Finally Pay Off",
+   "url": "https://thebootstrappedfounder.com/when-long-term-investments-finally-pay-off/",
+   "published": "Fri, 13 Feb 2026",
+   "excerpt": "There’s something deeply satisfying about watching seeds you planted a year ago finally break through the soil. Figuratively, even though I do enjoy growing my own Tomatoes. But I digress. Today, I want to share a few stories from Podscan—my podcast intelligence platform—about what happens when long-term investments start compounding. Some of these took eighteen months to materialize. Others became possible only because I embraced tools I never thought I’d touch.\n\nThis is a bit of a year in review, though delayed and probably incomplete. But I think there are lessons here that apply to any founder playing the long game.\n\nThe Compound Effect of Programmatic SEO\n\nLet me start with something that took real patience: our programmatic SEO efforts. For a solid year and a half, I wasn’t sure if they were working at all. Obviously, each new page—particularly if it comes with a .fm TLD like ours—has some work to do before it’s recognized as a trustworthy location.",
+   "words": 160,
+   "split": "held_out",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "How to Actually Use Claude Code to Build Serious Software",
+   "url": "https://thebootstrappedfounder.com/how-to-actually-use-claude-code-to-build-serious-software/",
+   "published": "Fri, 06 Feb 2026",
+   "excerpt": "I’ve been using Claude Code for over half a year now, pretty much exclusively, to build my platform. Haven’t really deviated much to other tools. And I think I’ve gathered enough experience with the system that it’s time to share what I’ve learned about using Claude Code effectively to build a non-trivial Software as a Service application.\n\nHere’s what I’ve found: a lot of the value of Claude Code is in its configuration and correct prompting. When you’re just starting, you think the value is really in the code it generates. But honestly, most of the value of Claude Code is in the code it doesn’t generate—so you don’t have to throw it away. The better you are at setting a really solid system prompt, at executing the agentic loop correctly with the right permissions, the right interceptions, the right restrictions, the better your experience with Claude Code will be.\n\nLet Claude See Your Application\n\nFirst off, any plan of Claude Code will work for whatever you might need. But the moment you start using it more heavily—for feature building, for testing, for background processing—you’ll likely exceed the $20 a month plan. The Max plan tends to be what I’d recommend at this point, because then you can just keep it running. You’ll see why this matters in a second.",
+   "words": 220,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Follow Your Passion (But Not Like That)",
+   "url": "https://thebootstrappedfounder.com/follow-your-passion-but-not-like-that/",
+   "published": "Fri, 30 Jan 2026",
+   "excerpt": "A while ago, I asked my Twitter friends to tell me what the most annoying and most infuriating piece of entrepreneurial advice is that they ever received. And overwhelmingly, “follow your passion” stood out as the one that frustrated them most.\n\nI’ve seen this particular piece of advice being given a lot by people who have made it—successful entrepreneurs who found success in the field they’re passionate about. And I may have, from time to time, hinted at the fact that this might not be too bad if followed carefully. But today, I want to dive into why I think this is actually nefarious and dangerous advice when followed blindly, and more importantly, what it can be decoded into that’s actually meaningful and helpful for you as a founder.\n\nThe Ambiguity Problem\n\nRight off the bat, “follow your passion” is such an ambiguous term. What does it actually mean? Should I do the thing that I always like doing and try to turn that into a business? Should I look at what people around me in my hobby or field of interest are building and build something like that? What does it really mean?",
+   "words": 194,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "The 1% Improvement Myth: Why Customer Conversations Beat Micro-Improvements Every Time",
+   "url": "https://thebootstrappedfounder.com/the-1-improvement-myth-why-customer-conversations-beat-micro-improvements-every-time/",
+   "published": "Fri, 23 Jan 2026",
+   "excerpt": "Let’s add another one to the series of entrepreneurial advice that just really irritates me. Today, I’m going after “improve 1% every day” — you know, that meme or mantra about making tiny little improvements every day because they supposedly compound into something massive over time.\n\nThis one is infuriating, and I’ll tell you why: it’s almost impossible to measure.\n\nI get the sentiment behind it. Make micro improvements every day, and ultimately they’ll add up to bigger ones in the future. But here’s what actually happens when people follow this advice.\n\nNow, 1% every day.\n\nThe Busywork Trap\n\nFirst off, it gets people to do irrelevant stuff. They feel like they’re making a micro improvement when they’re really just treading water. They’re doing something for the sake of doing something, not for the sake of actually improving.\n\nYou change the color of a button. You tweak a landing page headline for the third time this week. You reorganize your task management system again. And you call it your 1% improvement for the day. But did any of that actually move the needle? Can you even measure if it did?\n\nSecond, it lacks focus. And this is the big one.\n\nHow Real Improvements Actually Happen",
+   "words": 205,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Don’t Give Up… Your Assumptions",
+   "url": "https://thebootstrappedfounder.com/dont-give-up-your-assumptions/",
+   "published": "Fri, 16 Jan 2026",
+   "excerpt": "Let’s dive into a piece of entrepreneurial advice that’s highly irritating and very dangerous. Today I want to talk about the one that I get so much: “Don’t give up. Don’t ever give up. Force yourself, grind it out.”\n\nThis advice is very dangerous because it builds on the founder’s capacity to struggle through challenges, but it uses this for the very wrong reasons.\n\nThe Hidden Danger of Persistence\n\nHere’s what makes this particularly dangerous: “Don’t give up” is really, really useful advice—until a certain point. After that, it becomes extremely dangerous. And the problem is that, as a founder, you do not know where that point is. You only ever know where that point was in retrospect, and even then, things are complex. Things are highly codependent, interdependent. So you don’t even know what caused that point to appear in your journey.",
+   "words": 143,
+   "split": "held_out",
+   "retrieved": "2026-10-29"
+  }
+ ]
+}

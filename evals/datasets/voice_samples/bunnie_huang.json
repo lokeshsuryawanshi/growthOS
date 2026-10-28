@@ -1,0 +1,103 @@
+{
+ "person": "Andrew 'bunnie' Huang",
+ "public_role": "Hardware hacker and founder based in Singapore; co-designer of the Baochip-1x",
+ "category": "hardware founder, thin web presence",
+ "note": "Short excerpts of public writing, used only as style test input. The writing belongs to its author. Nothing generated from it is published or attributed to them. Collected from the author's public feed or pages (robots.txt respected; no LinkedIn).",
+ "client_profile": {
+  "company_name": "Baochip",
+  "website": "crowdsupply.com/baochip",
+  "industry": "Hardware: open, inspectable microcontroller chips",
+  "company": "Baochip-1x is a mostly-open RISC-V microcontroller with an MMU, designed so its silicon can be inspected, for people building secure embedded devices. Its first board sold through Crowd Supply.",
+  "target_customers": "Hardware engineers and small companies building security-sensitive embedded products who want a chip they can verify.",
+  "geographies": "Singapore\nUS\nEurope",
+  "known_competitors": "Espressif | https://www.espressif.com\nRaspberry Pi | https://www.raspberrypi.com",
+  "founder_name": "Andrew Huang",
+  "founder_title": "Co-founder",
+  "tone": "Deeply technical, precise, generous with detail; explains how things actually work, with photos and numbers.",
+  "topics_to_own": "open hardware\nsupply-chain security\nchip inspection",
+  "topics_to_avoid": "politics",
+  "primary_goal": "Design-in conversations with companies building secure devices",
+  "leads_per_week_min": "10",
+  "leads_per_week_max": "20",
+  "posts_per_week": "5",
+  "sample_1": "Last month’s name that ware demonstrates that even though non-destructive IR imaging is not capable of resolving an individual bit cell, at least at 22nm it is still possible to constrain the number of bits in an SRAM macro.\n\nAn important step in establishing trust in a computer is measuring all of its state and confirming that nothing is amiss. A typical trusted boot would make a point of zeroing and/or patterning & hashing all the known bits of memory in a system. This process helps constrain the amount of malicious or foreign code that could be hiding in the system.\n\nPhysical measurements are important is because it’s possible for designers to “hide” memory from this check.\n\nFor example, inserting a few kilobytes of RAM into a chip the size of the Baochip-1x would not affect the die size.\n\nLikewise, its impact on power consumption would be indistinguishable from offsets due to normal manufacturing tolerances.\n\nFurthermore, the presence of the RAM can be masked from a pure software inspection by gating it off using a “secret knock” register that only activates the memory when challenged with a correct sequence of words.\n\nThis makes it practically impossible to discover hidden memories with a brute force address space scan.",
+  "sample_2": "BIO is the I/O co-processor in the Baochip-1x, a mostly open source 22nm SoC I helped design. You can read more about the Baochip-1x’s background here , or pick up an evaluation board at Crowd Supply .\n\nIn this post, I’ll talk about the origins of the BIO, starting by working through a detailed study of the Raspberry Pi PIO as a reference, before diving into the architecture of the BIO. I’ll then work through three programming examples of the BIO, two in assembly and one in C. If all you’re interested in is how to use the BIO, you can skip the background details and go around halfway down the post to the section titled “Design of the BIO”, or go right into the code examples.\n\nBackground\n\nI/O co-processors off-load I/O tasks from main CPU cores. Main CPUs have to juggle multiple priorities using some form of multi-tasking, which leads to unpredictable response times. These unpredictable responses manifest as undesirable jitter or delays in critical responses. Dedicating a co-processor to an I/O task achieves a determinism approaching that of a dedicated hardware state machine while maintaining the flexibility of a general purpose CPU.",
+  "sample_3": "One of my latest projects is the Baochip-1x, a mostly-open, full-custom silicon chip fabricated in TSMC 22nm, targeted at high assurance applications. It’s a security chip, but far more open than any other security chip; it’s also a general purpose microcontroller that fills a gap in between the Raspberry Pi RP2350 (found on the Pi Pico2) and the NXP iMXRT1062 (found on the Teensy 4.1).\n\nIt’s the latest step in the Betrusted initiative, spurred by work I did with Ed Snowden 8 years ago trying to answer the question of “can we trust hardware to not betray us?” in the context of mass surveillance by state-level adversaries. The Baochip-1x’s CPU core is descended directly from the FPGA SoC used inside Precursor , a device I made to keep secrets; designed explicitly to run Xous , a pure-Rust rethink of the embedded OS I helped write; and made deliberately compatible with IRIS inspection , a method I pioneered for non-destructively inspecting silicon for correct construction.",
+  "sample_4": "I think turning everyday gadgets into bombs is a bad idea. However, recent news coverage has been framing the weaponization of pagers and radios in the Middle East as something we do not need to concern ourselves with because “we” are safe.\n\nI respectfully disagree. Our militaries wear uniforms, and our weapons of war are clearly marked as such because our societies operate on trust. As long as we don’t see uniformed soldiers marching through our streets, we can assume that the front lines of armed conflict are far from home. When enemies violate that trust, we call it terrorism, because we no longer feel safe around everyday people and objects.\n\nThe reason we don’t see exploding battery attacks more often is not because it’s technically hard, it’s because the erosion of public trust in everyday things isn’t worth it. The current discourse around the potential reach of such explosive devices is clouded by the assumption that it’s technically difficult to implement and thus unlikely to find its way to our front door.\n\nThat assumption is wrong. It is both surprisingly easy to do, and could be nearly impossible to detect. After I read about the attack, it took half an hour to combine fairly common supply chain knowledge with Wikipedia queries to propose the mechanism detailed below.",
+  "sample_5": "Formlabs has recently launched the fourth edition of their flagship SLA printer line, the Form 4 . Of course, I jumped on the chance to do a teardown of the printer; I’m grateful that I was able to do the same for the Form 1 , Form 2 , and Form 3 generations. In addition to learning a lot from the process of tearing down a single printer, I am also gaining a unique perspective on how a successful hardware startup matures into an established player in a cut-throat industry.\n\nFinancial interest disclosure: Formlabs provides me two printers for the teardown, with no contingencies on the contents or views expressed in this post. I am also a shareholder of Formlabs.\n\nA Bit of Background"
+ },
+ "samples": [
+  {
+   "title": "On Reading SRAMs in IR Images, and Establishing Bounds on Trust",
+   "url": "https://www.bunniestudios.com/blog/2026/on-reading-srams-in-ir-images-and-establishing-bounds-on-trust/",
+   "published": "Sun, 31 May 2026",
+   "excerpt": "Last month’s name that ware demonstrates that even though non-destructive IR imaging is not capable of resolving an individual bit cell, at least at 22nm it is still possible to constrain the number of bits in an SRAM macro.\n\nAn important step in establishing trust in a computer is measuring all of its state and confirming that nothing is amiss. A typical trusted boot would make a point of zeroing and/or patterning & hashing all the known bits of memory in a system. This process helps constrain the amount of malicious or foreign code that could be hiding in the system.\n\nPhysical measurements are important is because it’s possible for designers to “hide” memory from this check.\n\nFor example, inserting a few kilobytes of RAM into a chip the size of the Baochip-1x would not affect the die size.\n\nLikewise, its impact on power consumption would be indistinguishable from offsets due to normal manufacturing tolerances.\n\nFurthermore, the presence of the RAM can be masked from a pure software inspection by gating it off using a “secret knock” register that only activates the memory when challenged with a correct sequence of words.\n\nThis makes it practically impossible to discover hidden memories with a brute force address space scan.",
+   "words": 207,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "BIO: The Bao I/O Coprocessor",
+   "url": "https://www.bunniestudios.com/blog/2026/bio-the-bao-i-o-coprocessor/",
+   "published": "Fri, 20 Mar 2026",
+   "excerpt": "BIO is the I/O co-processor in the Baochip-1x, a mostly open source 22nm SoC I helped design. You can read more about the Baochip-1x’s background here , or pick up an evaluation board at Crowd Supply .\n\nIn this post, I’ll talk about the origins of the BIO, starting by working through a detailed study of the Raspberry Pi PIO as a reference, before diving into the architecture of the BIO. I’ll then work through three programming examples of the BIO, two in assembly and one in C. If all you’re interested in is how to use the BIO, you can skip the background details and go around halfway down the post to the section titled “Design of the BIO”, or go right into the code examples.\n\nBackground\n\nI/O co-processors off-load I/O tasks from main CPU cores. Main CPUs have to juggle multiple priorities using some form of multi-tasking, which leads to unpredictable response times. These unpredictable responses manifest as undesirable jitter or delays in critical responses. Dedicating a co-processor to an I/O task achieves a determinism approaching that of a dedicated hardware state machine while maintaining the flexibility of a general purpose CPU.",
+   "words": 194,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Baochip-1x: A Mostly-Open, 22nm SoC for High Assurance Applications",
+   "url": "https://www.bunniestudios.com/blog/2026/baochip-1x-a-mostly-open-22nm-soc-for-high-assurance-applications/",
+   "published": "Tue, 10 Mar 2026",
+   "excerpt": "One of my latest projects is the Baochip-1x, a mostly-open, full-custom silicon chip fabricated in TSMC 22nm, targeted at high assurance applications. It’s a security chip, but far more open than any other security chip; it’s also a general purpose microcontroller that fills a gap in between the Raspberry Pi RP2350 (found on the Pi Pico2) and the NXP iMXRT1062 (found on the Teensy 4.1).\n\nIt’s the latest step in the Betrusted initiative, spurred by work I did with Ed Snowden 8 years ago trying to answer the question of “can we trust hardware to not betray us?” in the context of mass surveillance by state-level adversaries. The Baochip-1x’s CPU core is descended directly from the FPGA SoC used inside Precursor , a device I made to keep secrets; designed explicitly to run Xous , a pure-Rust rethink of the embedded OS I helped write; and made deliberately compatible with IRIS inspection , a method I pioneered for non-destructively inspecting silicon for correct construction.",
+   "words": 164,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Use the Force (Feedback) to Solder Small Things",
+   "url": "https://www.bunniestudios.com/blog/2025/use-the-force-feedback-to-solder-small-things/",
+   "published": "Sat, 13 Sep 2025",
+   "excerpt": "Here’s a quick tip for people learning how to solder small components: don’t rely on your eyes. Instead, solder by touch : use the force-feedback available through your fingertips. Human fingers can reliably detect bumps on the order of microns in size – much finer than the resolution of sight, even with the assistance of a decent microscope.\n\nI use my eyes to get the components “about there”, and then switch to using fingertips for feedback. Really focusing in and just relying on vision for alignment tends to increase hand-shake. At least for me, the neurological delay on the loop from eye-to-motor control is longer (and more noisy) than the loop on tactile-to-motor control. So, I keep my eyes open, but allow them to wander slightly so I’m able to pay more attention to what I’m feeling with my fingers.",
+   "words": 140,
+   "split": "held_out",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Turning Everyday Gadgets into Bombs is a Bad Idea",
+   "url": "https://www.bunniestudios.com/blog/2024/turning-everyday-gadgets-into-bombs-is-a-bad-idea/",
+   "published": "Thu, 19 Sep 2024",
+   "excerpt": "I think turning everyday gadgets into bombs is a bad idea. However, recent news coverage has been framing the weaponization of pagers and radios in the Middle East as something we do not need to concern ourselves with because “we” are safe.\n\nI respectfully disagree. Our militaries wear uniforms, and our weapons of war are clearly marked as such because our societies operate on trust. As long as we don’t see uniformed soldiers marching through our streets, we can assume that the front lines of armed conflict are far from home. When enemies violate that trust, we call it terrorism, because we no longer feel safe around everyday people and objects.\n\nThe reason we don’t see exploding battery attacks more often is not because it’s technically hard, it’s because the erosion of public trust in everyday things isn’t worth it. The current discourse around the potential reach of such explosive devices is clouded by the assumption that it’s technically difficult to implement and thus unlikely to find its way to our front door.\n\nThat assumption is wrong. It is both surprisingly easy to do, and could be nearly impossible to detect. After I read about the attack, it took half an hour to combine fairly common supply chain knowledge with Wikipedia queries to propose the mechanism detailed below.",
+   "words": 218,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Formlabs Form 4 Teardown",
+   "url": "https://www.bunniestudios.com/blog/2024/formlabs-form-4-teardown/",
+   "published": "Sun, 02 Jun 2024",
+   "excerpt": "Formlabs has recently launched the fourth edition of their flagship SLA printer line, the Form 4 . Of course, I jumped on the chance to do a teardown of the printer; I’m grateful that I was able to do the same for the Form 1 , Form 2 , and Form 3 generations. In addition to learning a lot from the process of tearing down a single printer, I am also gaining a unique perspective on how a successful hardware startup matures into an established player in a cut-throat industry.\n\nFinancial interest disclosure: Formlabs provides me two printers for the teardown, with no contingencies on the contents or views expressed in this post. I am also a shareholder of Formlabs.\n\nA Bit of Background",
+   "words": 124,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Automated Stitching of Chip Images",
+   "url": "https://www.bunniestudios.com/blog/2024/automated-stitching-of-chip-images/",
+   "published": "Mon, 22 Apr 2024",
+   "excerpt": "This is the final post in a series about non-destructively inspecting chips with the IRIS (Infra-Red, in-situ ) technique. Here are links to previous posts:\n\nIRIS project overview\n\nMethodology\n\nLight source electronics\n\nFine focus stage\n\nLight source mechanisms\n\nMachine control & focus software\n\nThis post will cover the software used to stitch together smaller images generated by the control software into a single large image. My IRIS machine with a 10x objective generates single images that correspond to a patch of silicon that is only 0.8mm wide. Most chips are much larger than that, so I take a series of overlapping images that must be stitched together to generate a composite image corresponding to a full chip.\n\nThe un-aligned image tiles look like this:\n\nAnd the stitching software assembles it into something like this:\n\nThe problem we have to solve is that even though we command the microscope to move to regularly spaced intervals, in reality, there is always some error in the positioning of the microscope. The accuracy is on the order of 10’s of microns at best, but we are interested in extracting features much smaller than that. Thus, we must rely on some computational methods to remove these error offsets.",
+   "words": 203,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Control and Autofocus Software for Chip-Level Microscopy",
+   "url": "https://www.bunniestudios.com/blog/2024/control-and-autofocus-software-for-chip-level-microscopy/",
+   "published": "Sun, 14 Apr 2024",
+   "excerpt": "This post is part of a series about giving us a tangible reason to trust our hardware through non-destructive IRIS (Infra-Red, in-situ ) inspection. Here’s the previous posts:\n\nIRIS project overview\n\nMethodology\n\nLight source electronics\n\nFine focus stage\n\nLight source mechanisms\n\nThis post will discuss the control software used to drive IRIS.\n\nAbove is a screenshot of the IRIS machine control software in action. The top part of the window is a preview of the full frame being captured; the middle of the window is the specific sub-region used for calculating focus, drawn at a 1:1 pixel size. Below that are various status readouts and control tweaks for controlling exposure, gain, and autofocus, as well as a graph that plots the “focus metric” over time, and the current histogram of the visible pixels. At the bottom is a view of the console window, which is separate from the main UI but overlaid in screen capture so it all fits in a single image.\n\nThe software itself is written in Python, using the PyQt framework. Why did I subject myself that? No particular reason, other than the demo code for the camera was written with that framework.",
+   "words": 196,
+   "split": "held_out",
+   "retrieved": "2026-10-29"
+  }
+ ]
+}

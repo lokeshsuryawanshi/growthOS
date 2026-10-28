@@ -143,3 +143,19 @@ async def test_batched_scan_uses_few_classifier_calls_and_still_finds_the_inject
         assert calls == []                               # the client's own text: heuristics only
     finally:
         MOCK_RESPONDERS["input_guard"] = real
+
+
+def test_invented_anecdotes_and_borrowed_examples_are_caught_in_model_drafts():
+    from app.guardrails.output_guard import PolicyContext, check_post
+    samples = ["Juan Tamariz and Wendell Berry recently passed away. Between them they had generous careers. " * 3,
+               "Most people do not need more reach. They need a smaller audience that trusts them. " * 3]
+    p = PolicyContext("Acme", founder_samples=samples, source_texts=["Acme helps teams ship weekly."])
+    story = "We once watched a small bakery owner greet every regular by name. " * 6
+    r = check_post(story, [], p, claims=[])
+    assert any(v.rule == "invented_anecdote" for v in r.violations) and not r.passed
+    borrowed = "Think of Wendell Berry and his long, patient work on one farm. That is what trust looks like. " * 5
+    assert any(v.rule == "reuses_founder_example" for v in check_post(borrowed, [], p, claims=[]).violations)
+    clean = "Most teams ship weekly because small releases are easier to check. That is the whole idea. " * 5
+    assert not {v.rule for v in check_post(clean, [], p, claims=[]).violations} & {"invented_anecdote", "reuses_founder_example"}
+    human = check_post(story, [], p, claims=None)                         # the operator's own edit may tell a true story
+    assert not any(v.rule == "invented_anecdote" for v in human.violations)

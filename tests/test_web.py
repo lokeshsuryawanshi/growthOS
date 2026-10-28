@@ -130,7 +130,7 @@ async def test_every_calendar_card_opens_its_post_or_its_plan(world):
     for url in posts:
         r = await client.get(url)
         assert r.status_code == 200 and "Back to the calendar" in r.text and 'class="li"' in r.text, url
-        assert "Why this post" in r.text and "Editor score" in r.text
+        assert "Why this post" in r.text and "Editor's check (automatic)" in r.text and "Your rating" in r.text
     r = await client.get(planned[0])
     assert r.status_code == 200 and "planned, not written yet" in r.text and "Brief" in r.text
     # a slot that has a post redirects to the post
@@ -161,3 +161,14 @@ async def test_posts_and_slots_of_another_account_are_404(world):
             assert (await other.get(url)).status_code == 404, url
     assert (await client.get(f"/portal/{tid}/posts/nope")).status_code == 404
     assert (await client.get(f"/portal/{tid}/slots/nope")).status_code == 404
+
+
+async def test_the_operator_rates_a_draft_and_the_rating_is_stored(world):
+    client, ids, db = world
+    tid = ids["ledgerloop"]
+    post = await first(db, tid, Post, Post.status == "pending_approval")
+    r = await client.post(f"/ui/{tid}/posts/{post.id}/rating", data={"voice": "2", "template": "yes"})
+    assert r.status_code == 200 and "voice 2/5" in r.text and "reads like a template" in r.text
+    p = await first(db, tid, Post, Post.id == post.id)
+    assert (p.rating_voice, p.rating_would_post, p.rating_template) == (2, False, True) and p.rated_at
+    assert "Thanks" not in (await client.post(f"/ui/{tid}/posts/{post.id}/rating", data={"voice": "9"})).text

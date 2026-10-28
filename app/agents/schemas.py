@@ -151,15 +151,15 @@ class PostDraft(BaseModel):
 class Critique(BaseModel):
     voice_match: int = Field(ge=1, le=5)
     specificity: int = Field(ge=1, le=5)
-    hook: int = Field(ge=1, le=5)
+    opening: int = Field(ge=1, le=5, description="opens the way this founder opens")
     insight: int = Field(ge=1, le=5)
-    cta_fit: int = Field(ge=1, le=5)
+    ending: int = Field(ge=1, le=5, description="ends the way this founder ends")
     must_fix: list[str] = Field(default_factory=list, max_length=6)
     verdict: str
 
     @property
     def overall(self) -> float:
-        return round((self.voice_match * 1.5 + self.specificity + self.hook + self.insight + self.cta_fit * 0.5) / 5, 2)
+        return round((self.voice_match * 1.5 + self.specificity + self.opening + self.insight + self.ending * 0.5) / 5, 2)
 
 
 class LearnedRules(BaseModel):

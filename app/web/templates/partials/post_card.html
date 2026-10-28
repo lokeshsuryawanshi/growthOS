@@ -20,8 +20,8 @@
       {% if slot %}<span class="pill accent">{{ slot.pillar }}</span><span class="pill">{{ slot.format.replace('_', ' ') }}</span>{% endif %}</div>
     {% if msg %}<div class="flash {{ 'bad' if msg_bad else 'ok' }}">{{ msg }}</div>{% endif %}
     <div class="why"><b>Why this post:</b> {{ post.rationale }}</div>
-    <div class="score">Editor score <b class="num">{{ '%.1f' % post.critic_score }}</b>/5 after {{ post.rounds }} round{{ 's' if post.rounds != 1 }}
-      {% if crit %}<span class="sub">(voice {{ crit.voice_match }}, specificity {{ crit.specificity }}, hook {{ crit.hook }}, insight {{ crit.insight }})</span>{% endif %}</div>
+    <div class="score" title="An automatic check by a second AI model against the founder's own posts. A help for you, not proof of quality: your own rating below is what counts.">Editor's check (automatic) <b class="num">{{ '%.1f' % post.critic_score }}</b>/5 after {{ post.rounds }} round{{ 's' if post.rounds != 1 }}
+      {% if crit %}<span class="sub">(voice {{ crit.voice_match }}, specificity {{ crit.specificity }}, opening {{ crit.opening }}, insight {{ crit.insight }}, ending {{ crit.ending }})</span>{% endif %}</div>
     {% if post.claims %}
       <details><summary>Facts used ({{ post.claims | length }}): check the source</summary>
         <div class="facts" style="margin-top:8px">
@@ -34,6 +34,13 @@
       {% for v in rep.warnings %}<li class="{{ v.severity }}">{{ v.rule.replace('_', ' ') }}: {{ v.detail }}</li>{% endfor %}
       </ul>
     {% endif %}
+    <details {{ 'open' if post.rated_at is none and post.status == 'pending_approval' }}><summary>Your rating{% if post.rated_at %}: voice {{ post.rating_voice }}/5{{ ', would post' if post.rating_would_post }}{{ ', reads like a template' if post.rating_template }}{% endif %}</summary>
+      <form class="row" style="gap:10px;margin-top:8px;flex-wrap:wrap" hx-post="/ui/{{ tenant.id }}/posts/{{ post.id }}/rating" hx-target="#post-{{ post.id }}" hx-swap="outerHTML">
+        <label>Sounds like {{ founder.name.split(' ')[0] }}<select name="voice">{% for n in range(1, 6) %}<option value="{{ n }}" {{ 'selected' if (post.rating_voice or 3) == n }}>{{ n }}{{ ' (not at all)' if n == 1 else ' (exactly)' if n == 5 else '' }}</option>{% endfor %}</select></label>
+        <label class="row" style="gap:6px"><input type="checkbox" name="would_post" value="yes" {{ 'checked' if post.rating_would_post }}> They would post it</label>
+        <label class="row" style="gap:6px"><input type="checkbox" name="template" value="yes" {{ 'checked' if post.rating_template }}> Reads like a template</label>
+        <button class="sm">Save rating</button>
+      </form></details>
     {% if post.status == 'pending_approval' %}
       <div class="row">
         <form class="inline" hx-post="/ui/{{ tenant.id }}/posts/{{ post.id }}" hx-target="#post-{{ post.id }}" hx-swap="outerHTML">

@@ -1,0 +1,103 @@
+{
+ "person": "April Dunford",
+ "public_role": "Positioning consultant; author of Obviously Awesome and Sales Pitch",
+ "category": "consultant / services business",
+ "note": "Short excerpts of public writing, used only as style test input. The writing belongs to its author. Nothing generated from it is published or attributed to them. Collected from the author's public feed or pages (robots.txt respected; no LinkedIn).",
+ "client_profile": {
+  "company_name": "April Dunford Positioning",
+  "website": "aprildunford.com",
+  "industry": "B2B positioning consulting",
+  "company": "April Dunford helps B2B technology companies work out how to position their product so buyers understand why it is the best choice, through workshops, books and talks.",
+  "target_customers": "CEOs and heads of marketing at B2B SaaS companies from Series A to C whose sales cycles are long because buyers do not get what makes them different.",
+  "geographies": "US\nCanada\nUK",
+  "known_competitors": "Wynter | https://wynter.com",
+  "founder_name": "April Dunford",
+  "founder_title": "Founder",
+  "tone": "Direct, practical, a little wry; speaks from hundreds of real positioning projects; no hype.",
+  "topics_to_own": "positioning\nsales pitch\ncompeting with bigger rivals",
+  "topics_to_avoid": "politics",
+  "primary_goal": "Book positioning workshops with B2B tech leadership teams",
+  "leads_per_week_min": "10",
+  "leads_per_week_max": "20",
+  "posts_per_week": "5",
+  "sample_1": "I had a round table conversation last week with a group of founders building AI-native solutions. One common theme that emerged was how fast things are moving and how difficult it seems to be to nail down positioning when core AI capabilities and what’s possible are changing very, very quickly. One of the attendees said this: “Anthropic has launched three major releases this summer alone. Any positioning we develop will be out of date in two weeks. How do we handle that?” Every company I have worked with in the past year has expressed this same worry. Let’s dig into how to think about this problem and how to deal with it.\n\nSubscribe now\n\nFeatures can evolve rapidly\n\nOne of the benefits of using a structured positioning process is that we can revisit the steps and determine whether anything needs to change. So let’s say your big foundation model provider of choice releases something new, and then your offering, in turn, gains new capabilities. Has your positioning changed? Maybe. Maybe not. If we look at how we developed the current positioning, we can work through the same steps to see if it needs to change.",
+  "sample_2": "Whenever there are big changes in the market, there is a lot of uncertainty about what the future might look like. For technology buyers, this uncertainty makes it really hard to make purchase decisions, particularly those with longer-term implications.\n\nAs vendors, it’s important for us to remember that prospects are very different from us when it comes to the learning curve for breakthrough new technology. The buyer of your product at a manufacturer, a hospital, a retail chain, or an insurance company isn’t spending their day reading Reddit and Hacker News. They typically aren’t reading hot takes on LinkedIn about AI or subscribing to a half-dozen techie Substack newsletters. It’s just not their job.\n\nWhen a company evaluates a solution they might want to buy, the first thing they need to do is educate themselves. Now, imagine actually wading through the firehose of information they are about to be exposed to related to AI. How much of that information can they trust? Research shows that buyers are using an average of 7 information sources. Less than half list AI as one of those sources, but when they do, 69% turn to sales reps to validate even those AI-generated insights .",
+  "sample_3": "I’m often asked how a company will know that its positioning needs to change. My answer is that there are categories of changes that will require you to shift your positioning:\n\nYour product changes - unlocking new value for existing or potentially new customers\n\nYour competitors change - closing the gap or leap-frogging your capabilities in a way that changes what you can claim as “differentiating.”\n\nThe market changes - This can include regulatory changes (that force buyers to prioritize capabilities differently), economic changes (where companies shift from growth to cost-cutting, or the reverse), unpredictable world crises (Covid, war, weather catastrophies), and lastly, huge technology shifts that cause customers to change their priorities (5G, the shift to the cloud).\n\nAI technologies and capabilities are changing all three of these simultaneously, and companies are scrambling to shift their positioning as a result.\n\nIn the past two years, every product I have worked on has either been a new, AI-native offering, a product that has been significantly re-architected with and for AI, or is facing an existential threat from one of the former two categories of products.\n\nMarch 2020 - the dawn of the global COVID outbreak - was the last time I saw so many companies abruptly struggling with their positioning.",
+  "sample_4": "In my positioning work, it is not unusual for teams to confuse value for customers with what I would call “objection handling.”\n\nSubscribe now\n\nValue is what our offering can do for a customer’s business. For example, you might sell a CRM solution that delivers better visibility into the pipeline, allowing teams to predict revenue more accurately than any other CRM. You might also use AI in a novel way that dramatically reduces the resources required to analyze data, allowing teams to act on that analysis very quickly. These are both examples of differentiated value. Differentiated value is the value you can deliver for a customer that no other vendor can—it is the reason a prospect should select your offering over the alternatives.\n\nJust Because a Customer Cares Doesn’t Make it “Value”\n\nNot everything customers care about is “value.” Sometimes, customers want or need capabilities for reasons other than business value. Here are some examples of capabilities that might be classified as “value” for a customer but often I would classify as “objection handling:”\n\nGreat support\n\nA modular architecture that allows customers to start small and add functionality when they are ready\n\nA professional services team that can help companies do deployment and integration\n\nTraining to help new users onboard rapidly\n\nSupport for industry standards like SOC2 or HIPAA",
+  "sample_5": "Every now and then, I read something written by a marketer (it’s always a marketer) who argues that your product and its features don’t matter because your competitors can (and always will!) copy any feature you develop. Therefore, product capabilities can never really drive true differentiation. Like many bad marketing ideas, I think this type of thinking comes from things that may be true in consumer packaged goods but don’t necessarily hold up when selling something like a database or a security platform.\n\nOn the other hand, I could easily argue that a company can very easily copy your marketing and messaging. This happens all the time! When I hear folks complaining about competitors copying their stuff, often, that’s precisely what’s going on. They didn’t really do it - they just said they did. So what do we do when our key differentiator looks like something everyone else does because our competitors are a bunch of lying liars? Read on!\n\nIn B2B Tech, it is often VERY hard to copy product features"
+ },
+ "samples": [
+  {
+   "title": "Shifting Positioning When AI Capabilities are Rapidly Changing",
+   "url": "https://aprildunford.substack.com/p/shifting-positioning-when-ai-capabilities",
+   "published": "Thu, 03 Sep 2026",
+   "excerpt": "I had a round table conversation last week with a group of founders building AI-native solutions. One common theme that emerged was how fast things are moving and how difficult it seems to be to nail down positioning when core AI capabilities and what’s possible are changing very, very quickly. One of the attendees said this: “Anthropic has launched three major releases this summer alone. Any positioning we develop will be out of date in two weeks. How do we handle that?” Every company I have worked with in the past year has expressed this same worry. Let’s dig into how to think about this problem and how to deal with it.\n\nSubscribe now\n\nFeatures can evolve rapidly\n\nOne of the benefits of using a structured positioning process is that we can revisit the steps and determine whether anything needs to change. So let’s say your big foundation model provider of choice releases something new, and then your offering, in turn, gains new capabilities. Has your positioning changed? Maybe. Maybe not. If we look at how we developed the current positioning, we can work through the same steps to see if it needs to change.",
+   "words": 195,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "In the Age of AI, You Need a Point of View",
+   "url": "https://aprildunford.substack.com/p/in-the-age-of-ai-you-need-a-point",
+   "published": "Thu, 11 Jun 2026",
+   "excerpt": "Whenever there are big changes in the market, there is a lot of uncertainty about what the future might look like. For technology buyers, this uncertainty makes it really hard to make purchase decisions, particularly those with longer-term implications.\n\nAs vendors, it’s important for us to remember that prospects are very different from us when it comes to the learning curve for breakthrough new technology. The buyer of your product at a manufacturer, a hospital, a retail chain, or an insurance company isn’t spending their day reading Reddit and Hacker News. They typically aren’t reading hot takes on LinkedIn about AI or subscribing to a half-dozen techie Substack newsletters. It’s just not their job.\n\nWhen a company evaluates a solution they might want to buy, the first thing they need to do is educate themselves. Now, imagine actually wading through the firehose of information they are about to be exposed to related to AI. How much of that information can they trust? Research shows that buyers are using an average of 7 information sources. Less than half list AI as one of those sources, but when they do, 69% turn to sales reps to validate even those AI-generated insights .",
+   "words": 200,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Positioning in the Age of AI",
+   "url": "https://aprildunford.substack.com/p/positioning-in-the-age-of-ai",
+   "published": "Thu, 21 May 2026",
+   "excerpt": "I’m often asked how a company will know that its positioning needs to change. My answer is that there are categories of changes that will require you to shift your positioning:\n\nYour product changes - unlocking new value for existing or potentially new customers\n\nYour competitors change - closing the gap or leap-frogging your capabilities in a way that changes what you can claim as “differentiating.”\n\nThe market changes - This can include regulatory changes (that force buyers to prioritize capabilities differently), economic changes (where companies shift from growth to cost-cutting, or the reverse), unpredictable world crises (Covid, war, weather catastrophies), and lastly, huge technology shifts that cause customers to change their priorities (5G, the shift to the cloud).\n\nAI technologies and capabilities are changing all three of these simultaneously, and companies are scrambling to shift their positioning as a result.\n\nIn the past two years, every product I have worked on has either been a new, AI-native offering, a product that has been significantly re-architected with and for AI, or is facing an existential threat from one of the former two categories of products.\n\nMarch 2020 - the dawn of the global COVID outbreak - was the last time I saw so many companies abruptly struggling with their positioning.",
+   "words": 210,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Positioning Prep Part 1: Decisions to Make Before a Positioning Exercise",
+   "url": "https://aprildunford.substack.com/p/positioning-prep-part-1-decisions",
+   "published": "Thu, 29 Jan 2026",
+   "excerpt": "As I mentioned in the last newsletter, a new, updated, and revised edition of Obviously Awesome is coming in mid-February. As part of the book launch, I’ve decided to launch a new mini-podcast series and a set of newsletter posts that cover the new content added to the book. Today, we will examine “Positioning Prep Work,” a new section in the book's second edition.\n\nBut first, where was the prep work in the last book, and why did this change in the second edition?\n\nThe Obviously Awesome Positioning Process: From 10 Steps to 5\n\nThe first edition of Obviously Awesome had 5 positioning components but 10 steps. A lot of people HATED that the number of components did not match the number of steps in the process. If you’re one of the many people who emailed me about this discrepancy—I hear you, and I’ve fixed it!\n\nThe new edition restructures everything into:\n\nPrep work (the decisions and preparation you need before starting)\n\n5 core steps (matching the 5 positioning components)\n\nPost work (how to make your positioning real)",
+   "words": 178,
+   "split": "held_out",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Value vs. Objection Handling",
+   "url": "https://aprildunford.substack.com/p/value-vs-objection-handling",
+   "published": "Thu, 06 Feb 2025",
+   "excerpt": "In my positioning work, it is not unusual for teams to confuse value for customers with what I would call “objection handling.”\n\nSubscribe now\n\nValue is what our offering can do for a customer’s business. For example, you might sell a CRM solution that delivers better visibility into the pipeline, allowing teams to predict revenue more accurately than any other CRM. You might also use AI in a novel way that dramatically reduces the resources required to analyze data, allowing teams to act on that analysis very quickly. These are both examples of differentiated value. Differentiated value is the value you can deliver for a customer that no other vendor can—it is the reason a prospect should select your offering over the alternatives.\n\nJust Because a Customer Cares Doesn’t Make it “Value”\n\nNot everything customers care about is “value.” Sometimes, customers want or need capabilities for reasons other than business value. Here are some examples of capabilities that might be classified as “value” for a customer but often I would classify as “objection handling:”\n\nGreat support\n\nA modular architecture that allows customers to start small and add functionality when they are ready\n\nA professional services team that can help companies do deployment and integration\n\nTraining to help new users onboard rapidly\n\nSupport for industry standards like SOC2 or HIPAA",
+   "words": 219,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "What to do When a Competitor Lies",
+   "url": "https://aprildunford.substack.com/p/what-to-do-when-a-competitor-lies",
+   "published": "Thu, 16 Jan 2025",
+   "excerpt": "Every now and then, I read something written by a marketer (it’s always a marketer) who argues that your product and its features don’t matter because your competitors can (and always will!) copy any feature you develop. Therefore, product capabilities can never really drive true differentiation. Like many bad marketing ideas, I think this type of thinking comes from things that may be true in consumer packaged goods but don’t necessarily hold up when selling something like a database or a security platform.\n\nOn the other hand, I could easily argue that a company can very easily copy your marketing and messaging. This happens all the time! When I hear folks complaining about competitors copying their stuff, often, that’s precisely what’s going on. They didn’t really do it - they just said they did. So what do we do when our key differentiator looks like something everyone else does because our competitors are a bunch of lying liars? Read on!\n\nIn B2B Tech, it is often VERY hard to copy product features",
+   "words": 172,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "How to Turn a Competitor's Strength into a Weakness",
+   "url": "https://aprildunford.substack.com/p/how-to-turn-a-competitors-strength",
+   "published": "Thu, 19 Dec 2024",
+   "excerpt": "We all operate in competitive markets, and often, it feels like our competitors’ strengths are impossible to overcome. But in my experience, we must remember that value varies enormously between customer segments and buyers. What looks like a strength for one market segment can be a weakness for another. Much like some martial artists are trained to use their competitors’ energy, strength, and momentum against them, we can also employ a little positioning jujutsu to win against seemingly stronger competitors.\n\nOne Segment’s Dream can be Another Segment’s Nightmare.\n\nBack in my days as an in-house VP of Marketing, I went through several acquisitions (six, but hey, who’s counting), and it was interesting to look at the way we would position something as a strength for a mid-market customer (ease of use, rapid onboarding), only to discover post-acquisition that enterprise customers saw that same capability as a weakness (could not support the full range of required use cases, didn’t integrate with other critical business systems).\n\nThis played out across different buyer personas as well - in one case, we sold to business buyers who loved our ability to give end-users the power to tap into data anywhere in the enterprise to make more informed decisions.",
+   "words": 204,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "The \"No Differentiation\" Illusion",
+   "url": "https://aprildunford.substack.com/p/the-no-differentiation-illusion",
+   "published": "Thu, 19 Sep 2024",
+   "excerpt": "In my positioning process , we start with what we need to position against (the status quo and shortlist competitors), then list our differentiated capabilities and then map those capabilities to value for the customer. Differentiated value is the answer to the question”Why pick us vs. an alternative solution to the problem?”\n\nOne of the most common questions I get related to this is, “How should we position a product that has no differentiation?” I want to break this situation down in a way that might help you think through your specific situation.\n\nWhen I hear “We have no differentiation!!” one of two things are true:\n\nA/ The product and company have no important differentiated value to offer any customer beyond what the alternatives can offer or,\n\nB/ The product and company are, in fact, differentiated from other solutions in the market, but the team fails to understand the customer’s point of view on that differentiation.\n\nI’ve found it interesting how frequently this comes up and how often teams disagree about whether they are truly dealing with Option A or Option B. Let’s look at each situation.\n\nOption A: The Product is Completely Undifferentiated.",
+   "words": 194,
+   "split": "held_out",
+   "retrieved": "2026-10-29"
+  }
+ ]
+}

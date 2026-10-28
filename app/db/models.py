@@ -251,7 +251,12 @@ class Post(TenantScoped, Base):
     reviewer_note: Mapped[str] = mapped_column(Text, default="")
     decided_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # founder confirmed it was posted
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # operator confirmed it was posted
+    # The operator's own rating (the human bar; same questions as the blind review kit in evals/voice.py)
+    rating_voice: Mapped[int | None] = mapped_column(Integer, nullable=True)            # sounds like the founder, 1-5
+    rating_would_post: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    rating_template: Mapped[bool | None] = mapped_column(Boolean, nullable=True)        # reads like a template
+    rated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

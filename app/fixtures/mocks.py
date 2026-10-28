@@ -347,7 +347,7 @@ def _critic(req: LLMRequest) -> dict:
     key, rnd = h(md["slot"]["id"]), md.get("round", 1)
     weak = key % 3 == 0 and rnd == 1  # a third of first drafts need a revision
     s = (4, 3, 3, 3, 4) if weak else (4, 4, 4, 4, 4)
-    return {"content": {"voice_match": s[0], "specificity": s[1], "hook": s[2], "insight": s[3], "cta_fit": s[4],
+    return {"content": {"voice_match": s[0], "specificity": s[1], "opening": s[2], "insight": s[3], "ending": s[4],
                         "must_fix": ["Add one concrete, actionable step", "Make the hook more specific"] if weak else [],
                         "verdict": "Needs a sharper, more concrete middle." if weak else "Ready for the founder."}}
 

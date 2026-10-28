@@ -482,6 +482,21 @@ async def ui_post_decision(request: Request, tid: str, pid: str, action: str = F
     return await _post_card(request, me, tenant, pid, msg, bad)
 
 
+@router.post("/ui/{tid}/posts/{pid}/rating", response_class=HTMLResponse)
+async def ui_post_rating(request: Request, tid: str, pid: str, voice: int = Form(...), would_post: str = Form(""),
+                         template: str = Form("")):
+    me = await need_login(request)
+    tenant = await tenant_or_404(me, tid)
+    msg, bad = "Thanks. Ratings feed the voice report.", False
+    try:
+        await approvals.rate_post(me, tid, pid, voice, would_post == "yes", template == "yes")
+    except approvals.NotFound:
+        raise HTTPException(404, "not found")
+    except ValueError as e:
+        msg, bad = str(e), True
+    return await _post_card(request, me, tenant, pid, msg, bad)
+
+
 @router.post("/ui/{tid}/posts/{pid}/posted", response_class=HTMLResponse)
 async def ui_post_posted(request: Request, tid: str, pid: str):
     me = await need_login(request)

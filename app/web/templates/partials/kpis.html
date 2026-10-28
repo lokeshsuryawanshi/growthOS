@@ -14,6 +14,6 @@
     <div class="target">untouched: {{ '%d%%' % (k.first_pass_approval_rate * 100) if k.first_pass_approval_rate is not none else '–' }}</div></div>
   <div class="metric"><div class="label">Avg. founder edit</div>
     <div class="value">{{ '%d%%' % (k.mean_edit_distance * 100) if k.mean_edit_distance is not none else '–' }}</div><div class="target">lower is better</div></div>
-  <div class="metric"><div class="label">Editor score</div>
+  <div class="metric"><div class="label">Editor's check (automatic)</div>
     <div class="value">{{ k.avg_critic_score or '–' }}</div><div class="target">avg {{ k.avg_critic_rounds or '–' }} rounds</div></div>
 </div>

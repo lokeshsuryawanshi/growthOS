@@ -212,7 +212,54 @@ def check_copying(text: str, p: PolicyContext) -> list[Violation]:
             v.append(Violation(rule="copies_founder_sample", severity="high",
                                detail="overlaps heavily with one of the founder's existing posts"))
             break
+    reused = reused_examples(text, p)
+    if reused:
+        v.append(Violation(rule="reuses_founder_example", severity="high",
+                           detail="reuses an example from the founder's own posts (" + ", ".join(reused[:4]) +
+                                  "); write a new point instead of their story"))
     return v
+
+
+_NAME = re.compile(r"(?<=[a-z,;:] )([A-Z][a-z]{2,}(?: [A-Z][a-z]{2,})*)")
+_LONG = re.compile(r"\b[a-z]{10,}\b")
+
+
+def reused_examples(text: str, p: PolicyContext, allowed_text: str = "") -> list[str]:
+    """Names and distinctive words that appear in exactly one of the founder's samples and in the draft, but nowhere in
+    the sources or the brief: the sign of a borrowed example (e.g. the founder's own quarterback analogy)."""
+    if not p.founder_samples:
+        return []
+    allowed = (allowed_text + " " + " ".join(p.source_texts) + " " + p.tenant_name).lower()
+    counts: dict[str, int] = {}
+    for smp in p.founder_samples:
+        toks = {m.lower() for m in _NAME.findall(smp)} | set(_LONG.findall(smp.lower()))
+        for t in toks:
+            counts[t] = counts.get(t, 0) + 1
+    unique = {t for t, n in counts.items() if n == 1 and t not in allowed}
+    low = text.lower()
+    names = sorted(t for t in unique if " " in t or t[0].isalpha() and t in {m.lower() for m in _NAME.findall(text)})
+    names = [t for t in names if t in low]
+    words = sorted(t for t in unique if t not in names and re.search(rf"\b{re.escape(t)}\b", low))
+    return names if names else (words if len(words) >= 3 else [])
+
+
+ANECDOTE = re.compile(r"(?i)\b(?:(?:we|i)\s+(?:once|recently|just|finally)\s+(?:watched|saw|met|spoke|talked|worked|helped|"
+                      r"visited|asked|had|heard|sat)|(?:last|this)\s+(?:week|month|year|quarter|tuesday|monday|friday)\s*,?\s+"
+                      r"(?:i|we|a|one|my|our)\b|(?:a|one)\s+(?:client|customer|founder|ceo|reader|friend)\s+(?:of\s+(?:ours|mine)\s+)?"
+                      r"(?:told|asked|said|wrote|called|emailed)\b|i\s+remember\s+when\b)")
+
+
+def invented_anecdote(text: str, p: PolicyContext) -> list[str]:
+    """First-person stories the writer cannot know (it may not invent customers, events or conversations). A story
+    taken from the client's own facts or samples is allowed: its words appear there."""
+    known = (" ".join(p.source_texts) + " " + " ".join(p.founder_samples)).lower()
+    out = []
+    for m in ANECDOTE.finditer(text):
+        sentence = re.split(r"(?<=[.!?])\s+", text[m.start():], maxsplit=1)[0]
+        content = [w for w in re.findall(r"[a-z]{5,}", sentence.lower()) if w not in m.group(0).lower()]
+        if not content or sum(w in known for w in content) / len(content) < 0.6:
+            out.append(sentence[:120])
+    return out
 
 
 def check_post(text: str, hashtags: list[str], p: PolicyContext, claims: list | None = None) -> GuardReport:
@@ -221,6 +268,10 @@ def check_post(text: str, hashtags: list[str], p: PolicyContext, claims: list | 
     v = _common(text, p)
     if claims is not None:
         v += check_claims(text, claims, p)
+        for story in invented_anecdote(text, p):           # model drafts only: a human may tell their own true story
+            v.append(Violation(rule="invented_anecdote", severity="high",
+                               detail=f"tells a story that is not in the sources or the founder's samples: \"{story}\"; "
+                                      f"make the point without inventing it"))
     v += check_copying(text, p)
     if not 300 <= len(text) <= 3000:
         v.append(Violation(rule="length", severity="medium", detail=f"{len(text)} chars (LinkedIn sweet spot 300-3000)"))

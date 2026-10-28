@@ -68,7 +68,7 @@ async def test_a_blocked_draft_is_redrafted_and_the_target_is_still_met(world, m
 async def test_drafts_below_the_editors_bar_are_labelled_and_the_run_reports_a_shortfall(world, monkeypatch):
     db, tid, orch, owner = world
     monkeypatch.setitem(MOCK_RESPONDERS, "critic", lambda req: {"content": {
-        "voice_match": 3, "specificity": 3, "hook": 3, "insight": 3, "cta_fit": 3,
+        "voice_match": 3, "specificity": 3, "opening": 3, "insight": 3, "ending": 3,
         "must_fix": ["Make the point sharper"], "verdict": "Generic."}})
     rid = await run_service.start_run(owner, tid, "content")
     assert await orch._tasks[rid] == "succeeded_with_shortfall"

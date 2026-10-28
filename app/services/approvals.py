@@ -189,6 +189,20 @@ def suppressed(lead: Lead, entries) -> bool:
                (x.kind == "company" and x.value.lower() == lead.company.lower()) for x in entries)
 
 
+async def rate_post(p: Principal, tenant_id: str, post_id: str, voice: int, would_post: bool, template: bool) -> Post:
+    """The operator's own verdict on a draft: the human bar the product is measured against (not the critic)."""
+    authorize(p, tenant_id)
+    if not 1 <= voice <= 5:
+        raise ValueError("rate the voice from 1 to 5")
+    with tenant_scope(tenant_id):
+        async with get_db().session() as s:
+            post = await _post(s, post_id)
+            post.rating_voice, post.rating_would_post, post.rating_template = voice, would_post, template
+            post.rated_at = _now()
+            audit(s, p.user_id, "post.rated", "post", post.id, voice=voice, would_post=would_post, template=template)
+            return post
+
+
 async def mark_posted(p: Principal, tenant_id: str, post_id: str) -> Post:
     """The operator confirms the approved post went out on LinkedIn (nothing is published automatically)."""
     authorize(p, tenant_id)

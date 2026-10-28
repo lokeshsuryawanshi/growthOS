@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.agents.blackboard import compact, latest, policy_context, put_artifact, source_pack
+from app.agents.content.style import describe, style_card, template_problems
 from app.agents.runtime.loop import AgentContext, structured
 from app.agents.schemas import Critique, LearnedRules, PostDraft, VoiceProfile
 from app.core.config import get_settings
@@ -28,30 +29,39 @@ from app.guardrails.output_guard import GuardReport, Violation, check_post
 from app.guardrails.state import POST_TRANSITIONS, transition
 
 WRITER_SYSTEM = (
-    "You are a ghostwriter for a founder's LinkedIn. Write in their voice exactly as described, as the founder of their own "
-    "company; never mention any agency, tool or service that helped write it. "
-    "Open with a hook line, keep paragraphs short, make one specific point, end with a natural question or takeaway. "
+    "You ghostwrite LinkedIn posts for one founder, as the founder of their own company; never mention any agency, tool or "
+    "service that helped write it. Write the way THIS founder writes, judged by their own excerpts and the measured style "
+    "card in the brief: their usual length, paragraph shape, sentence rhythm, how they open and how they close, person "
+    "(I or we), vocabulary, punctuation and formality. Make one specific point. "
+    "Do not use the generic LinkedIn template unless the style card says this founder does: no one-line hook followed by "
+    "a line per sentence, no numbered listicle, no closing engagement question (\"Agree?\", \"What do you think?\"), no "
+    "stock phrases (\"Here's what I learned\", \"Let that sink in\", \"The truth is\"), no emojis, no hashtag tail. "
     "Use a number only if it appears in the provided sources, and list those sources' URLs in sources_used. "
     "Every figure (a percentage, money, a multiplier, or any count above 10) needs an entry in claims: the figure exactly "
     "as written, the sentence using it, the source URL, and a verbatim quote copied from that source. Use each figure only "
     "for what the quote says it measures: a customer count is a customer count, never a market size or a problem statistic. "
-    "The founder's sample posts are style references: never reuse their hooks, sentences or stories. "
+    "The founder's excerpts are style references only: never reuse their sentences, examples, analogies, people or "
+    "stories; find your own for this topic. "
     "Never invent personal anecdotes, customer stories, dates, results or quotes: write only from the provided sources, the "
     "founder's own samples and general reasoning. If the sources have no figure for a point, make the point without a number. "
     "No hashtag spam (0-3 hashtags). Never mention other companies the agency works with."
 )
 # Anchored rubric: the scale means the same as the hand-scored calibration set (1 = unusable, 5 = publish as is), so the
-# 4.0 bar means "publishable after light edits". The earlier "be strict, 5 is rare" prompt scored drafts it called
-# "solid" at 3.6 and redrafting could not move them (live run 2026-10-27); on the calibration set the anchored prompt
-# agrees with the human within one point 87.5% of the time (Spearman 0.72) against 75% before.
+# 4.0 bar means "publishable after light edits". v2 (after the review): "hook" and "cta_fit" rewarded the generic
+# LinkedIn template, so they became "opening" and "ending" judged against the founder's own excerpts. The critic is the
+# editor's check inside the product, not evidence of quality: that comes from blind human ratings (evals/voice.py).
 CRITIC_SYSTEM = (
-    "You are an experienced LinkedIn editor reviewing a ghostwritten draft before the founder sees it. Score each "
-    "dimension 1-5 using these anchors: 5 = exceptional, publish as is; 4 = good, publishable after light edits; 3 = needs "
-    "a real revision before it is worth posting; 2 = weak; 1 = unusable. Dimensions: voice_match (sounds like the founder's "
-    "own posts), specificity (concrete details rather than generic advice), hook (the first line would stop a busy buyer), "
-    "insight (says something non-obvious), cta_fit (the ending invites a natural response). Score the draft as it stands: a "
-    "solid draft with one thing to improve is a 4, not a 3. Put an item in must_fix only if fixing it is needed to reach 4; "
-    "leave must_fix empty for a draft that is already good."
+    "You are an editor checking a ghostwritten LinkedIn draft against the founder's own writing before the founder sees "
+    "it. You get excerpts of the founder's real posts and the draft. Score each dimension 1-5 with these anchors: 5 = "
+    "exceptional, publish as is; 4 = good, publishable after light edits; 3 = needs a real revision; 2 = weak; 1 = unusable. "
+    "voice_match: would a reader of the excerpts believe the same person wrote this (rhythm, length, vocabulary, person, "
+    "formality)? specificity: concrete details rather than generic advice. opening: opens the way this founder opens, not "
+    "with a generic one-line hook. insight: says something non-obvious. ending: ends the way this founder ends; a generic "
+    "engagement question (\"Agree?\", \"Thoughts?\") the founder never uses scores 1. Score the draft as it stands: a solid "
+    "draft with one thing to improve is a 4. Put an item in must_fix only if it is needed to reach 4, naming the exact "
+    "difference from the founder's writing. The writer is not allowed to invent anecdotes, customers, events, numbers or "
+    "quotes, and must not reuse the founder's own examples: never ask for those. Ask only for changes it can make from "
+    "the sources, the brief and the founder's style."
 )
 
 
@@ -66,6 +76,15 @@ def relevant_sources(sources: list[dict], slot: CalendarSlot, k: int = 3) -> lis
     def score(s: dict) -> int:
         return len(want & _words(s["title"] + " " + s["text"])) + (100 if s["url"] == "client:verified-facts" else 0)
     return sorted(sources, key=score, reverse=True)[:k]
+
+
+def founder_excerpts(samples: list[str], seed: str, k: int = 2, chars: int = 900) -> str:
+    """Two of the founder's own posts, rotated per slot so every post does not imitate the same two."""
+    if not samples:
+        return "(none)"
+    start = sum(map(ord, seed)) % len(samples)
+    picked = [samples[(start + i) % len(samples)] for i in range(min(k, len(samples)))]
+    return "\n---\n".join(p[:chars] for p in picked)
 
 
 async def _slot(tenant_id: str, slot_id: str) -> CalendarSlot:
@@ -154,10 +173,14 @@ async def compose_post(tenant_id: str, slot_id: str, ctx: AgentContext, note: st
     sources = relevant_sources(await source_pack(tenant_id), slot)
     pillar = next((p for p in strategy.get("pillars", []) if p["name"] == slot.pillar), {})
     policy = await policy_context(tenant_id)
+    card = style_card(policy.founder_samples)
+    excerpts = founder_excerpts(policy.founder_samples, slot.id)
     src_text = "\n".join(f"[{s['url']}] {s['title']}: {s['text'][:700]}" for s in sources)
     brief = (f"Topic: {slot.topic}\nAngle: {slot.angle}\nFormat: {slot.format}\nPillar: {slot.pillar} - "
              f"{pillar.get('description', '')}\nTrend reference: {slot.trend_ref or 'none'}\n"
-             f"Founder voice: {compact(voice, 1000)}\nSources you may cite:\n{src_text}")
+             f"Style card, measured from the founder's own posts:\n{describe(card)}\n"
+             f"Excerpts of the founder's own writing (match how they write; never reuse their sentences or stories):\n"
+             f"{excerpts}\nFounder voice notes: {compact(voice, 700)}\nSources you may cite:\n{src_text}")
     recent = [t.split("\n")[0] for t in policy.previous_posts[:6]]
     if recent:
         brief += "\nRecent openings (don't reuse these hooks or structures): " + " | ".join(recent)
@@ -174,11 +197,16 @@ async def compose_post(tenant_id: str, slot_id: str, ctx: AgentContext, note: st
     max_rounds = max_rounds or st.critic_max_rounds
     for rounds in range(1, max_rounds + 1):
         critique = (await structured("critic", "judge", CRITIC_SYSTEM,
-                                     f"Founder voice: {compact(voice, 700)}\nBrief: topic '{slot.topic}', angle '{slot.angle}'.\n"
+                                     f"The founder's own writing:\n{excerpts}\nBrief: topic '{slot.topic}', angle '{slot.angle}'.\n"
                                      f"Draft:\n{draft.text}", Critique, ctx, temperature=0.1, max_tokens=400,
                                      metadata={**meta, "round": rounds, "draft": draft.text})).output
-        ctx.event("critic", "critic_round", slot=slot.id, round=rounds, score=critique.overall, must_fix=critique.must_fix)
-        if critique.overall >= st.critic_pass_score or rounds == max_rounds:
+        generic = template_problems(draft.text, card)      # checked in code: the model proposes, code disposes
+        if generic:
+            critique.must_fix = (critique.must_fix + [f"Remove the generic LinkedIn pattern ({', '.join(generic)}): this "
+                                                      f"founder's own posts never do this."])[:6]
+        ctx.event("critic", "critic_round", slot=slot.id, round=rounds, score=critique.overall, must_fix=critique.must_fix,
+                  template=generic)
+        if (critique.overall >= st.critic_pass_score and not generic) or rounds == max_rounds:
             break
         draft = (await structured("writer", "big", WRITER_SYSTEM,
                                   f"{brief}\n\nYour previous draft:\n{draft.text}\n\nEditor's required fixes:\n- " +
@@ -187,6 +215,9 @@ async def compose_post(tenant_id: str, slot_id: str, ctx: AgentContext, note: st
                                   metadata={**meta, "round": rounds, "must_fix": critique.must_fix})).output
 
     report = check_post(draft.text, draft.hashtags, policy, draft.claims)
+    if generic := template_problems(draft.text, card):
+        report.warnings.append(Violation(rule="generic_template", severity="low",
+                                         detail=", ".join(generic) + " (not in the founder's own posts)"))
     for fix_round in range(2):                      # up to two rewrites; critical violations are never auto-fixed
         if report.passed or report.critical:
             break

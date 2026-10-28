@@ -1,0 +1,103 @@
+{
+ "person": "Jason Cohen",
+ "public_role": "Founder of WP Engine; writes A Smart Bear",
+ "category": "SaaS founder",
+ "note": "Short excerpts of public writing, used only as style test input. The writing belongs to its author. Nothing generated from it is published or attributed to them. Collected from the author's public feed or pages (robots.txt respected; no LinkedIn).",
+ "client_profile": {
+  "company_name": "WP Engine",
+  "website": "wpengine.com",
+  "industry": "B2B SaaS: managed WordPress hosting",
+  "company": "WP Engine provides managed hosting and a development platform for WordPress sites, used by agencies and companies that run sites they cannot afford to have slow or down.",
+  "target_customers": "Digital agencies and in-house web teams at mid-size companies that run business-critical WordPress sites.",
+  "geographies": "US\nUK",
+  "known_competitors": "Kinsta | https://kinsta.com\nPantheon | https://pantheon.io\nWordPress VIP | https://wpvip.com",
+  "founder_name": "Jason Cohen",
+  "founder_title": "Founder",
+  "tone": "Analytical and candid; works from first principles and real numbers; long-form, with clear headings in the head.",
+  "topics_to_own": "startup strategy\nhiring\ndecision frameworks",
+  "topics_to_avoid": "politics",
+  "primary_goal": "More agency partners and enterprise sales conversations",
+  "leads_per_week_min": "10",
+  "leads_per_week_max": "20",
+  "posts_per_week": "5",
+  "sample_1": "Four sincere attempts at OKRs, four failures, and every time: “you didn’t do it right.” Maybe the framework doesn’t fit you — so how do you find one that does?\n\nWe tried to implement OKRs four separate times at WP Engine; sometimes inside a single team, sometimes for a department, sometimes across the entire company.\n\nWe failed every time.\n\nWell, OK, let’s not avoid responsibility. I failed every time.\n\nOKRs are a great framework. They originated at Intel, grew up in Google, and because tech companies are famous for thinking for themselves from first principles, OKRs were thoughtlessly copied into countless others, spawning several books, an endless stream of articles and podcasts and courses, and an industry of self-certified coaches.\n\nWe used all that stuff too. The managers read John Doerr’s Measure What Matters . We paid for training. We gave presentations, and we coached people through it individually, one on one.\n\nSo why didn’t it work? When I’d ask the experts, I was often told: “You didn’t do it right.”\n\nBut if it’s that hard to “do it right,” maybe it’s too hard to do it. Maybe “You didn’t do it right” is an inadequate explanation.",
+  "sample_2": "Startup founders undervalue their time. Here’s why you should act like it’s $1000/hr, and how it changes the decisions you make.\n\nAlmost no startup founder values her time properly.\n\nConsultants know exactly what their time is worth: their hourly rate. As they say, it’s how much “the market will bear.” (Or “how much the consultant dares to charge.”) When a consultant intentionally doesn’t work for an hour⁠—whether to be with family or to work on a new startup or to take a nap⁠—they’re giving up an hour of earnings.\n\nIf being a consultant is your goal, this is indeed how you should value your time (although beware the traps of that business model ). But when you’re in a startup, the math is completely different.\n\nYour time is worth $1000/hour, and you need to act accordingly.\n\nHere’s why it’s that much.\n\nLet’s suppose you are a consultant who normally charges $150/hour, and you stumble upon a weird client who asks for the following special terms:\n\nHow much should you increase your hourly rate to make these terms worthwhile?",
+  "sample_3": "RICE and other confidence-based frameworks are mostly noise. Here’s how to make decisions without pretending to know the unknowable.\n\nConfidence games\n\nMany prioritization frameworks include a measure of confidence 1 ⁠—how sure we are that we can execute, at more or less the predicted effort, resulting in more or less the predicted impact. This sounds rational: If two projects generate equal value for equal effort, but we’re confident we can execute the first and unsure about the second, we should pick the first.\n\nThis is not, however, how we use confidence scores. If it were, our process would look like this:\n\nScore projects.\n\nIf there’s one clear winner, do it.\n\nIf there’s a tie, pick the one we are more confident in.\n\nThat’s not a bad idea, but popular frameworks like RICE include “confidence” in step one:\n\nSo does RPS:\n\nWhich means, for example, the following two scenarios are deemed equally strong:\n\nA small incremental feature, that we’re sure we can execute.\n\nA large feature, with large impact, that carries risk.",
+  "sample_4": "If you don’t hire people better than you, the organization gets bigger, not better. But how do you hire for something you don’t understand?\n\nProbably this VP of Marketing you’re interviewing is full of shit. I mean, they’re in marketing, that’s what they’re good at, right? Except, if that’s what they’re supposed to be good at, maybe it’s good that they’re doing that? But also, maybe they’re not full of shit. You have no idea, because you have no idea how to hire a VP of Marketing.\n\nBecause you’re an engineer whose entire marketing experience is some half-assed AdWords campaigns that taught you nothing except how fast money disappears when you don’t know what you’re doing. But you’re the CEO, and you (correctly) decided it’s time to hire someone who can actually build a marketing department and then hold them accountable for a job you don’t understand. You need this hire precisely because you can’t do what they do. But that also means you can’t tell whether they can do it.\n\nIt’s like evaluating a pancreatic surgeon. What do you ask? What do you do with the answer?",
+  "sample_5": "In the never-ending quest for optimization, A/B tests, metrics, and funnels, we’re in danger of losing the fun and value of creative work.\n\nWhen we demand overwhelming customer outcry before committing to the slightest product change, we’re in danger of losing the value of creating a cool feature that takes too much effort but people just love .\n\nWhen we do the minimum necessary to get the job done, we’re efficient but not thrilling. We’re “lean” but we’re not stirring hearts. We’re effective but not playful.\n\nI’m as excited as everyone else about Lean principles gaining traction. And it’s true that most companies are erring on the side of too little objective feedback rather than too much. Still, every article I read turns the creative process of business and product design into Vulcan objectivity.\n\nSometimes you should do something just because it’s cool. There’s such a thing as product “taste.”\n\nLook at this incredible display of affection IHumanable has for his computer :\n\nYou couldn’t ask for a stronger endorsement. This is even better than “It saved me $725,231.” This is beyond utility⁠— this is love . (Love wins.)"
+ },
+ "samples": [
+  {
+   "title": "\"You didn't do it right\"",
+   "url": "https://longform.asmartbear.com/you-didnt-do-it-right/",
+   "published": "Sun, 11 Oct 2026",
+   "excerpt": "Four sincere attempts at OKRs, four failures, and every time: “you didn’t do it right.” Maybe the framework doesn’t fit you — so how do you find one that does?\n\nWe tried to implement OKRs four separate times at WP Engine; sometimes inside a single team, sometimes for a department, sometimes across the entire company.\n\nWe failed every time.\n\nWell, OK, let’s not avoid responsibility. I failed every time.\n\nOKRs are a great framework. They originated at Intel, grew up in Google, and because tech companies are famous for thinking for themselves from first principles, OKRs were thoughtlessly copied into countless others, spawning several books, an endless stream of articles and podcasts and courses, and an industry of self-certified coaches.\n\nWe used all that stuff too. The managers read John Doerr’s Measure What Matters . We paid for training. We gave presentations, and we coached people through it individually, one on one.\n\nSo why didn’t it work? When I’d ask the experts, I was often told: “You didn’t do it right.”\n\nBut if it’s that hard to “do it right,” maybe it’s too hard to do it. Maybe “You didn’t do it right” is an inadequate explanation.",
+   "words": 197,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "What is the value of one hour of a startup founder's time?",
+   "url": "https://longform.asmartbear.com/value-time/",
+   "published": "Sun, 19 Jul 2026",
+   "excerpt": "Startup founders undervalue their time. Here’s why you should act like it’s $1000/hr, and how it changes the decisions you make.\n\nAlmost no startup founder values her time properly.\n\nConsultants know exactly what their time is worth: their hourly rate. As they say, it’s how much “the market will bear.” (Or “how much the consultant dares to charge.”) When a consultant intentionally doesn’t work for an hour⁠—whether to be with family or to work on a new startup or to take a nap⁠—they’re giving up an hour of earnings.\n\nIf being a consultant is your goal, this is indeed how you should value your time (although beware the traps of that business model ). But when you’re in a startup, the math is completely different.\n\nYour time is worth $1000/hour, and you need to act accordingly.\n\nHere’s why it’s that much.\n\nLet’s suppose you are a consultant who normally charges $150/hour, and you stumble upon a weird client who asks for the following special terms:\n\nHow much should you increase your hourly rate to make these terms worthwhile?",
+   "words": 178,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Lost confidence",
+   "url": "https://longform.asmartbear.com/confidence/",
+   "published": "Sun, 21 Jun 2026",
+   "excerpt": "RICE and other confidence-based frameworks are mostly noise. Here’s how to make decisions without pretending to know the unknowable.\n\nConfidence games\n\nMany prioritization frameworks include a measure of confidence 1 ⁠—how sure we are that we can execute, at more or less the predicted effort, resulting in more or less the predicted impact. This sounds rational: If two projects generate equal value for equal effort, but we’re confident we can execute the first and unsure about the second, we should pick the first.\n\nThis is not, however, how we use confidence scores. If it were, our process would look like this:\n\nScore projects.\n\nIf there’s one clear winner, do it.\n\nIf there’s a tie, pick the one we are more confident in.\n\nThat’s not a bad idea, but popular frameworks like RICE include “confidence” in step one:\n\nSo does RPS:\n\nWhich means, for example, the following two scenarios are deemed equally strong:\n\nA small incremental feature, that we’re sure we can execute.\n\nA large feature, with large impact, that carries risk.",
+   "words": 171,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Worrying is self-fulfilling; what to do instead",
+   "url": "https://longform.asmartbear.com/worry/",
+   "published": "Sun, 24 May 2026",
+   "excerpt": "Worrying makes things worse. Replace worry with preparation and strategic planning.\n\nWorrying is a self-fulfilling prophecy.\n\n“Worry” causes the thing you’re worried about, to actually happen.\n\nWhen you’re backstage, getting more and more anxious that your performance won’t be good, you’re injecting thoughts of second-guessing and fear so that they arise during the performance. Instead, you should realize you’ve already done all the practice required, and mistakes don’t actually matter anyway. No one is counting except you.\n\nWhen you’re lining up to take a shot on the pool table, or a serve in tennis, or swing your golf club, if you’re worrying about all the things you’re supposed to do, thinking while you’re doing, you inevitably screw up the shot. Instead, you should visualize the shot ahead of time, then clear your mind and execute using muscle-memory.\n\n“Worry” breaks things which aren’t broken. It doesn’t lead constructively to solutions, it only creates problems.\n\nThe opposite of “Worry” isn’t “Apathy”. The opposite is “Preparation”.",
+   "words": 163,
+   "split": "held_out",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "How to hire people who are better than you",
+   "url": "https://longform.asmartbear.com/hire-better-than-you/",
+   "published": "Sun, 19 Apr 2026",
+   "excerpt": "If you don’t hire people better than you, the organization gets bigger, not better. But how do you hire for something you don’t understand?\n\nProbably this VP of Marketing you’re interviewing is full of shit. I mean, they’re in marketing, that’s what they’re good at, right? Except, if that’s what they’re supposed to be good at, maybe it’s good that they’re doing that? But also, maybe they’re not full of shit. You have no idea, because you have no idea how to hire a VP of Marketing.\n\nBecause you’re an engineer whose entire marketing experience is some half-assed AdWords campaigns that taught you nothing except how fast money disappears when you don’t know what you’re doing. But you’re the CEO, and you (correctly) decided it’s time to hire someone who can actually build a marketing department and then hold them accountable for a job you don’t understand. You need this hire precisely because you can’t do what they do. But that also means you can’t tell whether they can do it.\n\nIt’s like evaluating a pancreatic surgeon. What do you ask? What do you do with the answer?",
+   "words": 188,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Maybe not so much with the \"optimization\"",
+   "url": "https://longform.asmartbear.com/creativity-over-optimization/",
+   "published": "Sun, 22 Mar 2026",
+   "excerpt": "In the never-ending quest for optimization, A/B tests, metrics, and funnels, we’re in danger of losing the fun and value of creative work.\n\nWhen we demand overwhelming customer outcry before committing to the slightest product change, we’re in danger of losing the value of creating a cool feature that takes too much effort but people just love .\n\nWhen we do the minimum necessary to get the job done, we’re efficient but not thrilling. We’re “lean” but we’re not stirring hearts. We’re effective but not playful.\n\nI’m as excited as everyone else about Lean principles gaining traction. And it’s true that most companies are erring on the side of too little objective feedback rather than too much. Still, every article I read turns the creative process of business and product design into Vulcan objectivity.\n\nSometimes you should do something just because it’s cool. There’s such a thing as product “taste.”\n\nLook at this incredible display of affection IHumanable has for his computer :\n\nYou couldn’t ask for a stronger endorsement. This is even better than “It saved me $725,231.” This is beyond utility⁠— this is love . (Love wins.)",
+   "words": 189,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Strategic choices: When both options are good",
+   "url": "https://longform.asmartbear.com/strategic-choices/",
+   "published": "Sun, 22 Feb 2026",
+   "excerpt": "Real strategy means choosing between two good options and accepting all the consequences—even the painful ones you don’t like.\n\nAll day, everyone at the company makes decisions, independently:\n\nHow to respond to this customer. How much effort to put into this feature. What we build next. How we position a weakness on the website. Where next month’s budget goes. Which marketing channel we bet on. What ideas we even bother to consider.\n\nEveryone had better be making independent decisions. That’s how you scale ⁠—whether three people or three hundred; even if it’s just you. It’s how you manage autonomous teams , pushing power down to the individual (but not too far ).\n\nBut even perfect individual decisions can easily be inconsistent between teams: decisions can be locally rational yet contradict decisions made elsewhere. If everyone is moving in different directions, the company goes nowhere, even if everyone is productive and efficient.\n\nEven autonomous teams require alignment. Not alignment on tactics (those change weekly), nor on platitudes (those change nothing), but alignment on a small set of macro-level decisions. These are the strategic choices . 1",
+   "words": 185,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "A compass is not a map",
+   "url": "https://longform.asmartbear.com/compass/",
+   "published": "Sun, 25 Jan 2026",
+   "excerpt": "A compass tells you which way is north, not whether you should be heading north. So what is the map to startup success?\n\nAn entrepreneur confided in me recently that he didn’t like Lean Startup . He asked whether I thought that was OK, or whether is he not cut out to build a startup. “Elon didn’t use Lean Startup to build Tesla.” True, but you’re not manufacturing cars. Still, it’s also true that before Lean Startup most startups failed, and after Lead Startup most startups failed, so is it really necessary?\n\nA founder uses “37signals does it” to justify every decision, even if he can’t explain why, or why it applies to his situation, or whether 37signals did that when they were still his size.\n\nA startup pitch-deck boasts about the mistakes they’ve made because of the lessons they’ve learned. But the lessons haven’t resulted in paying customers, so is there value in that experience? Is it time to hang up the towel, or does this knowledge and introspection position them for rocket ship growth?\n\nA compass is not a map. A compass tells you which way is north, not whether you should be heading north .",
+   "words": 198,
+   "split": "held_out",
+   "retrieved": "2026-10-29"
+  }
+ ]
+}

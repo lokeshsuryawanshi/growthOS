@@ -1,0 +1,103 @@
+{
+ "person": "Seth Godin",
+ "public_role": "Author and teacher; writes a daily blog",
+ "category": "marketing / creator voice",
+ "note": "Short excerpts of public writing, used only as style test input. The writing belongs to its author. Nothing generated from it is published or attributed to them. Collected from the author's public feed or pages (robots.txt respected; no LinkedIn).",
+ "client_profile": {
+  "company_name": "Seth Godin Workshops",
+  "website": "seths.blog",
+  "industry": "Marketing education and workshops",
+  "company": "Seth Godin writes daily about marketing, leadership and creative work, and runs online workshops that teach marketers, founders and nonprofit leaders to do work that matters to the people they serve.",
+  "target_customers": "Marketing leaders, small-business owners and nonprofit executives who want to build trust with a specific audience instead of chasing reach.",
+  "geographies": "US\nUK\nCanada",
+  "known_competitors": "",
+  "founder_name": "Seth Godin",
+  "founder_title": "Author and teacher",
+  "tone": "Short, plain, generous; one idea per post; questions and analogies rather than lists.",
+  "topics_to_own": "marketing as service\nleadership and initiative\nthe long game",
+  "topics_to_avoid": "politics",
+  "primary_goal": "Fill the next workshop cohort with leaders who will use it",
+  "leads_per_week_min": "10",
+  "leads_per_week_max": "20",
+  "posts_per_week": "5",
+  "sample_1": "If the stakes are high enough and the duration you need to keep it together is short enough, can you control your response?\n\nBecause if we can do it then, we can learn to do it now. Acknowledging that it’s a choice is difficult, because choices come with responsibility. “I’m not a patient person,” is not the same as, “Being patient requires a lot of work for me.”\n\nAttitudes are skills. Like all skills, they take practice, preparation and effort.\n\nHere’s a list to get you started:\n\nEmpathy\n\nGenerosity\n\nKindness\n\nPatience\n\nFairness\n\nGratitude\n\nForgiveness\n\nTrust\n\nHonesty\n\nHumility\n\nSelf-awareness\n\nIntegrity\n\nAccountability\n\nSelf-discipline\n\nEquanimity\n\nSelf-compassion\n\nBravery\n\nPersistence\n\nResilience\n\nConsistency\n\nOptimism\n\nAdaptability\n\nAcceptance\n\nGrit\n\nCuriosity\n\nOpen-mindedness\n\nDiscernment\n\nFocus\n\nThoroughness\n\nInitiative\n\nCraftsmanship\n\nGenerosity of spirit\n\nService\n\nStewardship\n\nWonder\n\nResponsibility\n\nDignity\n\nCommitment\n\nPresence\n\nIf we can learn them, even a little, they’re skills. Great news.\n\nHT to Zig .",
+  "sample_2": "Danny Meyer and Will Guidara have each written fabulous books about hospitality.\n\nThey missed one thing.\n\nThe customers who get the most authentic and lasting hospitality are the ones who deserve it.\n\nAnd the ones who deserve it actually enjoy it the most.\n\nExtraordinary hospitality offers someone more human effort and delight than they expect.\n\nYou’re not entitled to something human simply because you paid for your ticket or your table. The kids who show up on Halloween get a piece of candy, but the ritual ends there. When someone with a great costume, or singing a song or simply creating a bit of connection or magic shows up, it’s different. That’s the one we remember, the reason we answered the door and our chance to show up and return the energy. Or even a full-sized ethical chocolate bar.\n\nFor too long, the entitled customer has demanded emotional labor without offering support or sustenance in return. It’s exhausting and unfair, for both parties.\n\nWhen you’re the best customer we’ve had all day, it’s likely we’ll be the host you’re hoping for.\n\nAnd the best part is, that no matter how it turns out, simply trying to be the best customer of the day is its own reward. We care because we can.",
+  "sample_3": "We don’t have written records, but I’m imagining that groups of cavemen made decisions around the fire in largely the same way we run sophisticated organizations today.\n\nAbout a hundred years ago, three disciplines helped create the modern world:\n\nScientific management used a stopwatch and the assembly line to relentlessly improve the productivity of the industrial age.\n\nScientific advertising brought measurement and rigor to the work of creating ads and buying media.\n\nAnd engineering brought physics and the scientific method to everything we build. Bridges don’t fall down, computer chips get faster and cheaper and the things we make rarely break.\n\nBut the bosses still do what they always did. They place comfort and convenience over effectiveness. If the hard-working people in any other part of the organization approached their work the way they do, it wouldn’t last.\n\nOne estimate is that the direct labor cost of time spent in meetings at a Fortune 500 company is over a quarter of a billion dollars a year. Per company.\n\nAnd yet, meetings occur regularly, with no measurable outputs. Few people do the reading or prep, and many show up late or uninformed. The room isn’t designed for the purpose it’s being used for, and no one is taking notes or sending out follow-up action requests.",
+  "sample_4": "In high school, the quarterback isn’t allowed to call the plays, the actor isn’t allowed to write the lines and the math whiz isn’t allowed to choose what to prove.\n\nWe all grew up in the age of compliance (and indoctrination).\n\nThe long tail of the internet and the astonishing leverage of AI has made this training much less valuable.\n\nNo matter what you do for a living, there’s a machine standing by, waiting for instructions. Instructions from you, if you choose, or from your overlords if you don’t.\n\nAnd following the playbook isn’t much help, because the world is changing so fast, a playbook is obsolete by the time someone hands it to you.\n\nOne reason AI got such a fast start is that it gave people seeking compliance a chance to wait for the AI to tell them what to do next. Quick, cheap answers.\n\nAI gives bosses a cheaper (and often more compliant) alternative to hiring humans to do some tasks.\n\nFor those indoctrinated to comply, this is stressful. The stress is due to a desire to get things back to normal, to give them a chance to comply again, but right here, right now, is as normal as things are ever going to get. “Good jobs” are no longer sinecures where success comes from following instructions.",
+  "sample_5": "Juan Tamariz and Wendell Berry recently passed away. Between them, they had more than 170 years of generous contribution.\n\nJuan was a card magician. His students are generally considered the best working in the world today.\n\nWendell was a farmer and a writer. His essays on non-industrial farming and community-building will resonate for generations.\n\nWhat each had in common was the patience and commitment to choose depth. To seek out the inconvenient path because it mattered.\n\nNeither traded for easily measured metrics or convenience. Instead, they chose a path and followed it, leaving things better than they found them.\n\nLooking back a century, it’s easy to appreciate this. And yet, each and every day, it requires a recommitment. “Under the circumstances,” it’s tempting to justify the small compromises that corrode our work. The hard part is to realize that we’re not under the circumstances; we are them. We can start today."
+ },
+ "samples": [
+  {
+   "title": "Is our attitude up to us?",
+   "url": "https://seths.blog/2026/10/is-our-attitude-up-to-us/",
+   "published": "Mon, 26 Oct 2026",
+   "excerpt": "If the stakes are high enough and the duration you need to keep it together is short enough, can you control your response?\n\nBecause if we can do it then, we can learn to do it now. Acknowledging that it’s a choice is difficult, because choices come with responsibility. “I’m not a patient person,” is not the same as, “Being patient requires a lot of work for me.”\n\nAttitudes are skills. Like all skills, they take practice, preparation and effort.\n\nHere’s a list to get you started:\n\nEmpathy\n\nGenerosity\n\nKindness\n\nPatience\n\nFairness\n\nGratitude\n\nForgiveness\n\nTrust\n\nHonesty\n\nHumility\n\nSelf-awareness\n\nIntegrity\n\nAccountability\n\nSelf-discipline\n\nEquanimity\n\nSelf-compassion\n\nBravery\n\nPersistence\n\nResilience\n\nConsistency\n\nOptimism\n\nAdaptability\n\nAcceptance\n\nGrit\n\nCuriosity\n\nOpen-mindedness\n\nDiscernment\n\nFocus\n\nThoroughness\n\nInitiative\n\nCraftsmanship\n\nGenerosity of spirit\n\nService\n\nStewardship\n\nWonder\n\nResponsibility\n\nDignity\n\nCommitment\n\nPresence\n\nIf we can learn them, even a little, they’re skills. Great news.\n\nHT to Zig .",
+   "words": 144,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Hospitality in the mirror",
+   "url": "https://seths.blog/2026/10/hospitality-in-the-mirror/",
+   "published": "Sun, 25 Oct 2026",
+   "excerpt": "Danny Meyer and Will Guidara have each written fabulous books about hospitality.\n\nThey missed one thing.\n\nThe customers who get the most authentic and lasting hospitality are the ones who deserve it.\n\nAnd the ones who deserve it actually enjoy it the most.\n\nExtraordinary hospitality offers someone more human effort and delight than they expect.\n\nYou’re not entitled to something human simply because you paid for your ticket or your table. The kids who show up on Halloween get a piece of candy, but the ritual ends there. When someone with a great costume, or singing a song or simply creating a bit of connection or magic shows up, it’s different. That’s the one we remember, the reason we answered the door and our chance to show up and return the energy. Or even a full-sized ethical chocolate bar.\n\nFor too long, the entitled customer has demanded emotional labor without offering support or sustenance in return. It’s exhausting and unfair, for both parties.\n\nWhen you’re the best customer we’ve had all day, it’s likely we’ll be the host you’re hoping for.\n\nAnd the best part is, that no matter how it turns out, simply trying to be the best customer of the day is its own reward. We care because we can.",
+   "words": 212,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Caveman leadership and the CDO*",
+   "url": "https://seths.blog/2026/10/caveman-leadership-and-the-cdo/",
+   "published": "Sat, 24 Oct 2026",
+   "excerpt": "We don’t have written records, but I’m imagining that groups of cavemen made decisions around the fire in largely the same way we run sophisticated organizations today.\n\nAbout a hundred years ago, three disciplines helped create the modern world:\n\nScientific management used a stopwatch and the assembly line to relentlessly improve the productivity of the industrial age.\n\nScientific advertising brought measurement and rigor to the work of creating ads and buying media.\n\nAnd engineering brought physics and the scientific method to everything we build. Bridges don’t fall down, computer chips get faster and cheaper and the things we make rarely break.\n\nBut the bosses still do what they always did. They place comfort and convenience over effectiveness. If the hard-working people in any other part of the organization approached their work the way they do, it wouldn’t last.\n\nOne estimate is that the direct labor cost of time spent in meetings at a Fortune 500 company is over a quarter of a billion dollars a year. Per company.\n\nAnd yet, meetings occur regularly, with no measurable outputs. Few people do the reading or prep, and many show up late or uninformed. The room isn’t designed for the purpose it’s being used for, and no one is taking notes or sending out follow-up action requests.",
+   "words": 214,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "The relentless math of bandwagoning",
+   "url": "https://seths.blog/2026/10/the-relentless-math-of-bandwagoning/",
+   "published": "Fri, 23 Oct 2026",
+   "excerpt": "It often seems that everyone is talking about what everyone is talking about.\n\nNo one cares about a song or a movie or a political issue–and then they do. Then it’s everywhere.\n\nBut of course, that’s precisely why. Most people feel safe when they’re engaging within the expected social norms. It’s easier to fit in and to avoid an error. Or, if that’s your thing, it’s easier to stand out in contrast to everyone else who is trying to fit in. Either way, we’re always on the lookout for a bandwagon to hop on.\n\nThe media, in their relentless search for newsstand sales, clicks and likes, seek precisely the same thing. PT Barnum figured out that putting a marching band on a wagon at the front of the parade drew a crowd, and then Dan Rice, an actual clown, realized that politicians would be eager to ride on a wagon that had a crowd, which drew others to the crowd and the cycle continued.\n\nThe math is simple: you can’t bandwagon by yourself. The nature of bandwagoning means that it will always be overrepresented in any sampling of the media.\n\nJust because someone organized a parade doesn’t mean you have to be in it.",
+   "words": 204,
+   "split": "held_out",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "The age of initiative",
+   "url": "https://seths.blog/2026/10/the-age-of-initiative/",
+   "published": "Thu, 22 Oct 2026",
+   "excerpt": "In high school, the quarterback isn’t allowed to call the plays, the actor isn’t allowed to write the lines and the math whiz isn’t allowed to choose what to prove.\n\nWe all grew up in the age of compliance (and indoctrination).\n\nThe long tail of the internet and the astonishing leverage of AI has made this training much less valuable.\n\nNo matter what you do for a living, there’s a machine standing by, waiting for instructions. Instructions from you, if you choose, or from your overlords if you don’t.\n\nAnd following the playbook isn’t much help, because the world is changing so fast, a playbook is obsolete by the time someone hands it to you.\n\nOne reason AI got such a fast start is that it gave people seeking compliance a chance to wait for the AI to tell them what to do next. Quick, cheap answers.\n\nAI gives bosses a cheaper (and often more compliant) alternative to hiring humans to do some tasks.\n\nFor those indoctrinated to comply, this is stressful. The stress is due to a desire to get things back to normal, to give them a chance to comply again, but right here, right now, is as normal as things are ever going to get. “Good jobs” are no longer sinecures where success comes from following instructions.",
+   "words": 220,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Toward depth",
+   "url": "https://seths.blog/2026/10/toward-depth/",
+   "published": "Wed, 21 Oct 2026",
+   "excerpt": "Juan Tamariz and Wendell Berry recently passed away. Between them, they had more than 170 years of generous contribution.\n\nJuan was a card magician. His students are generally considered the best working in the world today.\n\nWendell was a farmer and a writer. His essays on non-industrial farming and community-building will resonate for generations.\n\nWhat each had in common was the patience and commitment to choose depth. To seek out the inconvenient path because it mattered.\n\nNeither traded for easily measured metrics or convenience. Instead, they chose a path and followed it, leaving things better than they found them.\n\nLooking back a century, it’s easy to appreciate this. And yet, each and every day, it requires a recommitment. “Under the circumstances,” it’s tempting to justify the small compromises that corrode our work. The hard part is to realize that we’re not under the circumstances; we are them. We can start today.",
+   "words": 151,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Thieves’ cant slang",
+   "url": "https://seths.blog/2026/10/thieves-cant-slang/",
+   "published": "Tue, 20 Oct 2026",
+   "excerpt": "Insider jargon, previously known as cant, is designed to keep outsiders out.\n\nThe burglars in cartoons are often seen wearing a black mask over their eyes (like Robin in Batman but for a different reason) and carrying a bulging sack over their shoulders.\n\n[Of course, the burglar’s sack was rarely bulging. A robber would have to have the perfect haul to get the right mix of value, density and weight. You can’t fit a chest of drawers in the sack, and that much gold would be impossible to carry. But I digress.]\n\nThe cant for this was ‘swag’, which comes from an old term for swaying or bulging. Sort of wishful thinking.\n\nAnd thus we get to the swag of business promo and conference loot…\n\nEstablishing jargon is a key step in group identity. It’s rarely dictated from the top down, but permitting and celebrating it is a smart move if you’re looking for group cohesion.",
+   "words": 156,
+   "split": "train",
+   "retrieved": "2026-10-29"
+  },
+  {
+   "title": "Two commuting hacks",
+   "url": "https://seths.blog/2026/10/two-commuting-hacks/",
+   "published": "Mon, 19 Oct 2026",
+   "excerpt": "Just about everyone commutes to work, by car or by public transit. And just about everyone carries a smart phone.\n\nAll organizations have a communications problem, and it gets worse as they grow. Which issues are we facing today? Who else is on the team? What’s changed in the environment, and what do we need to get in sync on?\n\nConsider starting an internal podcast. Just fifteen or twenty minutes a day. The host interviews team members, informs on important issues or simply helps people see the big picture. When everyone on the team listens to the same podcast each morning, cohesion and focus improve.\n\nA podcast with 25 of the right listeners might be exactly the right size.\n\nThe second hack: I’m amazed at how many people on the train are mindlessly swiping through one social media platform or another. Judging by their facial expressions, they’re not enjoying it much.",
+   "words": 151,
+   "split": "held_out",
+   "retrieved": "2026-10-29"
+  }
+ ]
+}

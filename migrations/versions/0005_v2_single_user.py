@@ -55,6 +55,11 @@ def upgrade() -> None:
     with op.batch_alter_table('outreach_messages') as b:
         b.drop_column('external_id')
         b.drop_column('send_error')
+    with op.batch_alter_table('posts') as b:
+        b.add_column(sa.Column('rating_voice', sa.Integer(), nullable=True))
+        b.add_column(sa.Column('rating_would_post', sa.Boolean(), nullable=True))
+        b.add_column(sa.Column('rating_template', sa.Boolean(), nullable=True))
+        b.add_column(sa.Column('rated_at', sa.DateTime(timezone=True), nullable=True))
     op.create_table('account_secrets',
         sa.Column('id', sa.String(length=32), nullable=False),
         sa.Column('user_id', sa.String(length=32), nullable=False),
