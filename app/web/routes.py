@@ -393,7 +393,7 @@ async def portal(request: Request, tid: str, tab: str = "overview", run: str | N
         ctx["slot_posts"] = await queries.slot_posts(tid)
     elif tab == "leads":
         ctx.update(leads=await queries.leads(tid), dms=dms, rejections=await queries.rejections(tid, 100),
-                   intake=await intake_of(tid))
+                   intake=await intake_of(tid), lead_run=await queries.last_node_output(tid, "leads", "leads"))
     elif tab == "research":
         ctx.update(arts=ws["arts"], suggestions=await strategy.suggestion_history(tid), parts=strategy.PARTS)
     elif tab == "settings":
@@ -577,13 +577,13 @@ async def ui_settings(request: Request, tid: str):
 
 # ------------------------------------------------------------------ runs
 @router.post("/ui/{tid}/runs")
-async def ui_start_run(request: Request, tid: str, kind: str = Form(None)):
+async def ui_start_run(request: Request, tid: str, kind: str = Form(None), broaden: str = Form("")):
     me = await need_login(request)
     await tenant_or_404(me, tid)
     kind = kind or request.query_params.get("kind", "discovery")
     back = f"/portal/{tid}?tab=activity"
     try:
-        rid = await run_service.start_run(me, tid, kind)
+        rid = await run_service.start_run(me, tid, kind, {"broaden": True} if kind == "leads" and broaden else None)
     except run_service.RunRefused as e:
         return _back(back, str(e), "bad")
     except IntegrationError as e:

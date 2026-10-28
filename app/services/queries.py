@@ -38,6 +38,16 @@ async def calendar(tenant_id: str) -> list[dict[str, Any]]:
     return [{"week": w, "slots": v} for w, v in sorted(weeks.items())]
 
 
+async def last_node_output(tenant_id: str, kind: str, key: str) -> dict[str, Any] | None:
+    """The newest finished output of one step (e.g. the lead funnel of the last lead run)."""
+    with tenant_scope(tenant_id):
+        async with get_db().reader() as s:
+            row = (await s.execute(select(RunNode.output, Run.created_at).join(Run, Run.id == RunNode.run_id)
+                                   .where(Run.kind == kind, RunNode.key == key, RunNode.status == "succeeded")
+                                   .order_by(Run.created_at.desc()).limit(1))).first()
+    return {**row[0], "_at": row[1]} if row else None
+
+
 async def slot_posts(tenant_id: str) -> dict[str, Post]:
     """The newest post shown to the operator for each calendar slot (blocked drafts are never shown)."""
     out: dict[str, Post] = {}

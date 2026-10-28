@@ -102,27 +102,3 @@ def test_lead_evidence_must_quote_the_prospects_own_data():
     assert grounded_evidence(["Strong overall fit for the ICP"], p) == []           # generic, about nothing in the data
 
 
-async def test_hunter_lookups_stop_at_the_quota_left_this_month(db):
-    from tests.helpers import bare_tenants, give_key
-    await bare_tenants(db, "t")
-    await give_key("u-test", "hunter")                    # the operator's own optional Hunter key
-    leads_mod._HUNTER_QUOTA.clear()
-    searched = []
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        if req.url.path.endswith("/account"):
-            return httpx.Response(200, json={"data": {"plan_name": "Free", "requests": {
-                "searches": {"used": 49, "available": 50, "remaining": 1}, "verifications": {}}}})
-        searched.append(req.url.params["domain"])
-        return httpx.Response(200, json={"data": {"emails": [{"value": "ceo@a.example", "first_name": "A", "last_name": "B",
-                                                              "position": "CEO", "confidence": 95,
-                                                              "verification": {"status": "valid"}}]}})
-    http.set_transport(httpx.MockTransport(handler))
-    from app.agents.runtime.loop import AgentContext
-    from app.llm.types import CallContext
-    pool = [{"company_domain": "a.example"}, {"company_domain": "b.example"}, {"company_domain": "c.example"}]
-    stats: dict = {}
-    await leads_mod._attach_contacts(AgentContext(CallContext(tenant_id="t")), pool, ["CEO"], stats)
-    assert searched == ["a.example"]
-    assert "1 contact search left" in stats["warnings"][0] and "2 qualified companies kept without a contact" in stats["warnings"][0]
-    assert pool[0]["email"] == "ceo@a.example" and "email" not in pool[1]

@@ -1,6 +1,26 @@
 {% from "_macros.html" import empty, srcchip, srclink %}
 <div class="pagehead"><div><h1>Leads</h1><div class="sub">Companies that match your ideal customer profile, found through real web search. You approve each email, then send it yourself.</div></div>
   {% if ws.can_leads %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="leads"><button class="primary">Find leads</button></form>{% endif %}</div>
+{% if lead_run and lead_run.get('funnel') is not none %}{% set f = lead_run.funnel %}
+<section class="panel stack">
+  <div class="row"><h2>Last lead search</h2><span class="sub num">{{ lead_run._at.strftime('%d %b %H:%M') }} UTC</span><span class="spacer"></span>
+    <span class="pill {{ 'ok' if lead_run.week_total >= lead_run.target_min else 'warn' }}">{{ lead_run.week_total }} of {{ lead_run.target_min }}-{{ lead_run.target_max }} this week</span></div>
+  <div class="funnel">
+    <div><b class="num">{{ f.queries }}</b><span>searches across {{ f.families | length }} kinds of source</span></div>
+    <div><b class="num">{{ f.found_in_results + f.found_on_lists }}</b><span>companies found ({{ f.found_on_lists }} from list pages)</span></div>
+    <div><b class="num">{{ lead_run.candidates }}</b><span>left after filters</span></div>
+    <div><b class="num">{{ lead_run.kept }}</b><span>kept, each with a way to reach a person</span></div>
+  </div>
+  {% if lead_run.dropped %}<div class="sub">Dropped: {% for k, v in lead_run.dropped | dictsort(by='value', reverse=true) %}{{ v }} {{ k.replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}.</div>{% endif %}
+  {% if lead_run.contact_routes %}<div class="sub">How to reach them: {% for k, v in lead_run.contact_routes | dictsort(by='value', reverse=true) %}{{ v }} {{ {'team_page': 'named on their own site', 'site_email': 'email published on their site', 'role_inbox': 'team inbox (info@, hello@)', 'linkedin_search': 'LinkedIn profile from search', 'hunter': 'Hunter.io', 'fixture': 'synthetic'}.get(k, k) }}{{ ', ' if not loop.last }}{% endfor %}.</div>{% endif %}
+  {% if f.budget %}<div class="sub">Used {{ f.budget.searches[0] }} of {{ f.budget.searches[1] }} searches and {{ f.budget.page_reads[0] }} of {{ f.budget.page_reads[1] }} page reads allowed per run.</div>{% endif %}
+  {% for w in lead_run.get('warnings', []) %}<div class="flash warn" style="padding:6px 10px">{{ w }}</div>{% endfor %}
+  {% if lead_run.week_total < lead_run.target_min %}
+  <div class="flash warn" style="align-items:center"><div style="flex:1"><b>Short of the target.</b> {{ lead_run.get('suggestion', 'Widen the region, the industries and the company size.') }}</div>
+    {% if ws.can_leads %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="leads"><input type="hidden" name="broaden" value="1"><button class="primary">Broaden and retry</button></form>{% endif %}</div>
+  {% endif %}
+</section>
+{% endif %}
 {% if dms %}
 <section class="stack"><div class="row"><h2>Emails waiting for your approval</h2><span class="pill warn">{{ dms | length }}</span></div>
   {% for r in dms %}{% with m=r.msg, lead=r.lead %}{% include "partials/dm_card.html" %}{% endwith %}{% endfor %}
@@ -15,7 +35,10 @@
       <td class="num">{{ l.week_of.strftime('%d %b') }}</td>
       <td><b>{{ l.company }}</b>{% if l.is_synthetic %} <span class="pill synthetic">synthetic</span>{% endif %}<br>{% if l.company_domain %}<a class="src" href="https://{{ l.company_domain }}" target="_blank" rel="noopener noreferrer nofollow">{{ l.company_domain }}</a>{% endif %}</td>
       <td>{% if l.full_name %}<b>{{ l.full_name }}</b><br><span class="sub">{{ l.title }}</span><br>
-          {% if l.email_status %}<span class="pill {{ l.email_status }}">email {{ l.email_status }}{% if l.email_confidence %} · {{ l.email_confidence }}%{% endif %}</span>{% endif %}
+          {% if l.email %}<span class="sub">{{ l.email }}</span><br>{% endif %}
+          {% if l.contact_source %}<span class="pill {{ {'high': 'ok', 'medium': 'accent', 'low': 'warn'}.get(l.contact_confidence, '') }}" title="confidence: {{ l.contact_confidence or 'n/a' }}">{{ {'team_page': 'named on their site', 'site_email': 'email on their site', 'role_inbox': 'team inbox', 'linkedin_search': 'LinkedIn (from search)', 'hunter': 'Hunter.io', 'fixture': 'synthetic'}.get(l.contact_source, l.contact_source) }}</span>{% endif %}
+          {% if l.contact_url %} {{ srclink(l.contact_url) }}{% elif l.linkedin_url %} {{ srclink(l.linkedin_url) }}{% endif %}
+          {% elif l.email %}<span class="sub">{{ l.email }}</span><br><span class="pill {{ 'warn' if l.contact_confidence == 'low' else 'accent' }}">{{ 'team inbox' if l.contact_source == 'role_inbox' else 'email on their site' }}</span> {{ srclink(l.contact_url) }}
           {% else %}<span class="sub">No contact found</span>{% endif %}</td>
       <td class="n">{{ l.fit_score }}</td>
       <td class="sub" style="max-width:340px">{{ l.signal or (l.evidence | first) or '' }}<br>{{ srcchip(l.source_provider, l.is_synthetic) }} {{ srclink(l.source_url) }}</td>

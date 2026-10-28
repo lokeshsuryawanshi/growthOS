@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     critic_pass_score: float = 4.0
     critic_max_rounds: int = 2                         # editor rounds per attempt (one revision); attempts are bounded too
     draft_attempts: int = 3                            # fresh drafts per slot until one passes guardrails and the bar
-    content_time_budget_s: float = 270.0               # no new redraft attempt starts after this (in-flight ones finish)
+    content_time_budget_s: float = 420.0               # no new redraft attempt starts after this (in-flight ones finish)
 
     @field_validator("ephemeral_storage_override", mode="before")
     @classmethod

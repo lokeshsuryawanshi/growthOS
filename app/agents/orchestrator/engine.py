@@ -31,7 +31,7 @@ from app.core.config import get_settings
 from app.core.scrub import scrub
 from app.core.tenancy import tenant_scope
 from app.db.audit import audit
-from app.db.models import CalendarSlot, KnowledgeDoc, LLMCall, Lead, Run, RunNode, Tenant
+from app.db.models import CalendarSlot, KnowledgeDoc, LLMCall, Lead, OutreachMessage, Run, RunNode, Tenant
 from app.db.session import get_db
 from app.guardrails.input_guard import scan
 from app.integrations.errors import IntegrationError
@@ -294,7 +294,7 @@ async def _leads(n: NodeCtx) -> dict:
     week = date.fromisoformat(n.params["week_start"]) if n.params.get("week_start") else \
         (await week_to_draft(n.tenant_id) or next_monday(date.today()))
     n.params.setdefault("week_start", week.isoformat())
-    stats = await find_leads(n.tenant_id, n.agent, week)
+    stats = await find_leads(n.tenant_id, n.agent, week, broaden=bool(n.params.get("broaden")))
     return {**stats, "shortfall": lead_shortfall(stats)}
 
 
@@ -303,15 +303,20 @@ def lead_shortfall(st: dict) -> list[str]:
     if st.get("week_total", st.get("kept", 0)) >= st.get("target_min", 0):
         return []
     out = [f"{st.get('week_total', st.get('kept', 0))} of the {st.get('target_min')}-{st.get('target_max')} leads wanted this week"]
-    dropped = {k: st.get(k, 0) for k in ("low_fit", "unverified_dropped", "duplicate", "suppressed", "competitor",
-                                       "no_evidence") if st.get(k)}
+    f = st.get("funnel") or {}
+    if f.get("queries"):
+        found = f.get("found_in_results", 0) + f.get("found_on_lists", 0)
+        out.append(f"{f['queries']} searches found {found} companies ({f.get('found_in_results', 0)} named in results, "
+                   f"{f.get('found_on_lists', 0)} on list pages)")
+    dropped = st.get("dropped") or {k: st.get(k, 0) for k in ("low_fit", "duplicate", "suppressed", "competitor",
+                                                            "no_evidence") if st.get(k)}
     if dropped:
-        out.append("candidates dropped: " + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in dropped.items()))
-    if st.get("contacts") == "not configured":
-        out.append("Hunter.io is not connected, so leads are companies without a contact person")
+        out.append("dropped: " + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in sorted(dropped.items(), key=lambda x: -x[1])))
     out += [w for w in st.get("warnings", [])]
     if not st.get("candidates"):
-        out.append("the web searches returned no companies matching your ideal customer profile")
+        out.append("the searches found no companies matching the ideal customer profile")
+    if st.get("suggestion"):
+        out.append("suggestion: " + st["suggestion"])
     return out
 
 
@@ -319,7 +324,8 @@ def lead_shortfall(st: dict) -> list[str]:
 async def _outreach(n: NodeCtx) -> dict:
     with tenant_scope(n.tenant_id):
         async with get_db().reader() as s:
-            ids = (await s.execute(select(Lead.id).where(Lead.status == "qualified", Lead.email != ""))).scalars().all()
+            ids = (await s.execute(select(Lead.id).outerjoin(OutreachMessage, OutreachMessage.lead_id == Lead.id)
+                                   .where(Lead.status == "qualified", OutreachMessage.id.is_(None)))).scalars().all()
     sem = asyncio.Semaphore(3)
 
     async def one(lid):

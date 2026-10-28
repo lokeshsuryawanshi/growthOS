@@ -9,7 +9,7 @@ import asyncio
 import ipaddress
 import re
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
@@ -30,6 +30,7 @@ class FetchedPage:
     final_url: str
     title: str
     text: str
+    links: list[tuple[str, str]] = field(default_factory=list)   # (absolute href, anchor text), mailto: included
 
 
 class _Text(HTMLParser):
@@ -39,8 +40,15 @@ class _Text(HTMLParser):
         self.title = ""
         self._skip = 0
         self._in_title = False
+        self.links: list[list[str]] = []
+        self._a: list[str] | None = None
 
     def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            href = dict(attrs).get("href") or ""
+            self._a = [href, ""] if href else None
+            if self._a is not None:
+                self.links.append(self._a)
         if tag == "title":
             self._in_title = True
         if tag in _SKIP:
@@ -49,12 +57,16 @@ class _Text(HTMLParser):
             self.parts.append("\n")
 
     def handle_endtag(self, tag):
+        if tag == "a":
+            self._a = None
         if tag == "title":
             self._in_title = False
         if tag in _SKIP and self._skip:
             self._skip -= 1
 
     def handle_data(self, data):
+        if self._a is not None and len(self._a[1]) < 120:
+            self._a[1] += data.strip() + " "
         if self._in_title:
             self.title += data
         elif not self._skip and data.strip():
@@ -62,11 +74,22 @@ class _Text(HTMLParser):
 
 
 def html_to_text(html: str) -> tuple[str, str]:
+    title, text, _ = parse_html(html)
+    return title, text
+
+
+def parse_html(html: str, base: str = "") -> tuple[str, str, list[tuple[str, str]]]:
     p = _Text()
     p.feed(html)
     text = re.sub(r"[ \t]+\n", "\n", "".join(p.parts))
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    return p.title.strip(), text
+    links = []
+    for href, anchor in p.links[:400]:
+        href = href.strip()
+        if href.startswith(("javascript:", "#", "tel:")):
+            continue
+        links.append((href if href.startswith("mailto:") else urljoin(base, href), re.sub(r"\s+", " ", anchor).strip()))
+    return p.title.strip(), text, links
 
 
 async def _check_host(host: str) -> None:
@@ -114,8 +137,8 @@ async def fetch_page(url: str, *, max_chars: int = 20000) -> FetchedPage:
             except httpx.HTTPError as e:
                 raise IntegrationError("web_fetch", UNAVAILABLE, f"{u.hostname}: {type(e).__name__}") from e
             html = body[:MAX_BYTES].decode(r.encoding or "utf-8", errors="replace")
-            title, text = html_to_text(html) if "html" in ctype else ("", html)
+            title, text, links = parse_html(html, cur) if "html" in ctype else ("", html, [])
             if len(text) < 80:
                 raise IntegrationError("web_fetch", BAD_RESPONSE, "page has no readable text (it may need JavaScript)")
-            return FetchedPage(url=url, final_url=cur, title=title or u.hostname, text=text[:max_chars])
+            return FetchedPage(url=url, final_url=cur, title=title or u.hostname, text=text[:max_chars], links=links)
     raise IntegrationError("web_fetch", BAD_RESPONSE, "too many redirects")

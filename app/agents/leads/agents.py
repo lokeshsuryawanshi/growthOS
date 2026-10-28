@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-import time
-from collections import Counter
 from datetime import date
 from typing import Any
 
@@ -23,23 +21,15 @@ from sqlalchemy import func, select
 
 from app.agents.blackboard import compact, latest, policy_context, profile, tenant_goals
 from app.agents.runtime.loop import AgentContext, AgentError, Tool, run_agent, structured
-from app.agents.research.agents import RESEARCH_TOOLS, SearchArgs, _norm, _web_search, research_state
-from app.agents.schemas import CompanyCandidates, LeadScores, OutreachCritique, OutreachDraft, ProspectingSummary
+from app.agents.schemas import LeadScores, OutreachCritique, OutreachDraft, ProspectingSummary
 from app.core.config import get_settings
 from app.core.tenancy import tenant_scope
 from app.db.audit import audit, incident
-from app.db.usage import record_external
 from app.db.models import Lead, LeadRejection, OutreachMessage, SuppressionEntry
 from app.db.session import get_db
 from app.guardrails.input_guard import scan_many
 from app.guardrails.output_guard import check_outreach
-from app.integrations.errors import IntegrationError
-from app.integrations.hunter import HunterClient, best_contact, clean_domain
-
-NOT_COMPANIES = {"linkedin.com", "facebook.com", "twitter.com", "x.com", "instagram.com", "youtube.com", "wikipedia.org",
-                 "crunchbase.com", "g2.com", "capterra.com", "glassdoor.com", "indeed.com", "zoominfo.com", "reddit.com",
-                 "medium.com", "github.com", "forbes.com", "techcrunch.com", "bloomberg.com", "reuters.com", "gartner.com"}
-
+from app.integrations.hunter import clean_domain
 
 def _fixture_source():
     from app.fixtures.sources import SeededLeadSource   # raises in production
@@ -111,31 +101,6 @@ def _tokens(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z0-9]{4,}", text.lower())}
 
 
-def verify_candidate(c, st: dict, known_text: str) -> tuple[dict | None, str]:
-    """Deterministic check that a scout's candidate traces back to what the search actually returned."""
-    domain = clean_domain(c.domain)
-    if not domain:
-        return None, "invalid_domain"
-    root = ".".join(domain.split(".")[-2:])
-    if root in NOT_COMPANIES or domain in NOT_COMPANIES:
-        return None, "not_a_company_site"
-    if _norm(c.evidence_url) not in st["allowed"]:
-        return None, "evidence_not_from_search"
-    mentioned = domain in known_text or (len(c.name) >= 4 and c.name.lower() in known_text)
-    if not mentioned:
-        return None, "company_not_in_results"
-    sig = c.signal.strip()
-    if sig:
-        support = st["snippets"].get(_norm(c.evidence_url), "") + " " + " ".join(st["answers"])
-        toks = _tokens(sig)
-        if not toks or len(toks & _tokens(support)) / len(toks) < 0.5:
-            sig = ""        # keep the company, drop a signal the sources do not support
-    return {"id": "web:" + domain, "full_name": "", "title": "", "company": c.name.strip(), "company_domain": domain,
-            "linkedin_url": "", "email": "", "email_status": "", "email_confidence": 0, "signal": sig,
-            "why_fit": c.why_fit[:300], "source_url": c.evidence_url, "contact_source": "", "synthetic": False,
-            "requires_contact": False, "one_per_company": True}, ""
-
-
 def screen_prospect(p: dict[str, Any], seen_keys: set[str], sup_email: set[str], sup_domain: set[str],
                     sup_company: set[str], competitors: set[str]) -> str | None:
     """Deterministic filters that run before any model sees a prospect. Returns the rejection reason, or None."""
@@ -151,158 +116,8 @@ def screen_prospect(p: dict[str, Any], seen_keys: set[str], sup_email: set[str],
     return None
 
 
-async def _attach_contacts(ctx: AgentContext, pool: list[dict], titles: list[str], stats: dict) -> None:
-    """Find a decision-maker email for qualified companies only, within the Hunter.io quota left this month."""
-    from app.services import keys
-    _, sec = await keys.for_client(ctx.tenant_id, "contacts")      # optional: the operator's own Hunter key
-    if sec is None:
-        stats["contacts"] = "not configured"
-        return
-    hunter = HunterClient(sec.reveal(), quota_id=sec.fingerprint)
-    if not pool:
-        return
-    remaining = await hunter_searches_left(hunter)
-    if remaining is not None and remaining < len(pool):
-        stats.setdefault("warnings", []).append(
-            f"Hunter.io has {remaining} contact search{'es' if remaining != 1 else ''} left this month: "
-            f"{len(pool) - remaining} qualified compan{'ies' if len(pool) - remaining != 1 else 'y'} kept without a contact")
-        pool = pool[:remaining]
-
-    async def one(p: dict):
-        try:
-            contacts = await hunter.domain_search(p["company_domain"], limit=6)
-            _spend_hunter_search(hunter)
-            await record_external(ctx.tenant_id, "hunter", "domain_search", ctx.call.run_id, ctx.call.node_key)
-            c = best_contact(contacts, titles)
-            if c is None:
-                return "no_contact"
-            if c.status not in ("valid", "accept_all"):
-                st_, score = await hunter.verify(c.email)
-                await record_external(ctx.tenant_id, "hunter", "verify", ctx.call.run_id, ctx.call.node_key)
-                c.status, c.confidence = st_, score or c.confidence
-            p.update(full_name=c.full_name, title=c.position, email=c.email, email_status=c.status,
-                     email_confidence=c.confidence, linkedin_url=c.linkedin_url, contact_source="hunter")
-            return "ok"
-        except IntegrationError as e:
-            stats.setdefault("warnings", [])
-            msg = f"Hunter.io: {e.message}. {e.recovery}".strip()
-            if msg not in stats["warnings"]:
-                stats["warnings"].append(msg)
-            ctx.event("hunter", "contact_lookup_failed", domain=p["company_domain"], code=e.code, error=e.message)
-            return "error"
-
-    results = await asyncio.gather(*[one(p) for p in pool])
-    stats["contacts"] = {k: results.count(k) for k in set(results)}
-
-
-_HUNTER_QUOTA: dict[str, dict] = {}      # per Hunter key (fingerprint), never shared between accounts
-
-
-async def hunter_searches_left(hunter: HunterClient, max_age_s: float = 300) -> int | None:
-    """Domain searches left this month on this key (Hunter's free /account call), cached five minutes. None if unknown."""
-    q = _HUNTER_QUOTA.get(hunter.quota_id)
-    if q and time.monotonic() - q["at"] < max_age_s:
-        return q["searches_left"]
-    try:
-        acc = await hunter.account()
-    except IntegrationError:
-        return None
-    left = acc.get("searches", {}).get("remaining")
-    _HUNTER_QUOTA[hunter.quota_id] = {"at": time.monotonic(), "searches_left": left}
-    return left
-
-
-def _spend_hunter_search(hunter: HunterClient) -> None:
-    q = _HUNTER_QUOTA.get(hunter.quota_id)
-    if q and q.get("searches_left") is not None:
-        q["searches_left"] = max(0, q["searches_left"] - 1)
-
-
-class SearchPlan(BaseModel):
-    queries: list[str] = Field(min_length=2, max_length=5, description="Specific web search queries that surface companies")
-
-
-async def web_prospector(tenant_id: str, ctx: AgentContext, icp: dict, need: int, round_no: int,
-                         seen_domains: set[str], stats: dict) -> list[dict]:
-    """Live discovery in three reliable steps: plan queries (model) -> search (code) -> extract companies (model).
-
-    Search is run by code, not by a tool-calling loop, because small models proved unreliable at finishing such a loop.
-    Every extracted candidate is still verified against the search results it came from, and contacts come from Hunter."""
-    st = research_state(ctx)
-    st.setdefault("snippets", {})
-    st.setdefault("answers", [])
-    known: list[str] = ctx.call.extra.setdefault("known_text", [])
-    broaden = "" if round_no == 1 else " Earlier rounds came up short: broaden industries, size and regions."
-    plan = (await structured(
-        "company_scout_plan", "small",
-        "Write web search queries that surface COMPANIES matching an ideal customer profile: some queries that find lists "
-        "or directories of such companies (e.g. 'top co-living operators Bangalore'), some that find a buying trigger "
-        "(funding, hiring, expansion, new leadership). Mix industry, region and growth signal. "
-        "Each query is 3 to 8 plain words, the way a person types into a search engine: no quotes, no boolean "
-        "operators, no site: filters. If the client sells to consumers, look for the businesses that serve or partner "
-        "with those consumers at scale (e.g. employers, property managers, relocation firms).",
-        f"ICP: {compact(icp, 2000)}\nAlready seen (skip): {sorted(seen_domains)[:30]}\nRound {round_no}.{broaden}",
-        SearchPlan, ctx, max_tokens=500, metadata={"icp": icp, "round": round_no})).output
-
-    failures: list[IntegrationError] = []
-
-    async def one(q: str):
-        try:
-            return await _web_search(SearchArgs(query=q[:200]), ctx)
-        except IntegrationError as e:
-            if e.code in ("not_configured", "auth_failed"):
-                raise
-            failures.append(e)
-            ctx.event("company_scout", "search_failed", query=q, error=e.message)
-            return None
-
-    results = [r for r in await asyncio.gather(*[one(q) for q in plan.queries]) if r]
-    if not results:                     # every search errored: a provider problem, not an empty market
-        raise IntegrationError("web_search", "unavailable", "every lead search failed: " + failures[0].message,
-                               "Check the Integrations page (web search) and retry.")
-    stats["searches"] = stats.get("searches", 0) + len(results)
-    if not any(r["results"] for r in results):
-        ctx.event("company_scout", "no_results", queries=plan.queries)
-        return []                       # an empty round: the next one broadens the queries
-    blocks = []
-    for r in results:                       # _web_search already recorded snippets and answers for verification
-        for h in r["results"]:
-            known.append((h["url"] + " " + h["title"] + " " + h["snippet"]).lower())
-            blocks.append(f"- {h['title']} | {h['url']} | {h['snippet']}")
-        if r["answer"]:
-            known.append(r["answer"].lower())
-            blocks.append("SUMMARY: " + r["answer"][:900])
-    res = await structured(
-        "company_scout", "extract",
-        "From these web search results, list real companies that fit the ICP. Only include a company if a result names it; "
-        "lists of companies are good sources. Prefer companies with a buying trigger, but include fitting companies without "
-        "one (leave signal empty). domain must be the company's own website; evidence_url must be one of the result URLs "
-        "above; signal, if any, must be one concrete fact from that result, in its words. Return companies, not people, "
-        "publishers or articles.",
-        f"ICP: {compact(icp, 1800)}\nSkip these domains: {sorted(seen_domains)[:30]}\n\n<untrusted_data source=\"search\">\n"
-        + "\n".join(blocks)[:9000] + "\n</untrusted_data>\nReturn about " + str(need * 2) + " candidates.",
-        CompanyCandidates, ctx, temperature=0.1, max_tokens=1800, metadata={"icp": icp, "round": round_no})
-    known_text = " ".join(known)
-    pool, rejected = [], Counter()
-    seen_here: set[str] = set()
-    for c in res.output.companies:
-        cand, why = verify_candidate(c, st, known_text)
-        if cand is None:
-            rejected[why] += 1
-        elif cand["company_domain"] in seen_domains or cand["company_domain"] in seen_here:
-            rejected["already_seen"] += 1
-        else:
-            seen_here.add(cand["company_domain"])
-            cand["source_provider"] = st["searches"][-1]["provider"] if st["searches"] else ""
-            cand["source_snippet"] = st["snippets"].get(_norm(cand["source_url"]), "")[:300]   # what the scorer may quote
-            pool.append(cand)
-    stats["unverified_dropped"] = stats.get("unverified_dropped", 0) + sum(rejected.values())
-    ctx.event("company_scout", "candidates_verified", kept=len(pool), rejected=dict(rejected))
-    return pool                 # contacts are looked up after scoring, for qualified companies only
-
-
 EVIDENCE_FIELDS = ("title", "company", "industry", "employees", "geo", "signal", "why_fit", "company_domain",
-                   "source_snippet")
+                   "source_snippet", "about")
 
 
 def grounded_evidence(evidence: list[str], p: dict) -> list[str]:
@@ -325,7 +140,7 @@ def grounded_evidence(evidence: list[str], p: dict) -> list[str]:
 
 def _score_view(p: dict) -> dict:
     keys = ("id", "title", "company", "industry", "employees", "geo", "signal", "why_fit", "company_domain",
-            "source_snippet")
+            "source_snippet", "about", "country")
     return {k: p[k] for k in keys if p.get(k) not in (None, "")}
 
 
@@ -349,16 +164,27 @@ async def _score_batch(tenant_id: str, ctx: AgentContext, icp: dict, batch: list
     return scores
 
 
-async def _discover(tenant_id: str, ctx: AgentContext, icp: dict, need: int, round_no: int, seen: set[str],
-                    stats: dict) -> list[dict]:
-    if get_settings().uses_fixture_sources:
-        ctx.call.extra["exclude"] = seen
-        return await prospector(tenant_id, ctx, icp, need, round_no)
-    domains = {i.removeprefix("web:") for i in seen if i.startswith("web:")}
-    return await web_prospector(tenant_id, ctx, icp, need, round_no, domains, stats)
+def _as_prospect(c: dict) -> dict:
+    """A live candidate in the shape the screening, scoring and storage code expects."""
+    return {"id": "web:" + c["domain"], "full_name": "", "title": "", "company": c["name"], "company_domain": c["domain"],
+            "linkedin_url": "", "email": "", "email_status": "", "email_confidence": 0, "signal": c.get("signal", ""),
+            "why_fit": c.get("why_fit", ""), "source_url": c.get("source_url", ""), "source_snippet": c.get("source_snippet", ""),
+            "country": c.get("country", ""), "contact_source": "", "contact_url": "", "contact_confidence": "",
+            "synthetic": False, "requires_contact": False, "one_per_company": True, "_live": c}
 
 
-async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date) -> dict[str, Any]:
+def _drop(stats: dict, rejections: list, p: dict, reason: str, detail: str = "", fit: int | None = None) -> None:
+    stats["dropped"][reason] = stats["dropped"].get(reason, 0) + 1
+    if reason in stats:
+        stats[reason] += 1
+    rejections.append({"source_id": p["id"], "full_name": p.get("full_name", ""), "company": p["company"],
+                       "reason": reason, "fit_score": fit, "detail": detail[:500]})
+
+
+async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date, broaden: bool = False) -> dict[str, Any]:
+    """Find this week's leads, and say exactly where every candidate went (the funnel). A short week always carries
+    its reasons and a suggested way to widen the search; a zero is never silent."""
+    from app.agents.leads import live
     st = get_settings()
     icp = await latest(tenant_id, "icp")
     if not icp:
@@ -368,6 +194,9 @@ async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date) -> dict[s
     comp = await latest(tenant_id, "competitor_matrix") or {}
     competitors = {c.lower() for c in intake.get("known_competitors", [])} | \
         {c["name"].lower() for c in comp.get("competitors", [])}
+    comp_domains = {clean_domain(u) for u in intake.get("competitor_urls", [])} - {None}
+    own = {clean_domain(intake.get("website", "")), (intake.get("company_name") or "").lower()} - {None, ""}
+    fixtures = st.uses_fixture_sources
 
     with tenant_scope(tenant_id):
         async with get_db().reader() as s:
@@ -380,31 +209,64 @@ async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date) -> dict[s
     sup_domain = {x.value.lower() for x in sup if x.kind == "domain"}
     sup_company = {x.value.lower() for x in sup if x.kind == "company"}
 
+    budget, funnel = live.SearchBudget(), live.funnel_stats()
     stats: dict[str, Any] = {"rounds": 0, "candidates": 0, "kept": 0, "duplicate": 0, "suppressed": 0, "competitor": 0,
                              "missing_contact": 0, "low_fit": 0, "no_evidence": 0, "injection_flagged": 0, "with_email": 0,
-                             "target_min": goals["leads_min"], "target_max": goals["leads_max"],
-                             "fit_threshold": st.lead_fit_threshold}
+                             "with_person": 0, "with_linkedin": 0, "target_min": goals["leads_min"],
+                             "target_max": goals["leads_max"], "fit_threshold": st.lead_fit_threshold, "broaden": broaden,
+                             "dropped": {}, "funnel": funnel, "contact_routes": {}}
     titles = [t for seg in icp.get("segments", []) for t in seg.get("titles", [])]
+    hunter = None
+    if not fixtures:
+        from app.services import keys
+        _, hkey = await keys.for_client(tenant_id, "contacts")
+        if hkey is not None:
+            from app.integrations.hunter import HunterClient
+            hunter = HunterClient(hkey.reveal(), quota_id=hkey.fingerprint)
     batch_keys: set[str] = set()
     while kept < goals["leads_min"] and stats["rounds"] < 3:
         stats["rounds"] += 1
-        pool = await _discover(tenant_id, ctx, icp, goals["leads_max"] - kept, stats["rounds"], seen, stats)
+        if fixtures:
+            ctx.call.extra["exclude"] = seen
+            pool = await prospector(tenant_id, ctx, icp, goals["leads_max"] - kept, stats["rounds"])
+        else:
+            if budget.searches >= budget.max_searches:
+                stats.setdefault("warnings", []).append(f"the search budget for this run ({budget.max_searches} searches) is used up")
+                break
+            domains = {i.removeprefix("web:") for i in seen if i.startswith("web:")}
+            found = await live.discover(ctx, icp, intake, goals["leads_max"] - kept, stats["rounds"], broaden, domains,
+                                        budget, funnel)
+            pool = [_as_prospect(c) for c in found]
         if not pool:
             ctx.event("prospector", "empty_round", round=stats["rounds"])
-            continue  # next round runs with the broaden instruction
+            continue  # the next round widens the queries
         rejections: list[dict] = []
         candidates: list[dict] = []
         for p in pool:
             seen.add(p["id"])
             key = dedupe_key(p)
+            dom = (p.get("company_domain") or "").lower()
+            if not fixtures and (dom in own or p["company"].lower() in own):
+                _drop(stats, rejections, p, "own_company", "the client itself")
+                continue
+            if not fixtures and dom in comp_domains:
+                _drop(stats, rejections, p, "competitor", "a competitor's own site")
+                continue
             reason = screen_prospect(p, existing_keys | batch_keys, sup_email, sup_domain, sup_company, competitors)
             if reason:
-                stats[reason] += 1
-                rejections.append({"source_id": p["id"], "full_name": p.get("full_name", ""), "company": p["company"],
-                                   "reason": reason, "detail": key})
+                _drop(stats, rejections, p, reason, key)
+                continue
+            if not fixtures and not broaden and live.region_mismatch(p["_live"], intake.get("geographies", [])):
+                _drop(stats, rejections, p, "region", f"outside {', '.join(intake.get('geographies', []))}: "
+                      f"{p['_live'].get('country') or p['company_domain']}")
                 continue
             batch_keys.add(key)
             candidates.append(p)
+        if not fixtures:                          # what each company says about itself, before it is scored
+            await live.read_homepages(ctx, [p["_live"] for p in candidates[: max(10, (goals["leads_max"] - kept) * 2)]],
+                                      budget, funnel)
+            for p in candidates:
+                p["about"] = p["_live"].get("about", "")
         # Third-party text about a prospect is scanned for injection before any model scores it (batched classifier).
         for i, verdict in enumerate(await scan_many([p.get("signal", "") for p in candidates], ctx.call)):
             if verdict.flagged:
@@ -421,41 +283,62 @@ async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date) -> dict[s
         good = []
         for p, sc in scored:
             if not sc or sc.fit_score < st.lead_fit_threshold:
-                stats["low_fit"] += 1
-                rejections.append({"source_id": p["id"], "full_name": p.get("full_name", ""), "company": p["company"],
-                                   "reason": "low_fit", "fit_score": sc.fit_score if sc else 0,
-                                   "detail": "; ".join((sc.disqualifiers if sc else ["not scored"]))})
+                _drop(stats, rejections, p, "low_fit", "; ".join(sc.disqualifiers if sc else ["not scored"]),
+                      sc.fit_score if sc else 0)
                 continue
             evidence = grounded_evidence(sc.evidence, p)
             if not evidence:                         # a score with no evidence tied to the prospect's own data
-                stats["no_evidence"] += 1
-                rejections.append({"source_id": p["id"], "full_name": p.get("full_name", ""), "company": p["company"],
-                                   "reason": "no_evidence", "fit_score": sc.fit_score,
-                                   "detail": "evidence did not quote the prospect's data: " + "; ".join(sc.evidence)[:300]})
+                _drop(stats, rejections, p, "no_evidence", "evidence did not quote the prospect's data: " +
+                      "; ".join(sc.evidence)[:300], sc.fit_score)
                 continue
             sc.evidence = evidence
             good.append((p, sc))
         good.sort(key=lambda x: -x[1].fit_score)
         room = goals["leads_max"] - kept
+        if not fixtures:                             # a way to reach a person, for companies that qualified
+            sem = asyncio.Semaphore(4)
+
+            async def reach(p):
+                async with sem:
+                    c = await live.contact_route(ctx, p["_live"], titles, budget, funnel, hunter)
+                for k in ("full_name", "title", "email", "email_status", "email_confidence", "linkedin_url",
+                          "contact_source", "contact_url", "contact_confidence"):
+                    if c.get(k):
+                        p[k] = c[k]
+            looked = good[: room + 5]                # a few spare in case some cannot be reached
+            await asyncio.gather(*[reach(p) for p, _ in looked])
+            reachable = []
+            for p, sc in looked:
+                if p.get("contact_source"):
+                    reachable.append((p, sc))
+                else:
+                    _drop(stats, rejections, p, "no_contact_route", "no person, published email or profile found",
+                          sc.fit_score)
+            for p, _ in good[room + 5:]:             # not looked at this run: still discoverable next time
+                seen.discard(p["id"])
+            good = reachable
         take, overflow = good[:room], good[room:]
         for p, _ in overflow:  # fine leads beyond this week's cap stay discoverable next week
             seen.discard(p["id"])
-        live = [p for p, _ in take if not p.get("synthetic") and not p.get("email")]
-        await _attach_contacts(ctx, live, titles, stats)      # contacts only for companies that qualified
         with tenant_scope(tenant_id):
             async with get_db().session() as s:
                 for p, sc in take:
                     has_email = bool(p.get("email"))
                     stats["with_email"] += has_email
+                    stats["with_person"] += bool(p.get("full_name"))
+                    stats["with_linkedin"] += bool(p.get("linkedin_url"))
+                    route = p.get("contact_source") or ("fixture" if p.get("synthetic") else "")
+                    stats["contact_routes"][route] = stats["contact_routes"].get(route, 0) + 1
                     s.add(Lead(run_id=ctx.call.run_id, week_of=week_of, source_id=p["id"], dedupe_key=dedupe_key(p),
                                full_name=p.get("full_name", ""), title=p.get("title", ""), company=p["company"],
                                company_domain=p.get("company_domain", ""), linkedin_url=p.get("linkedin_url", ""),
                                email=p.get("email", ""), signal=p.get("signal", ""), fit_score=sc.fit_score,
                                evidence=sc.evidence, segment=sc.segment,
-                               status="qualified" if (has_email or p.get("linkedin_url")) else "prospect",
-                               source_url=p.get("source_url", ""), source_provider=p.get("source_provider", ""),
-                               contact_source=p.get("contact_source", ""), email_status=p.get("email_status", ""),
-                               email_confidence=int(p.get("email_confidence") or 0),
+                               status="qualified" if (has_email or p.get("linkedin_url") or p.get("full_name")) else "prospect",
+                               source_url=p.get("source_url", ""), source_provider=p.get("source_provider", "tavily" if not fixtures else ""),
+                               contact_source=route, contact_url=p.get("contact_url", ""),
+                               contact_confidence=p.get("contact_confidence", "high" if p.get("synthetic") else ""),
+                               email_status=p.get("email_status", ""), email_confidence=int(p.get("email_confidence") or 0),
                                is_synthetic=bool(p.get("synthetic"))))
                     existing_keys.add(dedupe_key(p))
                 for r in rejections:
@@ -467,6 +350,12 @@ async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date) -> dict[s
         kept += len(take)
         stats["kept"] += len(take)
     stats["week_total"] = kept
+    funnel["searches"], funnel["budget"] = budget.searches, {"searches": [budget.searches, budget.max_searches],
+                                                             "page_reads": [budget.fetches, budget.max_fetches]}
+    stats["warnings"] = stats.get("warnings", []) + funnel.pop("warnings", [])
+    found_total = funnel["found_in_results"] + funnel["found_on_lists"]
+    if kept < goals["leads_min"]:
+        stats["suggestion"] = live.broaden_suggestion(stats["dropped"], found_total if not fixtures else stats["candidates"])
     return stats
 
 
@@ -490,8 +379,8 @@ async def draft_outreach(tenant_id: str, lead_id: str, ctx: AgentContext) -> Out
     with tenant_scope(tenant_id):
         async with get_db().reader() as s:
             lead = (await s.execute(select(Lead).where(Lead.id == lead_id))).scalars().one()
-    if not lead.email:
-        raise AgentError(f"{lead.company}: no email address, nothing to draft")
+    if not (lead.email or lead.full_name or lead.linkedin_url):
+        raise AgentError(f"{lead.company}: no way to reach a person, nothing to draft")
     intake = (await profile(tenant_id)).intake
     voice = await latest(tenant_id, "voice_profile") or {}
     voice = {k: v for k, v in voice.items() if k != "example_hooks"}

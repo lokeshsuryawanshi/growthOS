@@ -281,7 +281,11 @@ class Lead(TenantScoped, Base):
     status: Mapped[str] = mapped_column(String(32), default="qualified")  # qualified|prospect|outreach_drafted|contacted|replied|rejected
     source_url: Mapped[str] = mapped_column(String(500), default="")      # page the company/signal came from
     source_provider: Mapped[str] = mapped_column(String(32), default="")  # gemini_search|tavily|fixture
-    contact_source: Mapped[str] = mapped_column(String(32), default="")   # hunter|fixture|""
+    # How to reach the person, ranked: team_page (named on the company's own page) | site_email (published on its site)
+    # | role_inbox (info@, hello@...) | linkedin_search (a profile URL search returned) | hunter | fixture
+    contact_source: Mapped[str] = mapped_column(String(32), default="")
+    contact_url: Mapped[str] = mapped_column(String(500), default="")         # the page that shows the contact
+    contact_confidence: Mapped[str] = mapped_column(String(8), default="")    # high | medium | low
     email_status: Mapped[str] = mapped_column(String(24), default="")     # valid|accept_all|unknown|invalid|""
     email_confidence: Mapped[int] = mapped_column(Integer, default=0)
     is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)

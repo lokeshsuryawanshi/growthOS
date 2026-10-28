@@ -56,7 +56,9 @@ async def make_sendable(db, tid: str) -> None:
 def reset_http() -> None:
     http.set_transport(None)
     from app.core import google_oidc
+    from app.agents.research import agents as research
     google_oidc.reset_key_cache()
+    research._SEARCH_CACHE.clear()          # per-client search cache: tests reuse client ids
 
 
 class FakeGoogle:

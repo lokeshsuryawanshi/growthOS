@@ -261,3 +261,7 @@ details.panel > summary, details.prov > summary { list-style-position: outside; 
 @media (max-width: 760px) { .keyrow { grid-template-columns: 1fr; } }
 a.slot.link { color: inherit; text-decoration: none; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
 a.slot.link:hover, a.slot.link:focus-visible { border-color: var(--accent, #4f46e5); box-shadow: 0 1px 6px rgba(0,0,0,.08); outline: none; }
+.funnel { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.funnel > div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 2px; }
+.funnel b { font-size: 22px; }
+.funnel span { font-size: 12.5px; color: var(--muted); }
