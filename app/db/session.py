@@ -29,7 +29,7 @@ from sqlalchemy.sql import visitors
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import ORMExecuteState, Session, with_loader_criteria
 
-from app.core.config import get_settings
+from app.core.config import get_settings, normalize_database_url
 from app.core.tenancy import TenantScopeError, current_scope
 from app.db.models import Base, TenantScoped
 
@@ -63,10 +63,46 @@ def _make_engine(url: str, immediate: bool) -> AsyncEngine:
     return engine
 
 
+class ProtectedDatabaseError(RuntimeError):
+    """A test, eval or demo process tried to open the production database."""
+
+
+def _host(url: str) -> str:
+    from sqlalchemy.engine import make_url
+    try:
+        return (make_url(normalize_database_url(url)).host or "").lower()
+    except Exception:
+        return ""
+
+
+def protected_hosts() -> set[str]:
+    """Hosts that only production may open: DATABASE_URL in the project's .env file (where the live URL lives) and,
+    for tests, DATABASE_URL in the process environment. Never the values themselves, only the host names."""
+    from pathlib import Path
+    from dotenv import dotenv_values
+    import os
+    urls = [dotenv_values(Path(__file__).resolve().parents[2] / ".env").get("DATABASE_URL") or ""]
+    if get_settings().app_env == "test":
+        urls.append(os.environ.get("DATABASE_URL", ""))
+    return {h for h in map(_host, urls) if h}
+
+
+def guard_not_production(url: str) -> None:
+    """Rule: tests, evals and the demo never touch the live database. Production itself is not restricted."""
+    if get_settings().app_env == "production":
+        return
+    host = _host(url)
+    if host and host in protected_hosts():
+        raise ProtectedDatabaseError(
+            f"refusing to open {host!r} with APP_ENV={get_settings().app_env}: it is the production database "
+            "(DATABASE_URL). Use TEST_DATABASE_URL on a separate database or branch.")
+
+
 class Database:
     """Holds a write engine (BEGIN IMMEDIATE) and a read engine (deferred BEGIN)."""
 
     def __init__(self, url: str):
+        guard_not_production(url)
         self.url = url
         self.write_engine = _make_engine(url, immediate=True)
         self.read_engine = _make_engine(url, immediate=False) if url.startswith("sqlite") else self.write_engine

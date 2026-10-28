@@ -11,6 +11,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 DEV_JWT_SECRET = "dev-only-change-me-0123456789abcdef"
 
 
+def normalize_database_url(v: str) -> str:
+    """Accept the URL hosted Postgres providers hand out (postgres://...?sslmode=require) as is."""
+    v = (v or "").strip()
+    for prefix in ("postgres://", "postgresql://"):
+        if v.startswith(prefix):
+            v = "postgresql+asyncpg://" + v[len(prefix):]
+    if v.startswith("postgresql+asyncpg://"):
+        v = re.sub(r"([?&])sslmode=(require|verify-full|verify-ca|prefer)", r"\1ssl=\2", v)
+        v = re.sub(r"[?&]channel_binding=\w+", "", v)
+    return v
+
+
 class ConfigError(RuntimeError):
     """The deployment is misconfigured in a way that must stop startup."""
 
@@ -106,15 +118,7 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _async_driver(cls, v: str) -> str:
-        """Accept the URL hosted Postgres providers hand out (postgres://...?sslmode=require) as is."""
-        v = (v or "").strip()
-        for prefix in ("postgres://", "postgresql://"):
-            if v.startswith(prefix):
-                v = "postgresql+asyncpg://" + v[len(prefix):]
-        if v.startswith("postgresql+asyncpg://"):
-            v = re.sub(r"([?&])sslmode=(require|verify-full|verify-ca|prefer)", r"\1ssl=\2", v)
-            v = re.sub(r"[?&]channel_binding=\w+", "", v)
-        return v
+        return normalize_database_url(v)
 
     @property
     def ephemeral_storage(self) -> bool:

@@ -12,6 +12,15 @@ os.environ["HUNTER_API_KEY"] = ""
 os.environ["GOOGLE_REDIRECT_URI"] = ""
 os.environ["GOOGLE_CLIENT_ID"] = ""
 os.environ["GOOGLE_CLIENT_SECRET"] = ""
+# Anything that falls through to get_settings().database_url gets a throwaway file, never the .env (live) database.
+import tempfile
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{tempfile.mkdtemp(prefix='growthos-test-')}/fallback.db"
+
+from app.core.config import Settings
+Settings.model_config["env_file"] = None      # tests are hermetic: nothing from the developer's .env leaks in
+
+from app.db.session import guard_not_production
+guard_not_production(os.environ.get("TEST_DATABASE_URL", ""))   # refuse to start against the live database
 
 import pytest
 
