@@ -1,4 +1,4 @@
-"""Read models shared by the JSON API and the HTML UI. All tenant-scoped."""
+"""Read models for the UI. Everything per client runs under that client's tenant scope."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -7,9 +7,9 @@ from typing import Any
 
 from sqlalchemy import case, func, select
 
-from app.core.tenancy import system_scope, tenant_scope
-from app.db.models import (Artifact, AuditLog, CalendarSlot, ExternalCall, GuardrailIncident, Lead, LeadRejection,
-                           LLMCall, OutreachMessage, Post, Run, RunNode, Tenant, TraceEvent)
+from app.core.tenancy import tenant_scope
+from app.db.models import (Artifact, CalendarSlot, ExternalCall, Lead, LeadRejection, LLMCall, OutreachMessage, Post, Run,
+                           RunNode, Tenant, TraceEvent)
 from app.db.session import get_db
 
 
@@ -90,33 +90,6 @@ async def run_detail(tenant_id: str, run_id: str) -> dict[str, Any] | None:
     return {"run": run, "nodes": nodes, "calls": calls, "events": events, "by_node": dict(by_node)}
 
 
-def time_breakdown(detail: dict[str, Any]) -> dict[str, Any]:
-    """Where a run's time went, per step: provider time vs waiting on our own per-model pacing vs 429 backoff.
-    Calls run in parallel, so these are summed call-seconds, compared with each step's wall time."""
-    steps: dict[str, dict[str, float]] = defaultdict(lambda: {"calls": 0, "model_s": 0.0, "pace_s": 0.0, "retry_s": 0.0})
-    models: dict[str, dict[str, float]] = defaultdict(lambda: {"calls": 0, "tokens": 0, "model_s": 0.0, "pace_s": 0.0,
-                                                                "retry_s": 0.0, "spilled": 0})
-    for c in detail["calls"]:
-        for agg in (steps[c.node_key], models[c.model]):
-            agg["calls"] += 1
-            agg["model_s"] += c.latency_ms / 1000
-            agg["pace_s"] += c.pace_wait_ms / 1000
-            agg["retry_s"] += c.retry_wait_ms / 1000
-        models[c.model]["tokens"] += c.prompt_tokens + c.completion_tokens
-        models[c.model]["spilled"] += "spilled" in (c.route_note or "")
-    total = {k: round(sum(v[k] for v in steps.values()), 1) for k in ("model_s", "pace_s", "retry_s")}
-    return {"steps": {k: {kk: round(vv, 1) for kk, vv in v.items()} for k, v in steps.items()},
-            "models": {k: {kk: round(vv, 1) for kk, vv in v.items()} for k, v in sorted(models.items())}, "total": total}
-
-
-async def incidents(tenant_id: str, limit: int = 100) -> list[GuardrailIncident]:
-    return await _all(tenant_id, select(GuardrailIncident).order_by(GuardrailIncident.created_at.desc()).limit(limit))
-
-
-async def audit_log(tenant_id: str, limit: int = 100) -> list[AuditLog]:
-    return await _all(tenant_id, select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit))
-
-
 async def cost_breakdown(tenant_id: str) -> dict[str, Any]:
     with tenant_scope(tenant_id):
         async with get_db().reader() as s:
@@ -136,30 +109,48 @@ async def cost_breakdown(tenant_id: str) -> dict[str, Any]:
                          for pv, op, n, u, c in external]}
 
 
-async def portfolio(tenant_ids: list[str]) -> list[dict[str, Any]]:
-    """Ops overview: one row per client. Cross-tenant read, scoped to what the caller may see."""
+async def clients_overview(tenants: list[Tenant]) -> list[dict[str, Any]]:
+    """One row per client of the signed-in account: its KPIs and its latest run."""
     from app.services.kpis import tenant_kpis
-    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     out = []
-    async with get_db().reader() as s:
-        tenants = {t.id: t for t in (await s.execute(select(Tenant).where(Tenant.id.in_(tenant_ids)))).scalars()}
-    with system_scope("ops portfolio overview"):
-        async with get_db().reader() as s:
-            last_runs = {}
-            for r in (await s.execute(select(Run).where(Run.tenant_id.in_(tenant_ids))
-                                      .order_by(Run.created_at.desc()))).scalars():
-                last_runs.setdefault(r.tenant_id, r)
-    for tid in tenant_ids:
-        t = tenants.get(tid)
-        if t is None:
-            continue
-        k = await tenant_kpis(tid)
-        out.append({"tenant": t, "kpis": k, "last_run": last_runs.get(tid), "month_start": month_start})
+    for t in tenants:
+        last = (await _all(t.id, select(Run).order_by(Run.created_at.desc()).limit(1)) or [None])[0]
+        out.append({"tenant": t, "kpis": await tenant_kpis(t.id), "last_run": last})
     return out
 
 
+async def account_spend(p) -> dict[str, Any]:
+    """The operator's own spend this month and in total, per client: AI (from the ledger) and search/contact credits.
+    Prices are the providers' list prices; free tiers bill nothing."""
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    async with get_db().reader() as s:
+        tenants = (await s.execute(select(Tenant).where(Tenant.owner_user_id == p.user_id).order_by(Tenant.name))).scalars().all()
+    rows = []
+    for t in tenants:
+        with tenant_scope(t.id):
+            async with get_db().reader() as s:
+                ai_m = (await s.execute(select(func.coalesce(func.sum(LLMCall.cost_usd), 0.0))
+                                        .where(LLMCall.created_at >= month_start))).scalar_one()
+                ai_all = (await s.execute(select(func.coalesce(func.sum(LLMCall.cost_usd), 0.0)))).scalar_one()
+                ext_m = (await s.execute(select(func.coalesce(func.sum(ExternalCall.cost_usd), 0.0))
+                                         .where(ExternalCall.created_at >= month_start))).scalar_one()
+                calls = (await s.execute(select(func.count(LLMCall.id)).where(LLMCall.created_at >= month_start))).scalar_one()
+        rows.append({"tenant": t, "ai_month": float(ai_m), "ai_total": float(ai_all), "external_month": float(ext_m),
+                     "calls_month": int(calls)})
+    return {"rows": rows, "ai_month": sum(r["ai_month"] for r in rows), "external_month": sum(r["external_month"] for r in rows),
+            "month": month_start.strftime("%B %Y")}
+
+
+async def post(tenant_id: str, post_id: str) -> dict[str, Any] | None:
+    with tenant_scope(tenant_id):
+        async with get_db().reader() as s:
+            row = (await s.execute(select(Post, CalendarSlot).outerjoin(CalendarSlot, CalendarSlot.id == Post.slot_id)
+                                   .where(Post.id == post_id))).first()
+    return {"post": row[0], "slot": row[1]} if row else None
+
+
 async def run_usage(tenant_id: str, run_id: str) -> dict[str, Any]:
-    """Live AI usage for one run: tokens, calls, cost and elapsed seconds. Safe to show to the founder."""
+    """Live AI usage for one run: tokens, calls, cost and elapsed seconds."""
     with tenant_scope(tenant_id):
         async with get_db().reader() as s:
             row = (await s.execute(select(func.count(LLMCall.id), func.coalesce(func.sum(LLMCall.prompt_tokens), 0),

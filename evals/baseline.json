@@ -24,9 +24,11 @@
     "lead_screen_recall_missing_contact": {"min": 1.0},
     "lead_screen_duplicates_kept": {"max": 0},
     "lead_screen_fit_false_rejections": {"max": 0},
-    "rbac_matrix_pass_rate": {"min": 1.0},
-    "cross_tenant_access_violations": {"max": 0},
-    "privilege_escalation_successes": {"max": 0},
+    "isolation_routes": {"min": 12},
+    "cross_account_access_violations": {"max": 0},
+    "session_escalations": {"max": 0},
+    "cross_account_page_leaks": {"max": 0},
+    "isolation_mutations_missed": {"max": 0},
     "judge_within_one_point": {"min": 0.75},
     "judge_spearman": {"min": 0.6}
   }

@@ -18,7 +18,7 @@
     {% if pg.get('live', {}).get('leads_found') is not none %}<div class="metric ok"><div class="label">Leads found so far</div><div class="value num">{{ pg.live.leads_found }}</div></div>{% endif %}
   </div>
   {% endif %}
-  {% if run.status == 'waiting_human' %}<div class="flash warn"><div><b>{{ 'Waiting for you.' if me.can('strategy:review') else 'Waiting for the owner.' }}</b> <a href="/portal/{{ tenant.id }}?tab=research">Review the strategy</a>{{ ' and approve it, or suggest changes,' if me.can('strategy:review') }} to continue.</div></div>{% endif %}
+  {% if run.status == 'waiting_human' %}<div class="flash warn"><div><b>Waiting for you.</b> <a href="/portal/{{ tenant.id }}?tab=research">Review the strategy</a> and approve it, or suggest changes, to continue.</div></div>{% endif %}
   {% if run.status == 'succeeded_with_shortfall' %}<div class="flash warn"><div><b>Finished, but short of your targets.</b> {{ run.error }}.</div></div>{% endif %}
   {% if run.status == 'failed' %}<div class="flash bad"><div><b>This run did not finish.</b> The steps below say why and what to do. Steps that already succeeded are kept, so a retry only redoes the failed part.</div></div>{% endif %}
   <div class="steps">
@@ -40,7 +40,7 @@
         {% endif %}
       </div>
       <div class="row">
-        {% if n.status == 'waiting_human' and me.can('strategy:review') %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ run.id }}/approve/{{ n.key }}"><button class="primary sm">Approve</button></form>{% endif %}
+        {% if n.status == 'waiting_human' %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ run.id }}/approve/{{ n.key }}"><button class="primary sm">Approve</button></form>{% endif %}
         {% if n.status == 'failed' and can_retry %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ run.id }}/rerun/{{ n.key }}"><button class="sm primary">Retry this step</button></form>{% endif %}
       </div>
     </div>

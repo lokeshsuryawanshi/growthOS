@@ -35,20 +35,17 @@
       </ul>
     {% endif %}
     {% if post.status == 'pending_approval' %}
-      {% if me.can('content:approve') %}
       <div class="row">
         <form class="inline" hx-post="/ui/{{ tenant.id }}/posts/{{ post.id }}" hx-target="#post-{{ post.id }}" hx-swap="outerHTML">
           <input type="hidden" name="action" value="approve"><button class="primary">Approve</button></form>
         <form class="inline" hx-post="/ui/{{ tenant.id }}/posts/{{ post.id }}" hx-target="#post-{{ post.id }}" hx-swap="outerHTML">
           <input type="hidden" name="action" value="reject"><button class="danger">Reject</button></form>
       </div>
-      {% endif %}
-      {% if me.can('content:edit') %}
       <details><summary>Edit the text</summary>
         <form class="stack" hx-post="/ui/{{ tenant.id }}/posts/{{ post.id }}" hx-target="#post-{{ post.id }}" hx-swap="outerHTML" style="margin-top:8px">
           <textarea class="tall" name="text" id="text-{{ post.id }}">{{ post.text }}</textarea>
           <div class="row">
-            {% if me.can('content:approve') %}<button class="primary" name="action" value="approve">Save and approve</button>{% endif %}
+            <button class="primary" name="action" value="approve">Save and approve</button>
             <button name="action" value="edit">Save edit</button>
           </div>
         </form>
@@ -60,15 +57,12 @@
           <button>Request changes</button>
         </form>
       </details>
-      {% endif %}
     {% elif post.status in ('approved', 'scheduled') %}
-      <div class="sub">Planned for {{ slot.publish_date.strftime('%a %d %b') if slot else 'the next open slot' }}{% if post.edit_distance %}, edited {{ (post.edit_distance * 100) | round | int }}%{% endif %}. Growth OS does not post for you.</div>
-      {% if me.can('content:approve') %}
+      <div class="sub">Planned for {{ slot.publish_date.strftime('%a %d %b') if slot else 'the next open slot' }}{% if post.edit_distance %}, edited {{ (post.edit_distance * 100) | round | int }}%{% endif %}. Nothing is posted for you.</div>
       <div class="row">
         <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('body-{{ post.id }}').innerText + {{ ('\n\n' ~ post.hashtags | join(' ')) | tojson if post.hashtags else '\"\"' }}).then(()=>{this.textContent='Copied'})">Copy post</button>
         <form class="inline" hx-post="/ui/{{ tenant.id }}/posts/{{ post.id }}/posted" hx-target="#post-{{ post.id }}" hx-swap="outerHTML"><button class="primary">I posted it</button></form>
       </div>
-      {% endif %}
     {% elif post.status == 'changes_requested' %}
       <div class="sub">New draft on the way: "{{ post.reviewer_note }}"</div>
     {% endif %}

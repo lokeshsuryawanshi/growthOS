@@ -26,7 +26,7 @@ class SuggestionRefused(ValueError):
 
 
 async def suggest_changes(p: Principal, tenant_id: str, note: str, parts: list[str]) -> str:
-    authorize(p, "strategy:review", tenant_id)
+    authorize(p, tenant_id)
     note = (note or "").strip()
     if not 10 <= len(note) <= 2000:
         raise AccountError("Describe the change in a sentence or two (10 to 2,000 characters).")

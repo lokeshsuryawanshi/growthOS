@@ -164,15 +164,5 @@ CLIENTS: list[dict] = [
      "samples": ["Your onboarding isn't confusing because of the UI. It's confusing because it asks for commitment before it shows value."]},
 ]
 
-# Demo logins. These are local test credentials for the seeded dev database only.
-DEMO_PASSWORD = "growthos-demo"
-USERS = [
-    {"email": "admin@growthos.example", "name": "Ava Admin", "role": "platform_admin", "tenants": []},
-    {"email": "am.sam@growthos.example", "name": "Sam Strategist", "role": "account_manager",
-     "tenants": ["ledgerloop", "shiftwise", "gridmint", "cargocompass", "lumencohort", "harborshield"]},
-    {"email": "am.riya@growthos.example", "name": "Riya Strategist", "role": "account_manager",
-     "tenants": ["talentforge", "orchardanalytics", "sproutly", "keystoneproptech", "meridianwealth", "pixelpine"]},
-    {"email": "priya@ledgerloop.example", "name": "Priya Raman", "role": "client_owner", "tenants": ["ledgerloop"]},
-    {"email": "marcus@shiftwise.example", "name": "Marcus Okafor", "role": "client_owner", "tenants": ["shiftwise"]},
-    {"email": "viewer@ledgerloop.example", "name": "Leo Viewer", "role": "client_viewer", "tenants": ["ledgerloop"]},
-]
+# The demo operator who owns every seeded client (local demo and tests only; signs in through the test-only route).
+DEMO_OPERATOR = {"email": "operator@growthos.example", "name": "Demo Operator"}

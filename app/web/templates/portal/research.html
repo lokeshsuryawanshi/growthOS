@@ -4,10 +4,10 @@
 <div class="pagehead"><div><h1>Strategy and research</h1><div class="sub">What the agents learned, and the sources behind it. Facts whose source could not be verified are removed, not shown.</div></div>
   {% if ws.can_discover and st %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="discovery"><button>Re-run research</button></form>{% endif %}</div>
 {% if ws.gate_run %}
-<div class="flash warn" style="align-items:center"><div style="flex:1"><b>{{ 'Your approval is needed.' if me.can('strategy:review') else 'Waiting for the owner to approve the strategy.' }}</b> Read the strategy below. When it is approved, post writing and lead search unlock, as two separate steps.</div>
-  {% if me.can('strategy:review') %}<form method="post" action="/ui/{{ tenant.id }}/runs/{{ ws.gate_run }}/approve/strategy_review"><button class="primary">Approve strategy</button></form>{% endif %}</div>
+<div class="flash warn" style="align-items:center"><div style="flex:1"><b>Your approval is needed.</b> Read the strategy below. When it is approved, post writing and lead search unlock, as two separate steps.</div>
+  <form method="post" action="/ui/{{ tenant.id }}/runs/{{ ws.gate_run }}/approve/strategy_review"><button class="primary">Approve strategy</button></form></div>
 {% endif %}
-{% if st and me.can('strategy:review') %}
+{% if st %}
 <section class="panel stack" id="suggest">
   <div class="row"><h2>Suggest changes</h2><span class="sub">Add, edit or remove anything above before you approve. Only the parts you pick are redone; the research is kept.</span></div>
   <form method="post" action="/ui/{{ tenant.id }}/strategy/suggestions" class="stack">

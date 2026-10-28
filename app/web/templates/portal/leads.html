@@ -1,9 +1,6 @@
 {% from "_macros.html" import empty, srcchip, srclink %}
-<div class="pagehead"><div><h1>Leads</h1><div class="sub">Companies that match your ideal customer profile, found through real web search. Emails go out only after you approve each one.</div></div>
+<div class="pagehead"><div><h1>Leads</h1><div class="sub">Companies that match your ideal customer profile, found through real web search. You approve each email, then send it yourself.</div></div>
   {% if ws.can_leads %}<form method="post" action="/ui/{{ tenant.id }}/runs"><input type="hidden" name="kind" value="leads"><button class="primary">Find leads</button></form>{% endif %}</div>
-{% if not integ.hunter_ok %}
-<div class="flash warn"><div><b>Hunter.io is not connected.</b> Leads are listed as companies without a contact person, so no outreach email can be drafted. Add a Hunter.io key to find and verify decision-maker emails. <a href="/portal/{{ tenant.id }}?tab=integrations">See how</a></div></div>
-{% endif %}
 {% if dms %}
 <section class="stack"><div class="row"><h2>Emails waiting for your approval</h2><span class="pill warn">{{ dms | length }}</span></div>
   {% for r in dms %}{% with m=r.msg, lead=r.lead %}{% include "partials/dm_card.html" %}{% endwith %}{% endfor %}
@@ -18,14 +15,12 @@
       <td class="num">{{ l.week_of.strftime('%d %b') }}</td>
       <td><b>{{ l.company }}</b>{% if l.is_synthetic %} <span class="pill synthetic">synthetic</span>{% endif %}<br>{% if l.company_domain %}<a class="src" href="https://{{ l.company_domain }}" target="_blank" rel="noopener noreferrer nofollow">{{ l.company_domain }}</a>{% endif %}</td>
       <td>{% if l.full_name %}<b>{{ l.full_name }}</b><br><span class="sub">{{ l.title }}</span><br>
-          {% if l.email_status == 'founder_confirmed' %}<span class="pill warn" title="Not verified by Hunter.io; you confirmed it">email unverified (you confirmed it)</span>
-          {% else %}<span class="pill {{ l.email_status or 'pending' }}">email {{ l.email_status or 'unknown' }}{% if l.email_confidence %} · {{ l.email_confidence }}%{% endif %}</span>{% endif %}
-          {% if l.contact_source == 'manual' %}<span class="pill accent">added by hand</span>{% endif %}
+          {% if l.email_status %}<span class="pill {{ l.email_status }}">email {{ l.email_status }}{% if l.email_confidence %} · {{ l.email_confidence }}%{% endif %}</span>{% endif %}
           {% else %}<span class="sub">No contact found</span>{% endif %}</td>
       <td class="n">{{ l.fit_score }}</td>
       <td class="sub" style="max-width:340px">{{ l.signal or (l.evidence | first) or '' }}<br>{{ srcchip(l.source_provider, l.is_synthetic) }} {{ srclink(l.source_url) }}</td>
       <td><span class="pill {{ r.msg.status if r.msg else l.status }}">{{ (r.msg.status if r.msg else l.status).replace('_', ' ') }}</span>
-        {% if not r.msg and l.email and me.can('outreach:edit') %}<form method="post" action="/ui/{{ tenant.id }}/leads/{{ l.id }}/draft" style="margin-top:6px"><button class="sm">Draft email</button></form>{% endif %}</td>
+</td>
     </tr>{% endfor %}
   </table></div>
   {% else %}{% call empty('users', 'No leads yet', 'After your strategy is approved, each lead search looks through the web for companies that match your ideal customer profile and shows the source for every one.') %}
@@ -38,21 +33,4 @@
   <div class="tablewrap" style="margin-top:10px"><table><tr><th>Company</th><th>Reason</th><th class="n">Fit</th><th>Detail</th></tr>
   {% for x in rejections %}<tr><td>{{ x.company }}</td><td><span class="pill">{{ x.reason.replace('_', ' ') }}</span></td><td class="n">{{ x.fit_score if x.fit_score is not none else '' }}</td><td class="sub">{{ x.detail | truncate(160) }}</td></tr>{% endfor %}
   </table></div></details>
-{% endif %}
-{% if me.can('lead:add') %}
-<section class="panel stack" id="add-lead">
-  <div class="row"><h2>Add a lead manually</h2><span class="pill">by hand</span></div>
-  <p class="sub">For someone you already know, or to try the send flow on your own address: while Google keeps the Gmail connection in testing mode, it can only send to you and listed test users. The address is checked with Hunter.io when it is connected; if it cannot be verified you must confirm it yourself, and it stays labelled unverified. Every email still needs your approval before it is sent.</p>
-  <form method="post" action="/ui/{{ tenant.id }}/leads" class="stack">
-    <div class="grid2">
-      <label>Name<input name="full_name" required maxlength="200"></label>
-      <label>Email<input name="email" type="email" required maxlength="200"></label>
-      <label>Company<input name="company" required maxlength="200"></label>
-      <label>Job title <span class="sub">(optional)</span><input name="title" maxlength="200"></label>
-    </div>
-    <label>Why reach out <span class="sub">(optional; the email draft uses only what you write here)</span><input name="note" maxlength="500"></label>
-    <label class="row" style="gap:8px;font-weight:500"><input type="checkbox" name="confirm_unverified" value="1"> I know this address is correct. Add it even if Hunter.io cannot verify it.</label>
-    <div><button class="primary">Add lead</button></div>
-  </form>
-</section>
 {% endif %}

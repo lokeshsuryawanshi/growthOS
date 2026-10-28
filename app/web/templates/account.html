@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}API keys and spend · Growth OS{% endblock %}
+{% block content %}
+<div class="pagehead"><div><h1>API keys and spend</h1><div class="sub">You use your own AI and search accounts, so you pay those providers directly. This page shows what your runs cost.</div></div></div>
+<section class="panel stack">
+  <div class="row"><h2>Spend in {{ spend.month }}</h2><span class="spacer"></span><span class="pill accent num">AI ${{ '%.4f' % spend.ai_month }}</span><span class="pill num">search and contacts ${{ '%.3f' % spend.external_month }}</span></div>
+  <p class="sub">At the providers' list prices. Free tiers bill nothing, so your real bill can be lower.</p>
+  {% if spend.rows %}<div class="tablewrap"><table><tr><th>Client</th><th class="n">Model calls this month</th><th class="n">AI this month</th><th class="n">Search and contacts</th><th class="n">AI all time</th></tr>
+  {% for r in spend.rows %}<tr><td>{{ r.tenant.name }}</td><td class="n">{{ r.calls_month }}</td><td class="n">${{ '%.4f' % r.ai_month }}</td><td class="n">${{ '%.3f' % r.external_month }}</td><td class="n">${{ '%.4f' % r.ai_total }}</td></tr>{% endfor %}
+  </table></div>{% endif %}
+  <form method="post" action="/account/cap" class="row" style="gap:10px;align-items:end">
+    <label>Monthly AI spend cap (USD, optional)<input name="cap" inputmode="decimal" value="{{ '%.2f' % cap if cap is not none else '' }}" placeholder="no cap"></label>
+    <button>Save cap</button>
+  </form>
+  <p class="sub">When the cap is reached, runs stop with a clear message until next month or until you raise it.</p>
+</section>
+<section class="panel stack">
+  <h2>Close your account</h2>
+  <p class="sub">Deletes every client, all research, posts, leads and emails, and your saved keys. This cannot be undone.</p>
+  <form method="post" action="/account/delete" class="row" style="gap:10px;align-items:end">
+    <label>Type your email address to confirm<input name="confirm" autocomplete="off" placeholder="{{ me.email }}"></label>
+    <button class="danger">Close account</button>
+  </form>
+</section>
+{% endblock %}

@@ -65,7 +65,7 @@ def test_no_production_module_imports_fixtures_unconditionally():
     assert offenders == []
 
 
-def test_no_mock_adapters_are_reachable_from_the_send_or_publish_paths():
+def test_no_mock_adapters_are_reachable_from_the_approval_paths():
     text = (ROOT / "app/services/approvals.py").read_text()
     assert "Mock" not in text and "fixtures" not in text
 
@@ -101,45 +101,56 @@ def prod_server(tmp_path_factory):
     proc.wait(timeout=10)
 
 
-def test_production_boots_empty_with_no_demo_accounts(prod_server):
+def test_production_boots_empty_with_no_demo_accounts_and_no_test_login(prod_server):
     base, db = prod_server
     h = httpx.get(base + "/healthz").json()
     assert h == {"ok": True, "env": "production", "llm_mode": "unconfigured", "fixtures": False, "database": "sqlite",
                  "ephemeral_storage": False}
-    for email in ("admin@growthos.example", "am.sam@growthos.example", "priya@ledgerloop.example"):
-        r = httpx.post(base + "/api/auth/login", json={"email": email, "password": "growthos-demo"})
-        assert r.status_code == 401, email
+    # the sign-in shortcut used by tests and the demo does not exist here, and nor do passwords or signup
+    for path in ("/auth/test-login", "/login", "/signup", "/api/auth/login", "/api/auth/signup"):
+        r = httpx.post(base + path, data={"email": "operator@growthos.example", "password": "growthos-demo"})
+        assert r.status_code in (404, 405), (path, r.status_code)
     import sqlite3
     con = sqlite3.connect(db)
     assert con.execute("select count(*) from tenants").fetchone()[0] == 0
     assert con.execute("select count(*) from users").fetchone()[0] == 0
     assert con.execute("select version_num from alembic_version").fetchone()[0]          # schema came from migrations
-    assert "DEMO" not in httpx.get(base + "/login").text
+    page = httpx.get(base + "/login").text
+    assert "DEMO" not in page and "Test sign-in" not in page and "Continue with Google" in page or "not set up" in page
+    for path in ("/termsofservice", "/login/policy"):
+        assert httpx.get(base + path).status_code == 200
+
+
+def _session_for_new_account(db_path) -> dict:
+    """Production has no test login. Insert an account the way Google sign-in would and sign its session cookie with
+    the server's own secret, which is exactly what a real sign-in produces."""
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+    import jwt
+    con = sqlite3.connect(db_path)
+    con.execute("insert into users (id, google_sub, email, name, created_at) values ('u-prod', 'g-prod', "
+                "'dana@prod.example', 'Dana Cho', '2026-10-29 10:00:00')")
+    con.commit()
+    now = datetime.now(timezone.utc)
+    return {"growthos_token": jwt.encode({"sub": "u-prod", "iat": now, "exp": now + timedelta(hours=1)}, STRONG,
+                                         algorithm="HS256")}
 
 
 def test_production_user_journey_produces_no_synthetic_output(prod_server):
-    from tests.test_accounts import FORM
-    base, _ = prod_server
-    r = httpx.post(base + "/api/auth/signup", json={"name": "Dana Cho", "email": "dana@prod.example", "password": "correct horse battery"})
-    assert r.status_code == 201
-    h = {"Authorization": "Bearer " + r.json()["token"]}
-    r = httpx.post(base + "/api/tenants", json=FORM, headers=h)
-    assert r.status_code == 201
-    tid, h = r.json()["id"], {"Authorization": "Bearer " + r.json()["token"]}
-    assert httpx.get(f"{base}/api/tenants/{tid}/posts", headers=h).json() == []
-    assert httpx.get(f"{base}/api/tenants/{tid}/leads", headers=h).json() == []
-
-    # No AI key: starting research must be refused with the fix, not answered with mock output.
-    r = httpx.post(f"{base}/api/tenants/{tid}/runs", json={"kind": "discovery"}, headers=h)
-    assert r.status_code == 424 and r.json()["code"] == "not_configured" and "GROQ_API_KEY" in r.json()["recovery"]
-    assert httpx.get(f"{base}/api/tenants/{tid}/runs", headers=h).json() == []
-    integ = {i["key"]: i for i in httpx.get(f"{base}/api/integrations?tid={tid}", headers=h).json()}
-    assert integ["ai"]["state"] == "not_configured" and "mock" not in integ["ai"]["detail"].lower().replace("mock models: output is synthetic", "")
-    assert integ["hunter"]["state"] == "not_configured" and integ["gmail"]["state"] == "not_configured"
-    assert integ["publishing"]["state"] == "not_configured"                       # honest: nothing publishes automatically
-
-    # Sending is impossible without a connected Gmail, whatever the role.
-    assert httpx.get(f"{base}/portal/{tid}?tab=leads", cookies={"growthos_token": h["Authorization"][7:]}).status_code == 200
+    from tests.helpers import FORM
+    base, db = prod_server
+    with httpx.Client(base_url=base, cookies=_session_for_new_account(db)) as c:
+        r = c.post("/clients/new", data=FORM)
+        assert r.status_code == 303, r.text[:300]
+        tid = r.headers["location"].split("/portal/")[1].split("?")[0]
+        for tab in ("overview", "content", "calendar", "leads", "research", "activity", "settings"):
+            page = c.get(f"/portal/{tid}?tab={tab}")
+            assert page.status_code == 200 and "synthetic" not in page.text.lower() and "DEMO" not in page.text, tab
+        # No AI key: starting research is refused with the fix, never answered with mock output.
+        r = c.post(f"/ui/{tid}/runs", data={"kind": "discovery"})
+        assert r.status_code == 303
+        assert "No AI provider" in c.get(r.headers["location"]).text
+        assert "Nothing has run yet" in c.get(f"/portal/{tid}?tab=activity").text
 
 
 def test_hosted_postgres_urls_are_accepted_as_given():

@@ -1,13 +1,14 @@
-"""Signup, onboarding, profile persistence and the clean-workspace guarantee."""
-import httpx
+"""Accounts and clients: add, edit and delete client profiles; the clean-start guarantee; the operator's journey."""
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings
 from app.core.tenancy import tenant_scope
-from app.db.models import AuditLog, KnowledgeDoc, Tenant
+from app.db.models import TENANT_TABLES, AuditLog, Base, KnowledgeDoc, Tenant, User
 from app.llm.gateway import LLMGateway, set_gateway
 from app.main import app
+from app.services import accounts
+from tests.helpers import add_client, client_for, sign_in
 
 SAMPLE = ("Most teams I talk to say they want faster decisions. What they mean is fewer meetings about the same spreadsheet. "
           "We rebuilt our weekly review around one page and one owner, and the arguments about whose numbers were right disappeared.")
@@ -27,65 +28,51 @@ FORM = {
 @pytest.fixture
 async def client(db):
     set_gateway(LLMGateway())
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+    async with client_for(app) as c:
         yield c
 
 
-async def signup(client, email="alex@brightwave.example", name="Alex Rivera", password="correct horse battery"):
-    r = await client.post("/api/auth/signup", json={"name": name, "email": email, "password": password})
-    return r, ({"Authorization": f"Bearer {r.json()['token']}"} if r.status_code == 201 else None)
+async def signed_in_with_client(client, email="op@example.com", form=None) -> str:
+    await sign_in(client, email)
+    return await add_client(client, **(form or FORM))
 
 
-async def workspace(client, email="alex@brightwave.example", form=None):
-    r, h = await signup(client, email)
-    assert r.status_code == 201, r.text
-    r = await client.post("/api/tenants", json=form or FORM, headers=h)
-    assert r.status_code == 201, r.text
-    return r.json()["id"], {"Authorization": f"Bearer {r.json()['token']}"}
+async def count(db, tid, model) -> int:
+    with tenant_scope(tid):
+        async with db.reader() as s:
+            return (await s.execute(select(func.count(model.id)))).scalar_one()
 
 
-@pytest.mark.parametrize("payload,fragment", [
-    ({"name": "A", "email": "not-an-email", "password": "correct horse battery"}, "valid email"),
-    ({"name": "A", "email": "a@b.example", "password": "short"}, "10 characters"),
-    ({"name": "", "email": "a@b.example", "password": "correct horse battery"}, "name"),
+@pytest.mark.parametrize("patch,fragment", [
+    ({"company_name": ""}, "company_name"), ({"sample_1": "", "sample_2": ""}, "sample"),
+    ({"website": "not a site!"}, "website"), ({"posts_per_week": "2"}, "posts_per_week"),
+    ({"posts_per_week": "five"}, "posts_per_week"),
+    ({"leads_per_week_min": "30", "leads_per_week_max": "5"}, "maximum"),
 ])
-async def test_signup_validation(client, payload, fragment):
-    r = await client.post("/api/auth/signup", json=payload)
-    assert r.status_code == 422 and fragment in r.json()["detail"]
+async def test_client_form_validation_keeps_the_values(client, patch, fragment):
+    await sign_in(client)
+    r = await client.post("/clients/new", data={**FORM, **patch})
+    assert r.status_code == 422 and fragment in r.text, r.text[:400]
+    if patch.get("company_name") != "":
+        assert "Brightwave Labs" in r.text                       # what was typed is still in the form
 
 
-async def test_duplicate_email_and_invite_code(client, monkeypatch):
-    assert (await signup(client))[0].status_code == 201
-    r, _ = await signup(client)
-    assert r.status_code == 422 and "already exists" in r.json()["detail"]
-    monkeypatch.setattr(get_settings(), "signup_invite_code", "sesame")
-    assert (await signup(client, email="b@brightwave.example"))[0].status_code == 422
-    r = await client.post("/api/auth/signup", json={"name": "B", "email": "b@brightwave.example",
-                                                    "password": "correct horse battery", "invite_code": "sesame"})
-    assert r.status_code == 201
-
-
-async def test_new_workspace_starts_completely_empty(client, db):
-    tid, h = await workspace(client)
-    assert [t["name"] for t in (await client.get("/api/tenants", headers=h)).json()] == ["Brightwave Labs"]
-    k = (await client.get(f"/api/tenants/{tid}/kpis", headers=h)).json()
-    assert k["posts_pending"] == 0 and k["leads_latest_week"] == 0 and k["leads_total"] == 0 and k["calendar_weeks_planned"] == 0
+async def test_a_new_client_starts_completely_empty(client, db):
+    tid = await signed_in_with_client(client)
+    from app.services.kpis import tenant_kpis
+    k = await tenant_kpis(tid)
+    assert k["posts_pending"] == 0 and k["leads_total"] == 0 and k["calendar_weeks_planned"] == 0
     assert k["cost_total_usd"] == 0 and k["approval_rate"] is None
-    for path in ("posts", "leads", "runs", "calendar"):
-        assert (await client.get(f"/api/tenants/{tid}/{path}", headers=h)).json() == []
-    assert (await client.get(f"/api/tenants/{tid}/artifacts/content_strategy", headers=h)).status_code == 404
+    assert k["targets"] == {"posts_per_week": 5, "calendar_weeks": 8, "leads_per_week": [10, 20]}   # the client's own goals
     async with db.reader() as s:
         assert [t.is_demo for t in (await s.execute(select(Tenant))).scalars()] == [False]
-    # targets come from the founder's own goals, not global defaults
-    assert k["targets"] == {"posts_per_week": 5, "calendar_weeks": 8, "leads_per_week": [10, 20]}
 
 
 async def test_onboarding_persists_exactly_what_was_entered(client, db):
-    tid, h = await workspace(client)
-    prof = (await client.get(f"/api/tenants/{tid}/profile", headers=h)).json()
+    tid = await signed_in_with_client(client)
+    prof = await accounts.profile_as_form_values(tid)
     assert prof["company_name"] == "Brightwave Labs" and prof["website"] == "https://brightwave.example"
     assert prof["known_competitors"].splitlines() == ["OtherCo | https://otherco.example", "ThirdCo"]
-    assert "do_not_contact" not in prof and "disclaimer_text" not in prof     # removed from onboarding
     assert prof["sample_1"] == SAMPLE and prof["sample_3"] == "" and prof["posts_per_week"] == 5
     with tenant_scope(tid):
         async with db.reader() as s:
@@ -94,111 +81,120 @@ async def test_onboarding_persists_exactly_what_was_entered(client, db):
 
 
 async def test_profile_edits_persist_and_are_audited(client, db):
-    tid, h = await workspace(client)
-    edited = {**FORM, "primary_goal": "Pipeline from CTOs", "posts_per_week": "6", "leads_per_week_min": "12",
-              "sample_3": SAMPLE.replace("meetings", "standups"), "banned_phrases": "synergy\nleverage"}
-    assert (await client.put(f"/api/tenants/{tid}/profile", json=edited, headers=h)).status_code == 200
-    prof = (await client.get(f"/api/tenants/{tid}/profile", headers=h)).json()
+    tid = await signed_in_with_client(client)
+    edited = {**FORM, "primary_goal": "Pipeline from CTOs", "posts_per_week": "6", "sample_3": SAMPLE.replace("meetings", "standups"),
+              "banned_phrases": "synergy\nleverage", "company_name": "Brightwave Systems"}
+    assert (await client.post(f"/ui/{tid}/settings", data=edited)).status_code == 303
+    prof = await accounts.profile_as_form_values(tid)
     assert prof["primary_goal"] == "Pipeline from CTOs" and prof["posts_per_week"] == 6 and "standups" in prof["sample_3"]
     assert prof["banned_phrases"].splitlines() == ["synergy", "leverage"]
-    assert (await client.get(f"/api/tenants/{tid}/kpis", headers=h)).json()["targets"]["posts_per_week"] == 6
+    assert "Brightwave Systems" in (await client.get(f"/portal/{tid}?tab=settings")).text
     with tenant_scope(tid):
         async with db.reader() as s:
             actions = [a.action for a in (await s.execute(select(AuditLog))).scalars()]
     assert "profile.updated" in actions and "tenant.onboarded" in actions
 
 
-async def test_invalid_edit_is_rejected_and_changes_nothing(client):
-    tid, h = await workspace(client)
-    r = await client.put(f"/api/tenants/{tid}/profile", json={**FORM, "sample_2": "too short", "company_name": "Hacked"}, headers=h)
-    assert r.status_code == 422
-    assert (await client.get(f"/api/tenants/{tid}/profile", headers=h)).json()["company_name"] == "Brightwave Labs"
+async def test_an_invalid_edit_changes_nothing(client):
+    tid = await signed_in_with_client(client)
+    bad = await client.post(f"/ui/{tid}/settings", data={**FORM, "sample_2": "too short", "company_name": "Hacked"})
+    assert bad.status_code == 422 and "Not saved" in bad.text
+    assert (await accounts.profile_as_form_values(tid))["company_name"] == "Brightwave Labs"
 
 
-@pytest.mark.parametrize("patch,fragment", [
-    ({"company_name": ""}, "company_name"), ({"sample_1": "", "sample_2": ""}, "sample"),
-    ({"website": "not a site!"}, "website"), ({"posts_per_week": "2"}, "posts_per_week"),
-    ({"leads_per_week_min": "30", "leads_per_week_max": "5"}, "maximum"),
-])
-async def test_onboarding_validation(client, patch, fragment):
-    _, h = await signup(client)
-    r = await client.post("/api/tenants", json={**FORM, **patch}, headers=h)
-    assert r.status_code == 422 and fragment in r.text, r.text
+async def test_one_account_runs_several_clients_and_home_follows_the_count(client):
+    await sign_in(client)
+    r = await client.get("/")
+    assert r.status_code == 303 and r.headers["location"] == "/clients"            # no clients: the clients page
+    assert "No clients yet" in (await client.get("/clients")).text
+    a = await add_client(client)
+    r = await client.get("/")
+    assert r.headers["location"] == f"/portal/{a}"                                 # one client: straight to it
+    b = await add_client(client, company_name="Second Co", founder_name="Sam Lee")
+    assert (await client.get("/")).headers["location"] == "/clients"               # several: choose
+    page = (await client.get("/clients")).text
+    assert "Brightwave Analytics" in page and "Second Co" in page and a != b
 
 
-async def test_one_workspace_per_founder(client):
-    tid, h = await workspace(client)
-    r = await client.post("/api/tenants", json=FORM, headers=h)
-    assert r.status_code == 422 and "already have a workspace" in r.text
+async def test_deleting_a_client_removes_everything_made_for_it(client, db):
+    from app.agents.orchestrator.engine import Orchestrator, set_orchestrator
+    from app.fixtures.seed import seed
+    set_orchestrator(orch := Orchestrator())
+    ids = await seed(db, clients=None)
+    tid = ids["ledgerloop"]
+    rid = await orch.create_run(tid, "discovery", {"start_date": "2026-11-02", "auto_approve_gates": True})
+    assert await orch.execute(tid, rid) == "succeeded"
+    keep = ids["shiftwise"]
+    before_other = await count(db, keep, KnowledgeDoc)
+    await sign_in(client, "operator@growthos.example")
+    assert (await client.post(f"/ui/{tid}/delete", data={"confirm": "wrong name"})).status_code == 303
+    async with db.reader() as s:
+        assert await s.get(Tenant, tid) is not None                              # wrong confirmation: nothing deleted
+    r = await client.post(f"/ui/{tid}/delete", data={"confirm": "LedgerLoop"})
+    assert r.status_code == 303 and r.headers["location"] == "/clients"
+    async with db.reader() as s:
+        assert await s.get(Tenant, tid) is None
+    for name in TENANT_TABLES:
+        model = next(c for c in Base.__subclasses__() if getattr(c, "__tablename__", None) == name)
+        assert await count(db, tid, model) == 0, name
+    assert await count(db, keep, KnowledgeDoc) == before_other                    # the other client is untouched
+    assert (await client.get(f"/portal/{tid}")).status_code == 404
 
 
-async def test_two_founders_cannot_see_each_other(client):
-    a, ha = await workspace(client, "a@one.example")
-    b, hb = await workspace(client, "b@two.example", {**FORM, "company_name": "Second Co"})
-    assert a != b
-    for path in ("kpis", "posts", "leads", "runs", "calendar", "profile"):
-        assert (await client.get(f"/api/tenants/{a}/{path}", headers=hb)).status_code == 404, path
-        assert (await client.get(f"/api/tenants/{b}/{path}", headers=ha)).status_code == 404, path
-    assert (await client.put(f"/api/tenants/{a}/profile", json=FORM, headers=hb)).status_code == 404
-    assert (await client.post(f"/api/tenants/{a}/runs", json={"kind": "discovery"}, headers=hb)).status_code == 404
+async def test_closing_the_account_deletes_it_and_signs_out(client, db):
+    tid = await signed_in_with_client(client, "leaving@example.com")
+    assert (await client.post("/account/delete", data={"confirm": "someone@else.com"})).status_code == 303
+    async with db.reader() as s:
+        assert (await s.execute(select(func.count(User.id)))).scalar_one() == 1
+    r = await client.post("/account/delete", data={"confirm": "Leaving@Example.com"})
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+    async with db.reader() as s:
+        assert (await s.execute(select(func.count(User.id)))).scalar_one() == 0
+        assert await s.get(Tenant, tid) is None
+    assert (await client.get("/clients")).headers["location"] == "/login"
 
 
-async def test_login_is_rate_limited(client):
-    await signup(client)
-    for _ in range(8):
-        assert (await client.post("/api/auth/login", json={"email": "alex@brightwave.example", "password": "wrong"})).status_code == 401
-    r = await client.post("/api/auth/login", json={"email": "alex@brightwave.example", "password": "correct horse battery"})
-    assert r.status_code == 429 and "Retry-After" in r.headers
+async def test_monthly_cap_is_validated_and_saved(client, db):
+    await sign_in(client)
+    for bad in ("lots", "-3", "20000"):
+        r = await client.post("/account/cap", data={"cap": bad})
+        assert r.status_code == 303 and "gx_flash" in r.headers.get("set-cookie", "")
+    await client.post("/account/cap", data={"cap": "$7.5"})
+    async with db.reader() as s:
+        assert (await s.execute(select(User.monthly_cap_usd))).scalar_one() == 7.5
+    await client.post("/account/cap", data={"cap": ""})
+    async with db.reader() as s:
+        assert (await s.execute(select(User.monthly_cap_usd))).scalar_one() is None
+    page = await client.get("/account")
+    assert page.status_code == 200 and page.headers["cache-control"] == "no-store"
 
 
-async def test_signup_is_rate_limited(client):
-    for i in range(5):
-        assert (await signup(client, email=f"u{i}@x.example"))[0].status_code == 201
-    assert (await signup(client, email="u9@x.example"))[0].status_code == 429
-
-
-# ---- the browser flow, as a founder would walk it -------------------------------------------------------------------
-async def test_ui_signup_to_empty_dashboard(client):
-    assert "Create your workspace" in (await client.get("/signup")).text
-    r = await client.post("/signup", data={"name": "Alex Rivera", "email": "alex@brightwave.example", "password": "correct horse battery"})
-    assert r.status_code == 303 and r.headers["location"] == "/onboarding"
-    client.cookies.set("growthos_token", r.cookies["growthos_token"])
-    page = (await client.get("/onboarding")).text
-    assert "Company" in page and "Your voice" in page and "Brand rules" in page and "Goals" in page
-    bad = await client.post("/onboarding", data={**FORM, "sample_1": "", "sample_2": ""})
-    assert bad.status_code == 422 and "Brightwave Labs" in bad.text          # form values kept on error
-    ok = await client.post("/onboarding", data=FORM)
-    assert ok.status_code == 303 and ok.headers["location"].startswith("/portal/")
-    client.cookies.set("growthos_token", ok.cookies["growthos_token"])
-    home = await client.get(ok.headers["location"])
-    assert home.status_code == 200 and "Getting set up" in home.text and "Start research" in home.text
+# ---- the browser flow, as the operator walks it ---------------------------------------------------------------------
+async def test_the_operator_journey_from_sign_in_to_an_empty_workspace(client):
+    login = await client.get("/login")
+    assert login.status_code == 200 and "Continue with Google" in login.text and "password" not in login.text.lower()
+    assert "/termsofservice" in login.text and "/login/policy" in login.text
+    await sign_in(client, "alex@example.com", "Alex Rivera")
+    page = (await client.get("/clients/new")).text
+    assert "Company" in page and "voice" in page.lower() and "Goals" in page
+    tid = await add_client(client, **FORM)
+    home = await client.get(f"/portal/{tid}")
+    assert home.status_code == 200 and "Start research" in home.text and "Brightwave Labs" in home.text
     for forbidden in ("LedgerLoop", "ShiftWise", "synthetic", "DEMO MODE"):
         assert forbidden not in home.text
     for tab, empty_title in (("content", "Nothing to review yet"), ("calendar", "No calendar yet"), ("leads", "No leads yet"),
-                             ("research", "No research yet"), ("activity", "Nothing has run yet")):
-        t = await client.get(f"{ok.headers['location']}?tab={tab}")
+                             ("research", "No research yet"), ("activity", "Nothing has run yet"), ("settings", "Delete this client")):
+        t = await client.get(f"/portal/{tid}?tab={tab}")
         assert t.status_code == 200 and empty_title in t.text, tab
-
-
-async def test_ui_settings_roundtrip(client):
-    tid, h = await workspace(client)
-    login = await client.post("/login", data={"email": "alex@brightwave.example", "password": "correct horse battery"})
-    client.cookies.set("growthos_token", login.cookies["growthos_token"])
-    page = await client.get(f"/portal/{tid}?tab=settings")
-    assert "Brightwave Labs" in page.text and "Inbound demo requests" in page.text
-    r = await client.post(f"/ui/{tid}/settings", data={**FORM, "company_name": "Brightwave Systems"})
-    assert r.status_code == 303
-    assert "Brightwave Systems" in (await client.get(f"/portal/{tid}?tab=settings")).text
-    bad = await client.post(f"/ui/{tid}/settings", data={**FORM, "sample_1": "x"})
-    assert bad.status_code == 422 and "Not saved" in bad.text
+    assert (await client.get("/account")).status_code == 200
 
 
 async def test_starting_research_without_an_ai_key_is_an_honest_error_not_mock_output(client, db):
-    from app.core.config import ConfigError
-    tid, h = await workspace(client)
-    set_gateway(LLMGateway(Settings(app_env="production", llm_mode="auto", groq_api_key="", jwt_secret="x" * 40)))
-    r = await client.post(f"/api/tenants/{tid}/runs", json={"kind": "discovery"}, headers=h)
-    assert r.status_code == 424
-    body = r.json()
-    assert body["code"] == "not_configured" and "GROQ_API_KEY" in body["recovery"]
-    assert (await client.get(f"/api/tenants/{tid}/runs", headers=h)).json() == []     # nothing was started or faked
+    tid = await signed_in_with_client(client)
+    set_gateway(LLMGateway(Settings(_env_file=None, app_env="production", llm_mode="auto", groq_api_key="", jwt_secret="x" * 40)))
+    r = await client.post(f"/ui/{tid}/runs", data={"kind": "discovery"})
+    assert r.status_code == 303 and "gx_flash" in r.headers["set-cookie"]
+    page = await client.get(r.headers["location"])
+    assert "No AI provider" in page.text
+    from app.services import queries
+    assert await queries.runs(tid) == []                                            # nothing was started or faked

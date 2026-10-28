@@ -1,4 +1,4 @@
-"""Seed the dev database: 12 clients, agency + client users, intake, founder samples, suppression lists.
+"""Seed the dev database: one demo operator owning 12 fictional clients, with intake, samples and suppression lists.
 
 Usage: python -m app.fixtures.seed [--reset]
 """
@@ -9,41 +9,38 @@ import asyncio
 
 from sqlalchemy import select
 
-from app.fixtures.clients import CLIENTS, DEMO_PASSWORD, USERS
-from app.core.security import hash_password
+from app.fixtures.clients import CLIENTS, DEMO_OPERATOR
 from app.core.tenancy import tenant_scope
 from app.db.audit import audit
-from app.db.models import ClientProfile, KnowledgeDoc, Membership, SuppressionEntry, Tenant, User
+from app.db.models import ClientProfile, KnowledgeDoc, SuppressionEntry, Tenant, User
 from app.db.session import Database, get_db
 
 
-async def seed(db: Database | None = None, reset: bool = False, clients: list[dict] | None = None) -> dict[str, str]:
+async def seed(db: Database | None = None, reset: bool = False, clients: list[dict] | None = None,
+               owner: dict | None = None) -> dict[str, str]:
     db = db or get_db()
     if reset:
         await db.drop_all()
     await db.create_all()
+    if clients is None and owner is None:          # the default demo world is created once
+        async with db.reader() as s:
+            if (await s.execute(select(Tenant.id).limit(1))).first():
+                rows = (await s.execute(select(Tenant.slug, Tenant.id))).all()
+                return {slug: tid for slug, tid in rows}
     clients = clients or CLIENTS
-    async with db.reader() as s:
-        if (await s.execute(select(Tenant.id).limit(1))).first():
-            rows = (await s.execute(select(Tenant.slug, Tenant.id))).all()
-            return {slug: tid for slug, tid in rows}
 
+    owner = owner or DEMO_OPERATOR
     slug_to_id: dict[str, str] = {}
     async with db.session() as s:
+        user = User(google_sub="test:" + owner["email"], email=owner["email"], name=owner["name"])
+        s.add(user)
+        await s.flush()
         for c in clients:
-            t = Tenant(slug=c["slug"], name=c["name"], industry=c["industry"], founder_name=c["founder_name"],
-                       status="active", is_demo=True)
+            t = Tenant(owner_user_id=user.id, slug=c["slug"], name=c["name"], industry=c["industry"],
+                       founder_name=c["founder_name"], status="active", is_demo=True)
             s.add(t)
             await s.flush()
             slug_to_id[c["slug"]] = t.id
-        pw = hash_password(DEMO_PASSWORD)
-        for u in USERS:
-            user = User(email=u["email"], name=u["name"], role=u["role"], password_hash=pw)
-            s.add(user)
-            await s.flush()
-            for slug in u["tenants"]:
-                if slug in slug_to_id:
-                    s.add(Membership(user_id=user.id, tenant_id=slug_to_id[slug]))
 
     for c in clients:
         tid = slug_to_id[c["slug"]]

@@ -2,6 +2,5 @@
 {% from "_macros.html" import empty %}
 {% block title %}{{ tenant.name }} · Growth OS{% endblock %}
 {% block content %}
-{% if tenant.kill_switch %}<div class="flash bad"><b>This workspace is paused.</b> Nothing will run or send until it is resumed.</div>{% endif %}
 {% include "portal/" ~ tab ~ ".html" %}
 {% endblock %}

@@ -15,7 +15,7 @@ from app.db.models import (Artifact, CalendarSlot, Feedback, GuardrailIncident, 
 from app.guardrails.state import IllegalTransition
 from app.llm.gateway import LLMGateway, set_gateway
 from app.fixtures.seed import seed
-from tests.helpers import FakeGoogle, connect_fake_gmail, make_sendable
+from tests.helpers import make_sendable, weekly
 from app.services import approvals
 from app.services.kpis import tenant_kpis
 
@@ -41,7 +41,7 @@ async def rows(db, tid, model, *where):
 
 
 def owner(tid):
-    return Principal("u-owner", "Founder", "client_owner", frozenset({tid}))
+    return Principal("u-owner", "Founder", tenant_ids=frozenset({tid}))
 
 
 async def test_discovery_builds_strategy_and_8_week_calendar(world):
@@ -92,8 +92,7 @@ async def test_weekly_cycles_hit_targets_and_filter_adversarial_leads(world):
     tid = ids["ledgerloop"]
     await discover(orch, tid, auto_approve_gates=True)
     for _ in range(4):
-        rid = await orch.create_run(tid, "weekly", {})
-        assert await orch.execute(tid, rid) == "succeeded"
+        assert await weekly(orch, tid) == ("succeeded", "succeeded")
 
     k = await tenant_kpis(tid)
     assert all(n >= s.posts_per_week_target for n in k["posts_per_week"].values()) and len(k["posts_per_week"]) == 4
@@ -126,7 +125,7 @@ async def test_writer_critic_loop_and_guard_autofix(world):
     tid = ids["ledgerloop"]
     await discover(orch, tid, auto_approve_gates=True)
     for _ in range(3):
-        await orch.execute(tid, await orch.create_run(tid, "weekly", {}))
+        await weekly(orch, tid)
     posts = await rows(db, tid, Post)
     assert any(p.rounds > 1 for p in posts)  # critic sent drafts back
     assert all(p.critic_score >= get_settings().critic_pass_score for p in posts if p.status == "pending_approval")
@@ -137,18 +136,13 @@ async def test_approval_flow_rbac_and_learning(world):
     db, ids, orch = world
     tid = ids["ledgerloop"]
     await discover(orch, tid, auto_approve_gates=True)
-    await orch.execute(tid, await orch.create_run(tid, "weekly", {}))
+    await weekly(orch, tid)
     posts = await rows(db, tid, Post, Post.status == "pending_approval")
-    am = Principal("u-am", "AM", "account_manager", frozenset({tid}))
-    viewer = Principal("u-v", "Viewer", "client_viewer", frozenset({tid}))
-    stranger = Principal("u-x", "Other founder", "client_owner", frozenset({ids["shiftwise"]}))
-
+    stranger = Principal("u-x", "Another account", tenant_ids=frozenset({ids["shiftwise"]}))
     with pytest.raises(ForbiddenError):
-        await approvals.decide_post(am, tid, posts[0].id, "approve")       # only the founder approves
+        await approvals.decide_post(stranger, tid, posts[0].id, "approve")  # not this account's client
     with pytest.raises(ForbiddenError):
-        await approvals.decide_post(viewer, tid, posts[0].id, "edit", "x")
-    with pytest.raises(ForbiddenError):
-        await approvals.decide_post(stranger, tid, posts[0].id, "approve")  # other tenant
+        await approvals.decide_post(stranger, tid, posts[0].id, "edit", "x")
 
     edited = posts[0].text.split("\n\n")[0] + "\n\nShorter, punchier version written by the founder herself. " * 6
     p = await approvals.decide_post(owner(tid), tid, posts[0].id, "approve", text=edited)
@@ -165,7 +159,7 @@ async def test_approval_flow_rbac_and_learning(world):
         await approvals.decide_post(owner(tid), tid, posts[4].id, "edit", text=posts[4].text + " Ask ShiftWise.")
 
     # next weekly cycle learns from the edits
-    await orch.execute(tid, await orch.create_run(tid, "weekly", {}))
+    await weekly(orch, tid)
     voice = sorted(await rows(db, tid, Artifact, Artifact.kind == "voice_profile"), key=lambda a: a.version)[-1]
     assert voice.version >= 2 and voice.data["learned_rules"]
     assert all(f.consumed for f in await rows(db, tid, Feedback))
@@ -175,38 +169,43 @@ async def test_approval_flow_rbac_and_learning(world):
     scheduled = await rows(db, tid, Post, Post.status == "scheduled")
     assert scheduled
     with pytest.raises(ForbiddenError):
-        await approvals.mark_posted(am, tid, scheduled[0].id)          # only the founder confirms a post went out
+        await approvals.mark_posted(stranger, tid, scheduled[0].id)    # only the owning account confirms a post went out
     assert (await approvals.mark_posted(owner(tid), tid, scheduled[0].id)).status == "published"
     with pytest.raises(IllegalTransition):
         await approvals.mark_posted(owner(tid), tid, scheduled[0].id)  # cannot be marked twice
 
 
-async def test_send_gate(world):
+async def test_outreach_is_approved_then_sent_by_the_operator(world):
+    """Nothing is sent by the system: approve, send it yourself (Gmail link or copy), then mark it sent."""
     db, ids, orch = world
     tid = ids["ledgerloop"]
     await discover(orch, tid, auto_approve_gates=True)
-    await orch.execute(tid, await orch.create_run(tid, "weekly", {}))
+    await weekly(orch, tid)
     msgs = await rows(db, tid, OutreachMessage, OutreachMessage.status == "pending_approval")
-    google = FakeGoogle().install()
-    await connect_fake_gmail(db, tid)
-    with pytest.raises(ForbiddenError):
-        await approvals.send_outreach(owner(tid), tid, msgs[0].id)  # not approved yet
+    with pytest.raises(IllegalTransition):
+        await approvals.mark_sent(owner(tid), tid, msgs[0].id)          # not approved yet
     await approvals.decide_outreach(owner(tid), tid, msgs[0].id, "approve")
-    with pytest.raises(ForbiddenError, match="synthetic"):
-        await approvals.send_outreach(owner(tid), tid, msgs[0].id)  # fixture leads can never be emailed
+    with pytest.raises(approvals.SendRefused, match="synthetic"):
+        await approvals.mark_sent(owner(tid), tid, msgs[0].id)          # fixture leads must never be contacted
     await make_sendable(db, tid)
-    sent = await approvals.send_outreach(owner(tid), tid, msgs[0].id)
-    assert sent.status == "sent" and sent.sent_at and sent.external_id == "gmail-1"
-    assert len(google.sent) == 1                                      # exactly one Gmail call
-    with pytest.raises(ForbiddenError):
-        await approvals.send_outreach(owner(tid), tid, msgs[0].id)    # cannot be sent twice
-    assert len(google.sent) == 1
+    sent = await approvals.mark_sent(owner(tid), tid, msgs[0].id)
+    assert sent.status == "sent" and sent.sent_at
+    with pytest.raises(IllegalTransition):
+        await approvals.mark_sent(owner(tid), tid, msgs[0].id)          # cannot be marked twice
+    lead = (await rows(db, tid, Lead, Lead.id == sent.lead_id))[0]
+    assert lead.status == "contacted"
+    from app.db.models import AuditLog
+    assert "outreach.marked_sent" in {a.action for a in await rows(db, tid, AuditLog)}
 
+    # someone who opted out after approval is still protected
     await approvals.decide_outreach(owner(tid), tid, msgs[1].id, "approve")
-    async with db.session() as s:
-        (await s.get(Tenant, tid)).kill_switch = True
-    with pytest.raises(ForbiddenError):
-        await approvals.send_outreach(owner(tid), tid, msgs[1].id)
+    other = (await rows(db, tid, Lead, Lead.id == msgs[1].lead_id))[0]
+    from app.db.models import SuppressionEntry
+    with tenant_scope(tid):
+        async with db.session() as s:
+            s.add(SuppressionEntry(kind="company", value=other.company, reason="opted out"))
+    with pytest.raises(approvals.SendRefused, match="do-not-contact"):
+        await approvals.mark_sent(owner(tid), tid, msgs[1].id)
 
 
 async def test_resume_after_crash_skips_finished_nodes(world):

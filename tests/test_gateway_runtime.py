@@ -1,13 +1,15 @@
 import json
 
 import pytest
+
+from tests.helpers import bare_tenants
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.agents.runtime.loop import AgentContext, AgentError, Tool, run_agent, structured
 from app.core.tenancy import tenant_scope
 from app.db.models import LLMCall, Tenant, TraceEvent
-from app.llm.gateway import LLMGateway, TenantPaused, set_gateway
+from app.llm.gateway import LLMGateway, set_gateway
 from app.llm.providers import MOCK_RESPONDERS, MockConfig
 from app.llm.types import Budget, BudgetExceeded, CallContext, LLMRequest
 
@@ -19,8 +21,7 @@ class Out(BaseModel):
 
 @pytest.fixture
 async def tenant(db):
-    async with db.session() as s:
-        s.add(Tenant(id="t1", slug="t1", name="T1", monthly_budget_usd=5.0))
+    await bare_tenants(db, "t1")
     return "t1"
 
 
@@ -77,18 +78,15 @@ async def test_run_budget_stops_calls(db, tenant):
         await structured("t_echo", "big", "sys", "user", Out, ctx(tenant, budget=budget))
 
 
-async def test_tenant_monthly_budget_and_kill_switch(db, tenant):
+async def test_the_accounts_own_monthly_cap_stops_calls(db, tenant):
     set_gateway(gw := LLMGateway())
     MOCK_RESPONDERS["t_echo"] = lambda req: {"content": {"answer": "hi", "score": 3}}
+    await structured("t_echo", "big", "sys", "user", Out, ctx(tenant))        # no cap set: allowed
+    from app.db.models import User
     async with db.session() as s:
-        (await s.get(Tenant, tenant)).kill_switch = True
-    with pytest.raises(TenantPaused):
-        await structured("t_echo", "big", "sys", "user", Out, ctx(tenant))
-    async with db.session() as s:
-        t = await s.get(Tenant, tenant)
-        t.kill_switch, t.monthly_budget_usd = False, 0.0
-    gw._tenants.clear()
-    with pytest.raises(BudgetExceeded):
+        (await s.get(User, "u-test")).monthly_cap_usd = 0.0
+    gw._accounts.clear()
+    with pytest.raises(BudgetExceeded, match="monthly AI spend cap"):
         await structured("t_echo", "big", "sys", "user", Out, ctx(tenant))
 
 

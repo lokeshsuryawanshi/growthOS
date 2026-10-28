@@ -1,10 +1,10 @@
 {% from "_icons.html" import icon %}
 <div class="pagehead">
-  <div><h1>Good to see you, {{ me.name.split(' ')[0] }}</h1><div class="sub">{{ tenant.name }} · {{ tenant.industry }}</div></div>
+  <div><h1>{{ tenant.name }}</h1><div class="sub">{{ tenant.founder_name }}{{ ' · ' if tenant.founder_name and tenant.industry }}{{ tenant.industry }}</div></div>
 </div>
 {% set st = ws %}
 <section class="panel stack">
-  <div class="row"><h2>Getting set up</h2><span class="spacer"></span><span class="pill {{ 'ok' if st.done_count == st.steps | length else 'accent' }}">{{ st.done_count }} of {{ st.steps | length }} done</span></div>
+  <div class="row"><h2>Where this client is</h2><span class="spacer"></span><span class="pill {{ 'ok' if st.done_count == st.steps | length else 'accent' }}">{{ st.done_count }} of {{ st.steps | length }} done</span></div>
   <div class="checklist">
     {% for s in st.steps %}
     <div class="check {{ 'todo' if s.state == 'todo' }}">
@@ -19,5 +19,5 @@
 </section>
 {% include "partials/kpis.html" %}
 {% if k.leads_total == 0 and k.posts_pending == 0 and k.posts_approved_total == 0 %}
-<div class="flash"><div>Your numbers appear here once your first posts and leads have been generated. Targets: <b>{{ k.targets.posts_per_week }}+ posts/week</b>, <b>{{ k.targets.calendar_weeks }} weeks</b> planned ahead, <b>{{ k.targets.leads_per_week[0] }}–{{ k.targets.leads_per_week[1] }} leads/week</b>.</div></div>
+<div class="flash"><div>The numbers appear here once the first posts and leads have been generated. Targets: <b>{{ k.targets.posts_per_week }}+ posts/week</b>, <b>{{ k.targets.calendar_weeks }} weeks</b> planned ahead, <b>{{ k.targets.leads_per_week[0] }}–{{ k.targets.leads_per_week[1] }} leads/week</b>.</div></div>
 {% endif %}

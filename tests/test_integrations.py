@@ -5,12 +5,11 @@ import httpx
 import pytest
 
 from app.core.config import get_settings
-from app.integrations import gmail, http
+from app.integrations import http
 from app.integrations.errors import (AUTH_FAILED, BLOCKED, NOT_CONFIGURED, QUOTA, UNAVAILABLE, IntegrationError)
 from app.integrations.fetch import fetch_page, html_to_text
 from app.integrations.hunter import Contact, HunterClient, best_contact, clean_domain
 from app.integrations.search import WebSearch
-from tests.helpers import FakeGoogle, connect_fake_gmail
 
 
 def transport(fn):
@@ -160,69 +159,6 @@ def test_html_to_text_title():
     assert html_to_text("<title> Hi </title><p>text here</p>")[0] == "Hi"
 
 
-# ------------------------------------------------------------------ Gmail OAuth + send
-async def test_authorize_url_requests_send_only_scope_and_signed_state(db):
-    from urllib.parse import parse_qs, urlparse
-    url = gmail.authorize_url("t-1", "u-1")
-    q = parse_qs(urlparse(url).query)
-    assert q["scope"][0].split()[0].endswith("gmail.send") and "gmail.readonly" not in q["scope"][0]
-    assert q["access_type"] == ["offline"] and q["redirect_uri"][0].endswith("/oauth/google/callback")
-    st = gmail.read_state(q["state"][0])
-    assert (st["tid"], st["uid"]) == ("t-1", "u-1")
-    with pytest.raises(IntegrationError):
-        gmail.read_state(q["state"][0][:-3] + "abc")                       # tampered state is rejected
-
-
-async def test_connect_stores_encrypted_refresh_token(db):
-    from app.core.tenancy import tenant_scope
-    from app.db.models import IntegrationCredential, Tenant
-    from sqlalchemy import select
-    async with db.session() as s:
-        s.add(Tenant(id="t1", slug="t1", name="T1"))
-    FakeGoogle().install()
-    email = await gmail.complete_connection("t1", "u1", "auth-code")
-    assert email == "founder@example.com"
-    with tenant_scope("t1"):
-        async with db.reader() as s:
-            cred = (await s.execute(select(IntegrationCredential))).scalars().one()
-    assert "rt-456" not in cred.secret_enc and cred.status == "connected"  # never stored in plaintext
-
-
-async def test_send_email_builds_a_real_message_and_returns_the_gmail_id(db):
-    from app.db.models import Tenant
-    async with db.session() as s:
-        s.add(Tenant(id="t1", slug="t1", name="T1"))
-    g = FakeGoogle().install()
-    await connect_fake_gmail(db, "t1")
-    gid = await gmail.send_email("t1", "pat@acme.com", "Hello", "Body text")
-    assert gid == "gmail-1"
-    import base64
-    raw = base64.urlsafe_b64decode(g.sent[0]["raw"]).decode()
-    assert "To: pat@acme.com" in raw and "Subject: Hello" in raw and "Body text" in raw
-
-
-async def test_revoked_grant_marks_the_connection_and_tells_the_user_to_reconnect(db):
-    from app.db.models import Tenant
-    async with db.session() as s:
-        s.add(Tenant(id="t1", slug="t1", name="T1"))
-    FakeGoogle(token_error="invalid_grant").install()
-    await connect_fake_gmail(db, "t1")
-    with pytest.raises(IntegrationError) as e:
-        await gmail.send_email("t1", "a@b.com", "s", "b")
-    assert e.value.code == AUTH_FAILED and "Reconnect" in e.value.recovery
-    assert (await gmail.connection("t1")).status == "revoked"
-    with pytest.raises(IntegrationError) as e2:                            # and it refuses to try again until reconnected
-        await gmail.send_email("t1", "a@b.com", "s", "b")
-    assert e2.value.code == NOT_CONFIGURED
-
-
-async def test_gmail_not_configured_on_server(monkeypatch):
-    monkeypatch.setattr(get_settings(), "google_oauth_client_id", "")
-    with pytest.raises(IntegrationError) as e:
-        gmail.authorize_url("t", "u")
-    assert e.value.code == NOT_CONFIGURED and "GOOGLE_OAUTH_CLIENT_ID" in e.value.recovery
-
-
 def test_search_queries_are_reduced_to_plain_words():
     from app.integrations.search import clean_query
     assert clean_query('"student housing" "new lease" site:linkedin.com') == "student housing new lease"
@@ -239,7 +175,7 @@ async def test_an_empty_result_is_an_answer_not_an_outage(monkeypatch):
 
 
 def test_any_encryption_key_value_works_and_round_trips(monkeypatch):
-    """Regression: a non-Fernet ENCRYPTION_KEY (e.g. a passphrase) crashed Gmail connect with ValueError."""
+    """Regression: a non-Fernet ENCRYPTION_KEY (e.g. a passphrase) used to crash with ValueError."""
     from app.integrations.crypto import decrypt, encrypt
     for key in ("not-a-fernet-key-just-words", "", "q0x6pUm8wuh9cUQBF1uqnrLKF0UQiS2Mfeg2rKeVc0s="):
         monkeypatch.setattr(get_settings(), "encryption_key", key)

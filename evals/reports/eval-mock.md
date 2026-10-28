@@ -20,7 +20,7 @@ Misses:
 | Area | Metric | Value |
 |---|---|---|
 | Factual accuracy | Delivered drafts with a figure not backed by a verbatim source quote | 0 |
-| Factual accuracy | Delivered drafts that use figures (each checked) | 17 |
+| Factual accuracy | Delivered drafts that use figures (each checked) | 18 |
 | Factual accuracy | Research claims kept as verified / flagged unverified | 21 / 1 |
 | Factual accuracy | Research figures labelled outdated (3+ years old) | 2 |
 | Brand voice | Drafts using a banned phrase (global or the client's own) | 0 |
@@ -40,38 +40,30 @@ Misses:
 | Lead screening | Good prospects wrongly screened out | 0 |
 
 
-## RBAC and tenant isolation
+## Account isolation
 
 | Metric | Value |
 |---|---|
-| Matrix checks (role x action x endpoint, API and UI) | 315 |
-| Matrix pass rate | 1.0 |
-| Cross-tenant access violations | 0 |
-| Privilege escalation attempts / successes | 14 / 0 |
+| Client routes found in the app (all are tested) | 12 |
+| Checks (other account, signed out, forged/expired/stale sessions, page leaks) | 50 |
+| Cross-account access violations | 0 |
+| Session escalations | 0 |
+| Another account's data shown on a page | 0 |
+| Mutation test: deliberate breaks noticed | 4 of 4 |
 
-Escalation attempts (all must fail):
+Mutations (each must be caught):
 
-- founder creates a platform_admin: HTTP 403
-- founder promotes the viewer to platform_admin: HTTP 403
-- founder creates a account_manager: HTTP 403
-- founder promotes the viewer to account_manager: HTTP 403
-- viewer promotes themself to owner: HTTP 403
-- account manager creates an account manager: HTTP 403
-- account manager assigns themself a client: HTTP 403
-- founder adds a member to another workspace: HTTP 404
-- last owner demotes themself: HTTP 409
-- signup asks for the platform_admin role: HTTP 201
-- token forged with a guessed secret: HTTP 401
-- validly signed token for a user that does not exist: HTTP 401
-- deactivated user's old token: HTTP 401
-- removed member's old token: HTTP 401
+- route ownership check removed: caught (6 violations, 0 escalations, 0 leaks)
+- session signature and expiry not checked: caught (0 violations, 12 escalations, 0 leaks)
+- deleted accounts keep their sessions: caught (0 violations, 2 escalations, 0 leaks)
+- every account owns every client: caught (9 violations, 0 escalations, 0 leaks)
 
 ## Pipeline (per demo client)
 
 | Metric | ledgerloop | shiftwise |
 |---|---|---|
-| run_status | ['succeeded', 'succeeded', 'succeeded'] | ['succeeded', 'succeeded', 'succeeded'] |
-| seconds | 1.2 | 1.1 |
+| run_status | ['succeeded', 'succeeded', 'succeeded', 'succeeded', 'succeeded'] | ['succeeded', 'succeeded', 'succeeded', 'succeeded', 'succeeded'] |
+| seconds | 0.9 | 0.8 |
 | calendar_valid | 1 | 1 |
 | topics_unique | 1 | 1 |
 | posts | 10 | 10 |
@@ -79,7 +71,7 @@ Escalation attempts (all must fail):
 | posts_ready_rate | 1.0 | 1.0 |
 | avg_critic_score | 4.0 | 4.0 |
 | avg_critic_rounds | 1.4 | 1.5 |
-| guard_autofixes | 2 | 2 |
+| guard_autofixes | 1 | 1 |
 | pending_posts_with_violations | 0 | 0 |
 | leads | 40 | 40 |
 | leads_per_week | [20, 20] | [20, 20] |
@@ -90,7 +82,7 @@ Escalation attempts (all must fail):
 | outreach_drafts | 40 | 40 |
 | injection_pages_caught | 2 | 1 |
 | artifact_contamination | 0 | 0 |
-| llm_calls | 146 | 149 |
-| tokens | 146555 | 150792 |
-| cost_usd | 0.0257 | 0.0265 |
-| cost_per_client_cycle_usd | 0.0086 | 0.0088 |
+| llm_calls | 145 | 147 |
+| tokens | 145198 | 148911 |
+| cost_usd | 0.0256 | 0.0262 |
+| cost_per_client_cycle_usd | 0.0085 | 0.0087 |

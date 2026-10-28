@@ -1,15 +1,10 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon %}
-{% block title %}Set up your workspace · Growth OS{% endblock %}
-{% block content_bare %}
-<div style="max-width:880px;margin:0 auto;padding:32px 20px 80px;display:grid;gap:22px">
-  <div class="row"><a class="brand" href="/" style="color:var(--ink)"><span class="mark">{{ icon('bolt') }}</span>Growth OS</a><span class="spacer"></span><a href="/logout" class="sub">Sign out</a></div>
-  <div class="hero"><h2>Welcome{{ ', ' ~ me.name.split(' ')[0] if me.name else '' }}. Let's learn about your company.</h2>
-    <p class="sub">This takes about five minutes. Everything you enter here is what the agents work from. Nothing is pre-filled and nothing is made up.</p></div>
-  {% if error %}<div class="flash bad"><div><b>Please fix this:</b> {{ error }}</div></div>{% endif %}
-  <form method="post" action="/onboarding" class="panel stack" style="gap:22px">
-    {% set steps = true %}{% set submit_label = 'Create my workspace' %}
-    {% include "partials/profile_form.html" %}
-  </form>
-</div>
+{% block title %}Add a client · Growth OS{% endblock %}
+{% block content %}
+<div class="pagehead"><div><h1>Add a client</h1><div class="sub">About five minutes. This is everything the system works from for this founder. Nothing is pre-filled and nothing is made up.</div></div></div>
+{% if error %}<div class="flash bad"><div><b>Please fix this:</b> {{ error }}</div></div>{% endif %}
+<form method="post" action="/clients/new" class="panel stack" style="gap:22px">
+  {% set steps = true %}{% set submit_label = 'Add client' %}
+  {% include "partials/profile_form.html" %}
+</form>
 {% endblock %}

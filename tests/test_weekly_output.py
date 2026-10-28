@@ -25,7 +25,7 @@ async def world(db):
     ids = await seed(db)
     tid = ids["ledgerloop"]
     await orch.execute(tid, await orch.create_run(tid, "discovery", {"start_date": "2026-11-02", "auto_approve_gates": True}))
-    return db, tid, orch, Principal("u-owner", "Founder", "client_owner", frozenset({tid}))
+    return db, tid, orch, Principal("u-owner", "Founder", tenant_ids=frozenset({tid}))
 
 
 async def rows(db, tid, model, *where):

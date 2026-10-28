@@ -1,6 +1,6 @@
 """The single door to every model. Agents never hold a provider client.
 
-Per call: kill-switch + budget checks -> cache lookup -> route by tier through
+Per call: run budget + the account's monthly cap -> cache lookup -> route by tier through
 a fallback chain (circuit breaker, concurrency cap, retry with backoff that
 honours retry-after) -> cost accounting -> ledger row.
 """
@@ -19,7 +19,6 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import MODEL_PRICES, Settings, get_settings
 from app.core.tenancy import tenant_scope
-from app.db.audit import incident
 from app.db.models import LLMCache, LLMCall, Tenant
 from app.db.session import get_db
 from app.llm.providers import (
@@ -40,13 +39,11 @@ def price(model: str, prompt_tokens: int, completion_tokens: int) -> float:
 
 
 @dataclass
-class _TenantState:
+class _AccountState:
     month: str
     spent_usd: float
-    budget_usd: float
-    kill_switch: bool
+    cap_usd: float | None
     fetched_at: float
-    alerted: bool = False
 
 
 class LLMGateway:
@@ -67,9 +64,8 @@ class LLMGateway:
         self.limits = self.s.model_limits()
         self.buckets: dict[str, TokenBucket] = {m: TokenBucket(v["tpm"], v.get("rpm")) for m, v in self.limits.items()}
         self.exhausted_until: dict[str, float] = {}             # model -> monotonic time its daily quota frees up
-        self._tenants: dict[str, _TenantState] = {}
-        self._tenant_lock = asyncio.Lock()
-        self._global: tuple[str, float, float] | None = None   # (utc day, spend, fetched_at)
+        self._accounts: dict[str, _AccountState] = {}           # tenant id -> its owner's monthly spend and cap
+        self._account_lock = asyncio.Lock()
 
     # -- routing ---------------------------------------------------------------
     def route(self, tier: Tier) -> list[tuple[str, str]]:
@@ -106,39 +102,30 @@ class LLMGateway:
                     notes.append(f"spilled from {first} (~{waits[first]:.0f}s wait) to {best[1]}")
         return usable, notes
 
-    # -- tenant budget / kill switch ----------------------------------------------
-    async def _tenant_state(self, tenant_id: str) -> _TenantState:
+    # -- the operator's own monthly cap ---------------------------------------------
+    async def _account_state(self, tenant_id: str) -> _AccountState:
+        """This month's AI spend across every client of the account that owns `tenant_id`, and its optional cap."""
+        from app.core.tenancy import system_scope
+        from app.db.models import User
         month = datetime.now(timezone.utc).strftime("%Y-%m")
-        st = self._tenants.get(tenant_id)
+        st = self._accounts.get(tenant_id)
         if st and st.month == month and time.monotonic() - st.fetched_at < 15:
             return st
-        async with self._tenant_lock:
+        async with self._account_lock:
             month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             async with get_db().reader() as s:
                 tenant = await s.get(Tenant, tenant_id)
-                with tenant_scope(tenant_id):
+                if tenant is None:
+                    raise TenantPaused(f"unknown client {tenant_id}")
+                user = await s.get(User, tenant.owner_user_id)
+                owned = select(Tenant.id).where(Tenant.owner_user_id == tenant.owner_user_id)
+                with system_scope("gateway: the account's own monthly spend across its clients"):
                     spent = (await s.execute(select(func.coalesce(func.sum(LLMCall.cost_usd), 0.0))
-                                             .where(LLMCall.created_at >= month_start))).scalar_one()
-            if tenant is None:
-                raise TenantPaused(f"unknown tenant {tenant_id}")
-            alerted = bool(st and st.month == month and st.alerted)
-            st = _TenantState(month, float(spent), tenant.monthly_budget_usd, tenant.kill_switch, time.monotonic(), alerted)
-            self._tenants[tenant_id] = st
+                                             .where(LLMCall.created_at >= month_start, LLMCall.tenant_id.in_(owned))
+                                             )).scalar_one()
+            st = _AccountState(month, float(spent), user.monthly_cap_usd if user else None, time.monotonic())
+            self._accounts[tenant_id] = st
             return st
-
-    async def _global_spend(self) -> float:
-        """Service-wide spend today (UTC), so one open signup page cannot drain the provider account."""
-        from app.core.tenancy import system_scope
-        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        if self._global and self._global[0] == day and time.monotonic() - self._global[2] < 10:
-            return self._global[1]
-        start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        with system_scope("gateway: service-wide daily budget"):
-            async with get_db().reader() as s:
-                spent = float((await s.execute(select(func.coalesce(func.sum(LLMCall.cost_usd), 0.0))
-                                               .where(LLMCall.created_at >= start))).scalar_one())
-        self._global = (day, spent, time.monotonic())
-        return spent
 
     def require_configured(self) -> None:
         if self.mode == "unconfigured":
@@ -149,29 +136,17 @@ class LLMGateway:
         self.require_configured()
         if ctx.cancel is not None and ctx.cancel.is_set():
             raise BudgetExceeded("run cancelled")
-        if self.mode == "live" and await self._global_spend() >= self.s.global_daily_budget_usd:
-            raise BudgetExceeded(f"service-wide daily AI budget ${self.s.global_daily_budget_usd:.2f} reached; try again tomorrow")
-        st = await self._tenant_state(ctx.tenant_id)
-        if st.kill_switch:
-            raise TenantPaused("tenant kill switch is on")
-        if st.spent_usd >= st.budget_usd:
-            raise BudgetExceeded(f"tenant monthly budget ${st.budget_usd:.2f} exhausted")
+        st = await self._account_state(ctx.tenant_id)
+        if st.cap_usd is not None and st.spent_usd >= st.cap_usd:
+            raise BudgetExceeded(f"your monthly AI spend cap of ${st.cap_usd:.2f} is reached (change it under API keys)")
         if ctx.budget is not None:
             ctx.budget.check()
 
     async def _account(self, ctx: CallContext, cost: float) -> None:
         if ctx.budget is not None:
             ctx.budget.charge(cost)
-        st = self._tenants.get(ctx.tenant_id)
-        if st is None:
-            return
-        st.spent_usd += cost
-        if not st.alerted and st.spent_usd >= st.budget_usd * self.s.budget_alert_ratio:
-            st.alerted = True
-            with tenant_scope(ctx.tenant_id):
-                async with get_db().session() as s:
-                    incident(s, "cost", "budget_80pct", "medium",
-                             f"monthly LLM spend ${st.spent_usd:.2f} of ${st.budget_usd:.2f}", run_id=ctx.run_id)
+        if (st := self._accounts.get(ctx.tenant_id)) is not None:
+            st.spent_usd += cost
 
     # -- cache -------------------------------------------------------------------
     @staticmethod

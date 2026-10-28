@@ -1,55 +1,58 @@
-"""Server-rendered UI (Jinja + HTMX). Same RBAC, tenant checks and services as the JSON API."""
+"""Server-rendered UI (Jinja + HTMX). One operator account, its client profiles, and the work done for each client.
+
+Every client route starts with tenant_or_404: the client must belong to the signed-in account, otherwise 404.
+"""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import jwt
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from datetime import datetime, timedelta, timezone
-
 from sqlalchemy import select
 
 from app.agents.blackboard import intake_of
-from app.agents.orchestrator.engine import DAGS, get_orchestrator
-from app.api.deps import COOKIE, check, principal_from_request, tenant_or_404, visible_tenants
-from app.api.routes import login_principal, throttle_login
+from app.agents.orchestrator.engine import get_orchestrator
+from app.api.deps import COOKIE, my_clients, principal_from_request, tenant_or_404
+from app.core import google_oidc
 from app.core.config import get_settings
 from app.core.ratelimit import client_ip, limiter
-from app.core.security import ForbiddenError, Principal, issue_token
+from app.core.security import Principal, issue_token
 from app.core.tenancy import tenant_scope
-from app.db.audit import audit
-from app.db.models import Lead, OutreachMessage, Post, RunNode, Tenant
+from app.db.models import Lead, OutreachMessage, RunNode, Tenant
 from app.db.session import get_db
 from app.guardrails.state import IllegalTransition
-from app.integrations import gmail
 from app.integrations.errors import IntegrationError
-from app.integrations.hunter import HunterClient
-from app.integrations.status import integration_status
-from app.services import (accounts, admin as admin_service, approvals, leads as lead_service, queries,
-                          runs as run_service, strategy, team)
-from app.services.kpis import tenant_kpis
+from app.services import accounts, approvals, compose, queries, runs as run_service, strategy
 from app.services import progress as progress_service
+from app.services.kpis import tenant_kpis
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+templates.env.globals["compose"] = compose.for_message
 
 NODE_LABELS = {
-    "ingest": "Reading your materials and website", "voice": "Learning your voice", "market": "Researching your market",
-    "competitors": "Analysing competitors", "trends": "Finding current trends", "strategy": "Building your content strategy",
-    "icp": "Defining your ideal customers", "calendar": "Planning eight weeks of posts",
-    "strategy_review": "Your approval of the strategy", "reflect": "Learning from your edits",
-    "trends_refresh": "Refreshing trends", "draft_week": "Writing this week's posts", "calendar_extend": "Keeping the calendar full",
-    "leads": "Finding qualified leads", "outreach": "Drafting outreach emails", "kpi_snapshot": "Updating your dashboard",
+    "ingest": "Reading the client's materials and website", "voice": "Learning the founder's voice",
+    "market": "Researching the market", "competitors": "Analysing competitors", "trends": "Finding current trends",
+    "strategy": "Building the content strategy", "icp": "Defining the ideal customers",
+    "calendar": "Planning eight weeks of posts", "strategy_review": "Your approval of the strategy",
+    "reflect": "Learning from your edits", "trends_refresh": "Refreshing trends", "draft_week": "Writing this week's posts",
+    "calendar_extend": "Keeping the calendar full", "leads": "Finding qualified leads", "outreach": "Drafting outreach emails",
+    "kpi_snapshot": "Updating the dashboard",
 }
+RUN_TITLES = {"discovery": "Research and strategy", "content": "Posts and calendar", "leads": "Lead search and outreach"}
+ACTIVE = ("pending", "running", "waiting_human")
+TABS = ("overview", "content", "calendar", "leads", "research", "activity", "settings")
 FLASH = "gx_flash"
 
 
 # ------------------------------------------------------------------ helpers
 def _flash_out(resp, msg: str, kind: str = "ok"):
     s = get_settings()
-    tok = jwt.encode({"m": msg[:400], "k": kind, "exp": datetime.now(timezone.utc) + timedelta(minutes=2)}, s.jwt_secret, algorithm="HS256")
+    tok = jwt.encode({"m": msg[:400], "k": kind, "exp": datetime.now(timezone.utc) + timedelta(minutes=2)}, s.jwt_secret,
+                     algorithm="HS256")
     resp.set_cookie(FLASH, tok, max_age=120, httponly=True, samesite="lax", secure=s.cookie_secure)
     return resp
 
@@ -65,13 +68,16 @@ def _flash_in(request: Request) -> tuple[str | None, str | None]:
         return None, None
 
 
+def _back(url: str, msg: str, kind: str = "ok"):
+    return _flash_out(RedirectResponse(url, status_code=303), msg, kind)
+
+
 async def render(request: Request, name: str, me: Principal | None, status_code: int = 200, **ctx) -> HTMLResponse:
-    my_tenants = await visible_tenants(me) if me else []
     flash, kind = _flash_in(request)
-    resp = templates.TemplateResponse(request, name, {"me": me, "my_tenants": my_tenants, "flash": flash, "flash_kind": kind,
-                                                      "demo_mode": get_settings().app_env == "demo",
-                                                      "ephemeral": get_settings().ephemeral_storage, **ctx},
-                                      status_code=status_code)
+    s = get_settings()
+    resp = templates.TemplateResponse(request, name, {"me": me, "my_clients": await my_clients(me) if me else [],
+                                                      "flash": flash, "flash_kind": kind, "demo_mode": s.app_env == "demo",
+                                                      "ephemeral": s.ephemeral_storage, **ctx}, status_code=status_code)
     if flash:
         resp.delete_cookie(FLASH)
     return resp
@@ -91,55 +97,73 @@ def set_session(resp, p: Principal):
     return resp
 
 
+def _form_error(e: Exception) -> str:
+    if hasattr(e, "errors"):
+        err = e.errors()[0]
+        return err["msg"].removeprefix("Value error, ") + f" ({'.'.join(str(x) for x in err['loc'])})"
+    return str(e)
+
+
 async def _founder(t: Tenant) -> dict:
     intake = await intake_of(t.id)
     return {"name": t.founder_name, "title": f"{intake.get('founder_title') or 'Founder'} at {t.name}"}
 
 
-async def _gmail_connected(tid: str) -> bool:
-    c = await gmail.connection(tid)
-    return bool(c and c.status == "connected")
+# ------------------------------------------------------------------ public pages
+@router.get("/termsofservice", response_class=HTMLResponse)
+async def terms_page(request: Request):
+    return await render(request, "legal/terms.html", await principal_from_request(request), bare=True)
 
 
-# ------------------------------------------------------------------ auth
+@router.get("/login/policy", response_class=HTMLResponse)
+async def privacy_page(request: Request):
+    return await render(request, "legal/privacy.html", await principal_from_request(request), bare=True,
+                        contact_email=get_settings().contact_email)
+
+
+# ------------------------------------------------------------------ sign in with Google
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
+async def login_page(request: Request, error: str = ""):
     if await principal_from_request(request):
         return RedirectResponse("/", status_code=303)
-    return await render(request, "auth/login.html", None)
+    return await render(request, "auth/login.html", None, error=error[:300], google_ready=google_oidc.configured(),
+                        test_login=TEST_LOGIN)
 
 
-@router.post("/login")
-async def login_submit(request: Request, email: str = Form(...), password: str = Form(...)):
+@router.get("/auth/google/start")
+async def google_start(request: Request):
+    limiter.check(f"login:{client_ip(request)}", 30, 300)
     try:
-        throttle_login(request, email)
-    except HTTPException as e:
-        return await render(request, "auth/login.html", None, status_code=429, error=e.detail, email=email)
-    p = await login_principal(email, password)
-    if p is None:
-        return await render(request, "auth/login.html", None, status_code=401, error="Wrong email or password.", email=email)
-    return set_session(RedirectResponse("/", status_code=303), p)
+        url, cookie = google_oidc.start()
+    except google_oidc.LoginFailed as e:
+        return await render(request, "auth/login.html", None, status_code=503, error=str(e), google_ready=False,
+                            test_login=TEST_LOGIN)
+    resp = RedirectResponse(url, status_code=303)
+    s = get_settings()
+    resp.set_cookie(google_oidc.FLOW_COOKIE, cookie, max_age=google_oidc.FLOW_TTL_S, httponly=True, samesite="lax",
+                    secure=s.cookie_secure, path="/auth/google")
+    return resp
 
 
-@router.get("/signup", response_class=HTMLResponse)
-async def signup_page(request: Request):
-    if await principal_from_request(request):
-        return RedirectResponse("/", status_code=303)
-    return await render(request, "auth/signup.html", None, invite_required=bool(get_settings().signup_invite_code))
+@router.get("/auth/google/callback")
+async def google_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    limiter.check(f"login:{client_ip(request)}", 30, 300)
 
-
-@router.post("/signup")
-async def signup_submit(request: Request, name: str = Form(""), email: str = Form(""), password: str = Form(""),
-                        invite_code: str = Form("")):
-    ctx = dict(invite_required=bool(get_settings().signup_invite_code), name=name, email=email)
+    def fail(msg: str, status: int = 400):
+        r = templates.TemplateResponse(request, "auth/login.html", {"me": None, "error": msg, "google_ready": True,
+                                                                    "test_login": TEST_LOGIN}, status_code=status)
+        r.delete_cookie(google_oidc.FLOW_COOKIE, path="/auth/google")
+        return r
+    if error:
+        return fail("Sign-in was cancelled at Google." if error == "access_denied" else "Google could not sign you in.")
     try:
-        limiter.check(f"signup:{client_ip(request)}", 5, 3600)
-        p = await accounts.signup(name, email, password, invite_code)
-    except HTTPException as e:
-        return await render(request, "auth/signup.html", None, status_code=429, error=e.detail, **ctx)
-    except accounts.AccountError as e:
-        return await render(request, "auth/signup.html", None, status_code=422, error=str(e), **ctx)
-    return set_session(RedirectResponse("/onboarding", status_code=303), p)
+        ident = await google_oidc.finish(code, state, request.cookies.get(google_oidc.FLOW_COOKIE))
+    except google_oidc.LoginFailed as e:
+        return fail(str(e))
+    p = await accounts.google_user(ident.sub, ident.email, ident.name)
+    resp = set_session(RedirectResponse("/", status_code=303), p)
+    resp.delete_cookie(google_oidc.FLOW_COOKIE, path="/auth/google")
+    return resp
 
 
 @router.get("/logout")
@@ -149,57 +173,104 @@ async def logout():
     return resp
 
 
+# A sign-in without Google, for automated tests and the labelled local demo only. The route does not exist in
+# production (tests/test_production_integrity.py boots the app with APP_ENV=production and checks).
+TEST_LOGIN = get_settings().app_env in ("test", "demo")
+if TEST_LOGIN:
+    @router.post("/auth/test-login")
+    async def test_login(email: str = Form(...), name: str = Form("Test Operator")):
+        if get_settings().app_env not in ("test", "demo"):       # belt and braces: never in production
+            raise HTTPException(404)
+        email = email.strip().lower()
+        p = await accounts.google_user("test:" + email, email, name)
+        return set_session(RedirectResponse("/", status_code=303), p)
+
+
+# ------------------------------------------------------------------ clients
 @router.get("/")
 async def home(request: Request):
     me = await need_login(request)
-    if me.is_agency:
-        return RedirectResponse("/ops", status_code=303)
-    tenants = await visible_tenants(me)
-    return RedirectResponse(f"/portal/{tenants[0].id}" if tenants else "/onboarding", status_code=303)
+    return RedirectResponse(f"/portal/{next(iter(me.tenant_ids))}" if len(me.tenant_ids) == 1 else "/clients",
+                            status_code=303)
 
 
-# ------------------------------------------------------------------ onboarding
+@router.get("/clients", response_class=HTMLResponse)
+async def clients_page(request: Request):
+    me = await need_login(request)
+    return await render(request, "clients.html", me, section="clients",
+                        rows=await queries.clients_overview(await my_clients(me)))
+
+
 def _blank() -> dict:
-    v = {k: "" for k in ("company_name", "website", "industry", "company", "target_customers", "geographies", "known_competitors",
-                         "founder_name", "linkedin_url", "tone", "topics_to_own", "topics_to_avoid", "banned_phrases",
-                         "facts", "primary_goal")}
+    v = {k: "" for k in ("company_name", "website", "industry", "company", "target_customers", "geographies",
+                         "known_competitors", "founder_name", "linkedin_url", "tone", "topics_to_own", "topics_to_avoid",
+                         "banned_phrases", "facts", "primary_goal")}
     v.update(founder_title="Founder", posts_per_week=5, leads_per_week_min=10, leads_per_week_max=20)
     v.update({f"sample_{i}": "" for i in range(1, 6)})
     return v
 
 
-@router.get("/onboarding", response_class=HTMLResponse)
-async def onboarding_page(request: Request):
+@router.get("/clients/new", response_class=HTMLResponse)
+async def new_client_page(request: Request):
     me = await need_login(request)
-    if me.is_agency or await accounts.my_tenant_ids(me.user_id):
-        return RedirectResponse("/", status_code=303)
-    return await render(request, "onboarding.html", me, bare=True, v=_blank())
+    return await render(request, "onboarding.html", me, section="clients", v=_blank())
 
 
-@router.post("/onboarding")
-async def onboarding_submit(request: Request):
+@router.post("/clients/new")
+async def new_client_submit(request: Request):
     me = await need_login(request)
     form = {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
     try:
-        t = await accounts.create_workspace(me, accounts.OnboardingForm.from_form(form))
-    except Exception as e:  # validation problems go back to the form with the values intact
-        msg = e.errors()[0]["msg"].removeprefix("Value error, ") + f" ({'.'.join(str(x) for x in e.errors()[0]['loc'])})" \
-            if hasattr(e, "errors") else str(e)
-        if isinstance(e, ForbiddenError):
-            raise HTTPException(403, str(e))
-        return await render(request, "onboarding.html", me, status_code=422, bare=True, v={**_blank(), **form}, error=msg)
-    me2 = Principal(me.user_id, me.name, me.role, frozenset(await accounts.my_tenant_ids(me.user_id)))
-    resp = RedirectResponse(f"/portal/{t.id}", status_code=303)
-    return _flash_out(set_session(resp, me2), "Workspace created. Start your research when you are ready.", "ok")
+        t = await accounts.create_client(me, accounts.OnboardingForm.from_form(form))
+    except (accounts.AccountError, ValueError) as e:   # validation problems go back to the form with the values intact
+        return await render(request, "onboarding.html", me, status_code=422, section="clients", v={**_blank(), **form},
+                            error=_form_error(e))
+    return _back(f"/portal/{t.id}", f"{t.name} added. Start the research when you are ready.")
 
 
-# ------------------------------------------------------------------ workspace
-RUN_TITLES = {"discovery": "Research and strategy", "content": "Posts and calendar", "leads": "Lead search and outreach",
-              "weekly": "Weekly content and leads"}
-ACTIVE = ("pending", "running", "waiting_human")
+@router.post("/ui/{tid}/delete")
+async def delete_client(request: Request, tid: str, confirm: str = Form("")):
+    me = await need_login(request)
+    t = await tenant_or_404(me, tid)
+    if confirm.strip() != t.name:
+        return _back(f"/portal/{tid}?tab=settings", "Not deleted: type the client's name exactly to confirm.", "bad")
+    await accounts.delete_client(me, tid)
+    return _back("/clients", f"{t.name} and everything made for it were deleted.")
 
 
-async def workspace_state(tid: str, me: Principal, k: dict) -> dict:
+# ------------------------------------------------------------------ account: spend cap, close account
+@router.get("/account", response_class=HTMLResponse)
+async def account_page(request: Request):
+    me = await need_login(request)
+    resp = await render(request, "account.html", me, section="account", spend=await queries.account_spend(me),
+                        cap=await accounts.monthly_cap(me))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.post("/account/cap")
+async def account_cap(request: Request, cap: str = Form("")):
+    me = await need_login(request)
+    try:
+        v = await accounts.set_monthly_cap(me, cap)
+    except accounts.AccountError as e:
+        return _back("/account", str(e), "bad")
+    return _back("/account", f"Monthly AI spend cap set to ${v:.2f}." if v is not None else "Monthly cap removed.")
+
+
+@router.post("/account/delete")
+async def account_delete(request: Request, confirm: str = Form("")):
+    me = await need_login(request)
+    if confirm.strip().lower() != me.email.lower():
+        return _back("/account", "Not closed: type your email address exactly to confirm.", "bad")
+    await accounts.delete_account(me)
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie(COOKIE)
+    return resp
+
+
+# ------------------------------------------------------------------ a client's workspace
+async def workspace_state(tid: str, k: dict) -> dict:
     arts = await queries.artifacts(tid)
     runs = await queries.runs(tid, 12)
 
@@ -209,88 +280,81 @@ async def workspace_state(tid: str, me: Principal, k: dict) -> dict:
     def last(*kinds):
         return next((r for r in runs if r.kind in kinds), None)
     active = next((r for r in runs if r.status in ACTIVE), None)
-    active_disc, active_content, active_leads = act("discovery"), act("content", "weekly"), act("leads", "weekly")
-    last_disc, last_content, last_leads = last("discovery"), last("content", "weekly"), last("leads", "weekly")
+    active_disc, active_content, active_leads = act("discovery"), act("content"), act("leads")
+    last_disc, last_content = last("discovery"), last("content")
     with tenant_scope(tid):
         async with get_db().reader() as s:
             gate_run = (await s.execute(select(RunNode.run_id).where(RunNode.status == "waiting_human"))).scalars().first()
-    disc_ok = any(r.kind == "discovery" and r.status == "succeeded" for r in runs)
-    can_run = me.can("run:start")
-    ready = can_run and disc_ok and not gate_run and active_disc is None
-    hunter, gm = HunterClient().configured, await _gmail_connected(tid)
-    steps = [{"title": "Tell us about your company", "detail": "Profile, writing samples and brand rules are saved.", "state": "done"}]
-
+    disc_ok = any(r.kind == "discovery" and r.status in ("succeeded", "succeeded_with_shortfall") for r in runs)
+    ready = disc_ok and not gate_run and active_disc is None
+    steps = [{"title": "Client profile", "detail": "Profile, writing samples and brand rules are saved.", "state": "done"}]
+    research = "Research the market and learn the founder's voice"
     if disc_ok:
-        steps.append({"title": "Research your market and learn your voice", "detail": "Market, competitors, trends, strategy and an eight-week calendar are ready.", "state": "done",
-                      "cta": "View strategy", "href": f"/portal/{tid}?tab=research"})
+        steps.append({"title": research, "detail": "Market, competitors, trends, strategy and an eight-week calendar are ready.",
+                      "state": "done", "cta": "View strategy", "href": f"/portal/{tid}?tab=research"})
     elif active_disc:
-        steps.append({"title": "Research your market and learn your voice", "detail": "Running now. This takes about ten minutes.", "state": "active",
+        steps.append({"title": research, "detail": "Running now. This usually takes a few minutes.", "state": "active",
                       "cta": "Watch progress", "href": f"/portal/{tid}?tab=activity&run={active_disc.id}", "primary": True})
     elif last_disc and last_disc.status == "failed":
-        steps.append({"title": "Research your market and learn your voice", "detail": "The last attempt did not finish. See why and retry the failed step.", "state": "bad",
-                      "cta": "See what happened", "href": f"/portal/{tid}?tab=activity&run={last_disc.id}", "primary": True})
+        steps.append({"title": research, "detail": "The last attempt did not finish. See why and retry the failed step.",
+                      "state": "bad", "cta": "See what happened", "href": f"/portal/{tid}?tab=activity&run={last_disc.id}",
+                      "primary": True})
     else:
-        steps.append({"title": "Research your market and learn your voice", "detail": "We read your site, research the web and study your writing. You approve the result before anything is drafted.",
-                      "state": "active", "cta": "Start research" if (can_run and active is None) else None, "post": f"/ui/{tid}/runs?kind=discovery", "primary": True})
+        steps.append({"title": research, "detail": "Reads the client's site, researches the web and studies the writing "
+                      "samples. You approve the result before anything is drafted.", "state": "active",
+                      "cta": "Start research" if active is None else None, "post": f"/ui/{tid}/runs?kind=discovery",
+                      "primary": True})
     if gate_run:
-        steps.append({"title": "Approve your strategy", "detail": "Your sign-off is needed before posts and leads are generated.", "state": "active",
-                      "cta": "Review and approve", "href": f"/portal/{tid}?tab=research", "primary": True})
+        steps.append({"title": "Approve the strategy", "detail": "Your sign-off is needed before posts and leads are generated.",
+                      "state": "active", "cta": "Review and approve", "href": f"/portal/{tid}?tab=research", "primary": True})
     else:
-        steps.append({"title": "Approve your strategy", "detail": "You review it; nothing is drafted until you do.", "state": "done" if disc_ok else "todo"})
-
+        steps.append({"title": "Approve the strategy", "detail": "You review it; nothing is drafted until you do.",
+                      "state": "done" if disc_ok else "todo"})
     pending = k["posts_pending"]
     if pending:
-        steps.append({"title": "Review your posts", "detail": f"{pending} draft{'s' if pending != 1 else ''} waiting in your voice.", "state": "active",
-                      "cta": "Review drafts", "href": f"/portal/{tid}?tab=content", "primary": True})
+        steps.append({"title": "Review the posts", "detail": f"{pending} draft{'s' if pending != 1 else ''} waiting.",
+                      "state": "active", "cta": "Review drafts", "href": f"/portal/{tid}?tab=content", "primary": True})
     elif active_content:
-        steps.append({"title": "Review your posts", "detail": "Drafting now.", "state": "active", "cta": "Watch progress",
+        steps.append({"title": "Review the posts", "detail": "Drafting now.", "state": "active", "cta": "Watch progress",
                       "href": f"/portal/{tid}?tab=activity&run={active_content.id}"})
     elif k["posts_approved_total"] or (last_content and last_content.status in ("succeeded", "succeeded_with_shortfall")):
-        steps.append({"title": "Review your posts", "detail": f"{k['posts_approved_total']} approved so far.", "state": "done",
+        steps.append({"title": "Review the posts", "detail": f"{k['posts_approved_total']} approved so far.", "state": "done",
                       "cta": "Open content", "href": f"/portal/{tid}?tab=content"})
     else:
-        steps.append({"title": "Write this week's posts", "detail": "Writes the week's posts from your strategy and calendar. Separate from lead search.",
+        steps.append({"title": "Write this week's posts", "detail": "Writes the week's posts from the strategy and calendar.",
                       "state": "todo", "cta": "Write this week's posts" if ready and active_content is None else None,
                       "post": f"/ui/{tid}/runs?kind=content", "primary": disc_ok})
     if active_leads:
         steps.append({"title": "Find qualified leads", "detail": "Searching now.", "state": "active", "cta": "Watch progress",
                       "href": f"/portal/{tid}?tab=activity&run={active_leads.id}"})
     elif k["leads_total"]:
-        steps.append({"title": "Find qualified leads", "detail": f"{k['leads_total']} lead{'s' if k['leads_total'] != 1 else ''} found, {k['outreach_pending']} email{'s' if k['outreach_pending'] != 1 else ''} to approve.",
-                      "state": "done", "cta": "Open leads", "href": f"/portal/{tid}?tab=leads"})
+        n, e = k["leads_total"], k["outreach_pending"]
+        steps.append({"title": "Find qualified leads", "detail": f"{n} lead{'s' if n != 1 else ''} found, {e} email"
+                      f"{'s' if e != 1 else ''} to approve.", "state": "done", "cta": "Open leads",
+                      "href": f"/portal/{tid}?tab=leads"})
     else:
-        steps.append({"title": "Find qualified leads", "detail": "Searches the web for companies that match your ideal customer profile. Separate from your posts.",
-                      "state": "todo", "cta": "Find leads" if ready and active_leads is None else None,
+        steps.append({"title": "Find qualified leads", "detail": "Searches the web for companies that match the ideal "
+                      "customer profile. Separate from the posts.", "state": "todo",
+                      "cta": "Find leads" if ready and active_leads is None else None,
                       "post": f"/ui/{tid}/runs?kind=leads", "primary": disc_ok})
-    steps.append({"title": "Connect Hunter.io for verified lead emails", "detail": "Optional. Without it, leads are companies with no contact person." if not hunter else "Connected.",
-                  "state": "done" if hunter else "todo", "cta": None if hunter else "How to connect", "href": f"/portal/{tid}?tab=integrations"})
-    steps.append({"title": "Connect Gmail to send approved emails", "detail": "Optional. You approve every email; it sends from your own mailbox." if not gm else "Connected.",
-                  "state": "done" if gm else "todo", "cta": None if gm else "Connect", "href": f"/portal/{tid}?tab=integrations"})
     return {"steps": steps, "done_count": sum(1 for s in steps if s["state"] == "done"), "gate_run": gate_run,
-            "can_discover": can_run and active is None,
-            "can_content": ready and active_content is None, "can_leads": ready and active_leads is None,
-            "can_weekly": ready and active_content is None and active_leads is None,
-            "active": active, "arts": arts, "runs": runs}
+            "can_discover": active is None, "can_content": ready and active_content is None,
+            "can_leads": ready and active_leads is None, "active": active, "arts": arts, "runs": runs}
 
 
 @router.get("/portal/{tid}", response_class=HTMLResponse)
 async def portal(request: Request, tid: str, tab: str = "overview", run: str | None = None, saved: int = 0):
     me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "content:view")
-    if tab not in ("overview", "content", "calendar", "leads", "research", "integrations", "settings", "activity", "team"):
-        tab = "overview"
-    if tab == "team":
-        check(me, "team:view", tid)
+    tenant = await tenant_or_404(me, tid)
+    tab = tab if tab in TABS else "overview"
     k = await tenant_kpis(tid)
     pending = await queries.posts(tid, ["pending_approval"])
-    dms = await queries.outreach(tid, ["pending_approval", "approved", "sending"])
-    ws = await workspace_state(tid, me, k)
+    dms = await queries.outreach(tid, ["pending_approval", "approved"])
+    ws = await workspace_state(tid, k)
     ctx: dict = {"tenant": tenant, "tab": tab, "k": k, "ws": ws, "section": "portal",
                  "nav_counts": {"posts": len(pending), "dms": len([d for d in dms if d["msg"].status == "pending_approval"])}}
     if tab == "content":
-        rows = await queries.posts(tid)
-        if not me.is_agency:
-            rows = [r for r in rows if r["post"].status != "blocked"]
+        rows = [r for r in await queries.posts(tid) if r["post"].status != "blocked"]
         ctx.update(founder=await _founder(tenant), pending_posts=pending,
                    ready_posts=[r for r in rows if r["post"].status in ("approved", "scheduled")],
                    past_posts=[r for r in rows if r["post"].status in ("published", "rejected")])
@@ -298,48 +362,42 @@ async def portal(request: Request, tid: str, tab: str = "overview", run: str | N
         weeks = await queries.calendar(tid)
         ctx["weeks"] = [{"week": w["week"], "by_day": {s.publish_date.weekday(): s for s in w["slots"]}} for w in weeks]
     elif tab == "leads":
-        ctx.update(leads=await queries.leads(tid), dms=dms, gmail_connected=await _gmail_connected(tid),
-                   integ={"hunter_ok": HunterClient().configured}, rejections=await queries.rejections(tid, 100))
+        ctx.update(leads=await queries.leads(tid), dms=dms, rejections=await queries.rejections(tid, 100),
+                   intake=await intake_of(tid))
     elif tab == "research":
         ctx.update(arts=ws["arts"], suggestions=await strategy.suggestion_history(tid), parts=strategy.PARTS)
-    elif tab == "integrations":
-        ctx.update(integrations=await integration_status(tid), gmail_ready=gmail.configured())
     elif tab == "settings":
         ctx.update(v=await accounts.profile_as_form_values(tid), saved=bool(saved), steps=False)
-    elif tab == "team":
-        ctx.update(members=await team.list_members(me, tid), role_labels=team.ROLE_LABELS)
     elif tab == "activity":
         ctx["runs"], ctx["run_titles"] = ws["runs"], RUN_TITLES
         rid = run or (ws["active"].id if ws["active"] else (ws["runs"][0].id if ws["runs"] else None))
-        if rid:
-            d = await queries.run_detail(tid, rid)
-            if d:
-                ctx.update(run=d["run"], nodes=d["nodes"], labels=NODE_LABELS, run_titles=RUN_TITLES, can_retry=me.can("run:start"),
-                           usage=await queries.run_usage(tid, rid), progress=await progress_service.run_progress(tid, d["run"], d["nodes"]),
-                           targets=k["targets"])
+        if rid and (d := await queries.run_detail(tid, rid)):
+            ctx.update(run=d["run"], nodes=d["nodes"], labels=NODE_LABELS, run_titles=RUN_TITLES,
+                       usage=await queries.run_usage(tid, rid),
+                       progress=await progress_service.run_progress(tid, d["run"], d["nodes"]), targets=k["targets"])
     return await render(request, "portal.html", me, **ctx)
 
 
 @router.get("/ui/{tid}/runs/{rid}/progress", response_class=HTMLResponse)
 async def run_progress(request: Request, tid: str, rid: str):
     me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "run:status")
+    tenant = await tenant_or_404(me, tid)
     d = await queries.run_detail(tid, rid)
     if d is None:
-        raise HTTPException(404)
+        raise HTTPException(404, "not found")
     return templates.TemplateResponse(request, "partials/run_progress.html", {
-        "run": d["run"], "nodes": d["nodes"], "labels": NODE_LABELS, "run_titles": RUN_TITLES, "tenant": tenant, "me": me, "can_retry": me.can("run:start"),
+        "run": d["run"], "nodes": d["nodes"], "labels": NODE_LABELS, "run_titles": RUN_TITLES, "tenant": tenant, "me": me,
         "usage": await queries.run_usage(tid, rid), "progress": await progress_service.run_progress(tid, d["run"], d["nodes"]),
         "targets": (await tenant_kpis(tid))["targets"]})
 
 
+# ------------------------------------------------------------------ posts
 async def _post_card(request, me, tenant, post_id, msg="", bad=False):
-    with tenant_scope(tenant.id):
-        async with get_db().reader() as s:
-            post = (await s.execute(select(Post).where(Post.id == post_id))).scalars().one()
-    slot = next((r["slot"] for r in await queries.posts(tenant.id) if r["post"].id == post_id), None)
+    row = await queries.post(tenant.id, post_id)
+    if row is None:
+        raise HTTPException(404, "not found")
     return templates.TemplateResponse(request, "partials/post_card.html",
-                                      {"post": post, "slot": slot, "tenant": tenant, "me": me,
+                                      {"post": row["post"], "slot": row["slot"], "tenant": tenant, "me": me,
                                        "founder": await _founder(tenant), "msg": msg, "msg_bad": bad})
 
 
@@ -347,20 +405,18 @@ async def _post_card(request, me, tenant, post_id, msg="", bad=False):
 async def ui_post_decision(request: Request, tid: str, pid: str, action: str = Form(...),
                            text: str | None = Form(None), note: str = Form("")):
     me = await need_login(request)
-    if action not in approvals.POST_ACTION_PERMS:
+    tenant = await tenant_or_404(me, tid)
+    if action not in approvals.POST_ACTIONS:
         raise HTTPException(400, "unknown action")
-    tenant = await tenant_or_404(me, tid, approvals.POST_ACTION_PERMS[action])     # 403 for viewers, before anything runs
     msg, bad = {"approve": "Approved. Copy it to LinkedIn when you are ready to post.", "reject": "Rejected. The slot stays open.",
-                "request_changes": "Got it. A new draft is being written.", "edit": "Edit saved."}.get(action, ""), False
+                "request_changes": "Got it. A new draft is being written.", "edit": "Edit saved."}[action], False
     try:
         await approvals.decide_post(me, tid, pid, action, text, note)
-    except ForbiddenError as e:
-        msg, bad = f"Not allowed: {e}", True
-    except IllegalTransition as e:
-        msg, bad = str(e), True
+    except approvals.NotFound:
+        raise HTTPException(404, "not found")
     except approvals.GuardrailRefusal as e:
         msg, bad = f"Not saved. The edit broke a guardrail: {e}", True
-    except ValueError as e:
+    except (IllegalTransition, ValueError) as e:
         msg, bad = str(e), True
     return await _post_card(request, me, tenant, pid, msg, bad)
 
@@ -368,71 +424,78 @@ async def ui_post_decision(request: Request, tid: str, pid: str, action: str = F
 @router.post("/ui/{tid}/posts/{pid}/posted", response_class=HTMLResponse)
 async def ui_post_posted(request: Request, tid: str, pid: str):
     me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "content:approve")
+    tenant = await tenant_or_404(me, tid)
     msg, bad = "Marked as posted.", False
     try:
         await approvals.mark_posted(me, tid, pid)
-    except (ForbiddenError, IllegalTransition) as e:
+    except approvals.NotFound:
+        raise HTTPException(404, "not found")
+    except IllegalTransition as e:
         msg, bad = str(e), True
     return await _post_card(request, me, tenant, pid, msg, bad)
 
 
+# ------------------------------------------------------------------ outreach emails
 async def _dm_card(request, me, tenant, mid, msg="", bad=False):
     with tenant_scope(tenant.id):
         async with get_db().reader() as s:
-            m = (await s.execute(select(OutreachMessage).where(OutreachMessage.id == mid))).scalars().one()
-            lead = (await s.execute(select(Lead).where(Lead.id == m.lead_id))).scalars().one()
+            m = (await s.execute(select(OutreachMessage).where(OutreachMessage.id == mid))).scalars().first()
+            lead = (await s.execute(select(Lead).where(Lead.id == m.lead_id))).scalars().first() if m else None
+    if m is None or lead is None:
+        raise HTTPException(404, "not found")
     return templates.TemplateResponse(request, "partials/dm_card.html",
                                       {"m": m, "lead": lead, "tenant": tenant, "me": me, "msg": msg, "msg_bad": bad,
-                                       "gmail_connected": await _gmail_connected(tenant.id)})
+                                       "intake": await intake_of(tenant.id)})
 
 
 @router.post("/ui/{tid}/outreach/{mid}", response_class=HTMLResponse)
 async def ui_dm_decision(request: Request, tid: str, mid: str, action: str = Form(...), text: str | None = Form(None),
                          subject: str | None = Form(None)):
     me = await need_login(request)
-    if action not in approvals.OUTREACH_ACTION_PERMS:
+    tenant = await tenant_or_404(me, tid)
+    if action not in approvals.OUTREACH_ACTIONS:
         raise HTTPException(400, "unknown action")
-    tenant = await tenant_or_404(me, tid, approvals.OUTREACH_ACTION_PERMS[action])
-    msg, bad = {"approve": "Approved. Send it when you're ready.", "reject": "Removed from your list.",
-                "edit": "Edit saved."}.get(action, ""), False
+    msg, bad = {"approve": "Approved. Open it in Gmail or copy it, send it yourself, then mark it as sent.",
+                "reject": "Removed from your list.", "edit": "Edit saved.",
+                "request_changes": "Marked for changes."}[action], False
     try:
         await approvals.decide_outreach(me, tid, mid, action, text, subject=subject)
-    except (ForbiddenError, IllegalTransition) as e:
-        msg, bad = str(e), True
+    except approvals.NotFound:
+        raise HTTPException(404, "not found")
     except approvals.GuardrailRefusal as e:
         msg, bad = f"Not saved. The edit broke a guardrail: {e}", True
+    except (IllegalTransition, ValueError) as e:
+        msg, bad = str(e), True
     return await _dm_card(request, me, tenant, mid, msg, bad)
 
 
-@router.post("/ui/{tid}/outreach/{mid}/send", response_class=HTMLResponse)
-async def ui_dm_send(request: Request, tid: str, mid: str):
+@router.post("/ui/{tid}/outreach/{mid}/sent", response_class=HTMLResponse)
+async def ui_dm_sent(request: Request, tid: str, mid: str):
     me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "outreach:send")
-    msg, bad = "Sent from your Gmail.", False
+    tenant = await tenant_or_404(me, tid)
+    msg, bad = "Marked as sent.", False
     try:
-        await approvals.send_outreach(me, tid, mid)
-    except ForbiddenError as e:
-        msg, bad = f"Not sent: {e}", True
-    except IntegrationError as e:
-        msg, bad = f"Not sent: {e.message}. {e.recovery}".strip(), True
+        await approvals.mark_sent(me, tid, mid)
+    except approvals.NotFound:
+        raise HTTPException(404, "not found")
+    except (approvals.SendRefused, IllegalTransition) as e:
+        msg, bad = str(e), True
     return await _dm_card(request, me, tenant, mid, msg, bad)
 
 
+# ------------------------------------------------------------------ profile
 @router.post("/ui/{tid}/settings")
 async def ui_settings(request: Request, tid: str):
     me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "onboarding:edit")
+    tenant = await tenant_or_404(me, tid)
     form = {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
     try:
         await accounts.update_profile(me, tid, accounts.OnboardingForm.from_form(form))
-    except Exception as e:
-        msg = (e.errors()[0]["msg"].removeprefix("Value error, ") + f" ({'.'.join(str(x) for x in e.errors()[0]['loc'])})") \
-            if hasattr(e, "errors") else str(e)
+    except (accounts.AccountError, ValueError) as e:
         k = await tenant_kpis(tid)
         return await render(request, "portal.html", me, status_code=422, tenant=tenant, tab="settings", k=k,
-                            ws=await workspace_state(tid, me, k), section="portal", v={**_blank(), **form}, error=msg,
-                            steps=False, nav_counts={})
+                            ws=await workspace_state(tid, k), section="portal", v={**_blank(), **form},
+                            error=_form_error(e), steps=False, nav_counts={})
     return RedirectResponse(f"/portal/{tid}?tab=settings&saved=1", status_code=303)
 
 
@@ -440,308 +503,58 @@ async def ui_settings(request: Request, tid: str):
 @router.post("/ui/{tid}/runs")
 async def ui_start_run(request: Request, tid: str, kind: str = Form(None)):
     me = await need_login(request)
-    await tenant_or_404(me, tid, "run:start")
+    await tenant_or_404(me, tid)
     kind = kind or request.query_params.get("kind", "discovery")
-    back = f"/ops/{tid}" if me.is_agency else f"/portal/{tid}?tab=activity"
+    back = f"/portal/{tid}?tab=activity"
     try:
         rid = await run_service.start_run(me, tid, kind)
     except run_service.RunRefused as e:
-        return _flash_out(RedirectResponse(back, status_code=303), str(e), "bad")
+        return _back(back, str(e), "bad")
     except IntegrationError as e:
-        return _flash_out(RedirectResponse(back, status_code=303), f"{e.message}. {e.recovery}".strip(), "bad")
-    dest = f"/ops/{tid}/runs/{rid}" if me.is_agency else f"/portal/{tid}?tab=activity&run={rid}"
-    return _flash_out(RedirectResponse(dest, status_code=303), "Started. You can leave this page; progress is saved.", "ok")
+        return _back(back, f"{e.message}. {e.recovery}".strip(), "bad")
+    return _back(f"/portal/{tid}?tab=activity&run={rid}", "Started. You can leave this page; progress is saved.")
 
 
 @router.post("/ui/{tid}/runs/{rid}/approve/{key}")
 async def ui_gate(request: Request, tid: str, rid: str, key: str):
     me = await need_login(request)
-    await tenant_or_404(me, tid, "strategy:review")
-    msg, kind = "Strategy approved. You can now generate content and leads.", "ok"
+    await tenant_or_404(me, tid)
+    msg, kind = "Strategy approved. You can now generate posts and leads.", "ok"
     try:
         await get_orchestrator().approve_gate(tid, rid, key, me.user_id)
+    except LookupError:
+        raise HTTPException(404, "not found")
     except ValueError as e:
         msg, kind = str(e), "bad"
-    dest = f"/ops/{tid}/runs/{rid}" if me.is_agency else f"/portal/{tid}?tab=overview"
-    return _flash_out(RedirectResponse(dest, status_code=303), msg, kind)
+    return _back(f"/portal/{tid}?tab=overview", msg, kind)
 
 
 @router.post("/ui/{tid}/runs/{rid}/rerun/{key}")
 async def ui_rerun(request: Request, tid: str, rid: str, key: str):
     me = await need_login(request)
-    await tenant_or_404(me, tid, "run:start")
-    dest = f"/ops/{tid}/runs/{rid}" if me.is_agency else f"/portal/{tid}?tab=activity&run={rid}"
+    await tenant_or_404(me, tid)
+    dest = f"/portal/{tid}?tab=activity&run={rid}"
     try:
         run_service.preflight("rerun")
         await get_orchestrator().rerun_from(tid, rid, key, me.user_id)
-    except IntegrationError as e:
-        return _flash_out(RedirectResponse(dest, status_code=303), f"{e.message}. {e.recovery}".strip(), "bad")
-    return _flash_out(RedirectResponse(dest, status_code=303), "Retrying from that step. Earlier steps are kept.", "ok")
-
-
-# ------------------------------------------------------------------ Gmail OAuth
-@router.get("/oauth/google/start")
-async def gmail_start(request: Request, tid: str):
-    me = await need_login(request)
-    await tenant_or_404(me, tid, "integration:manage")
-    try:
-        return RedirectResponse(gmail.authorize_url(tid, me.user_id), status_code=303)
-    except IntegrationError as e:
-        return _flash_out(RedirectResponse(f"/portal/{tid}?tab=integrations", status_code=303), f"{e.message}. {e.recovery}", "bad")
-
-
-@router.get("/oauth/google/callback")
-@router.get("/auth/gmail/callback")     # alias: matches the redirect URI already registered in Google Cloud
-async def gmail_callback(request: Request, code: str = "", state: str = "", error: str = ""):
-    me = await need_login(request)
-    try:
-        st = gmail.read_state(state)
-    except IntegrationError as e:
-        raise HTTPException(400, e.message)
-    tid = st["tid"]
-    if st["uid"] != me.user_id:
-        raise HTTPException(403, "this sign-in was started by a different user")
-    await tenant_or_404(me, tid, "integration:manage")
-    back = f"/portal/{tid}?tab=integrations"
-    if error or not code:
-        return _flash_out(RedirectResponse(back, status_code=303), "Gmail was not connected: permission was not granted.", "bad")
-    try:
-        email = await gmail.complete_connection(tid, me.user_id, code)
-    except IntegrationError as e:
-        return _flash_out(RedirectResponse(back, status_code=303), f"{e.message}. {e.recovery}".strip(), "bad")
-    with tenant_scope(tid):
-        async with get_db().session() as s:
-            audit(s, me.user_id, "integration.gmail_connected", "tenant", tid, account=email)
-    return _flash_out(RedirectResponse(back, status_code=303), f"Gmail connected as {email}.", "ok")
-
-
-@router.post("/ui/{tid}/integrations/gmail/disconnect")
-async def gmail_disconnect(request: Request, tid: str):
-    me = await need_login(request)
-    await tenant_or_404(me, tid, "integration:manage")
-    await gmail.disconnect(tid)
-    with tenant_scope(tid):
-        async with get_db().session() as s:
-            audit(s, me.user_id, "integration.gmail_disconnected", "tenant", tid)
-    return _flash_out(RedirectResponse(f"/portal/{tid}?tab=integrations", status_code=303), "Gmail disconnected.", "ok")
-
-
-# ------------------------------------------------------------------ leads added by hand; strategy changes
-@router.post("/ui/{tid}/leads")
-async def ui_add_lead(request: Request, tid: str, full_name: str = Form(""), email: str = Form(""), company: str = Form(""),
-                      title: str = Form(""), company_domain: str = Form(""), note: str = Form(""),
-                      confirm_unverified: str = Form("")):
-    me = await need_login(request)
-    await tenant_or_404(me, tid, "lead:add")
-    back = RedirectResponse(f"/portal/{tid}?tab=leads", status_code=303)
-    try:
-        lead = await lead_service.add_manual_lead(me, tid, full_name, email, company, title, company_domain, note,
-                                                  confirm_unverified=confirm_unverified == "1")
-    except (lead_service.LeadRefused, accounts.AccountError) as e:
-        return _flash_out(back, f"Not added: {e}", "bad")
-    label = "verified by Hunter.io" if lead.email_status == "valid" else "unverified, confirmed by you"
-    return _flash_out(back, f"Added {lead.full_name} ({label}). An email draft will appear here in a moment.", "ok")
-
-
-@router.post("/ui/{tid}/leads/{lid}/draft")
-async def ui_draft_lead_email(request: Request, tid: str, lid: str):
-    me = await need_login(request)
-    await tenant_or_404(me, tid, "outreach:edit")
-    back = RedirectResponse(f"/portal/{tid}?tab=leads", status_code=303)
-    try:
-        await lead_service.request_draft(me, tid, lid)
     except LookupError:
         raise HTTPException(404, "not found")
-    except lead_service.LeadRefused as e:
-        return _flash_out(back, str(e), "bad")
     except IntegrationError as e:
-        return _flash_out(back, f"{e.message}. {e.recovery}".strip(), "bad")
-    return _flash_out(back, "Drafting the email. Refresh in a moment.", "ok")
+        return _back(dest, f"{e.message}. {e.recovery}".strip(), "bad")
+    return _back(dest, "Retrying from that step. Earlier steps are kept.")
 
 
 @router.post("/ui/{tid}/strategy/suggestions")
 async def ui_suggest_changes(request: Request, tid: str):
     me = await need_login(request)
-    await tenant_or_404(me, tid, "strategy:review")
+    await tenant_or_404(me, tid)
     form = await request.form()
-    back = RedirectResponse(f"/portal/{tid}?tab=research", status_code=303)
+    back = f"/portal/{tid}?tab=research"
     try:
         rid = await strategy.suggest_changes(me, tid, str(form.get("note", "")), [str(x) for x in form.getlist("parts")])
     except (strategy.SuggestionRefused, accounts.AccountError) as e:
-        return _flash_out(back, str(e), "bad")
+        return _back(back, str(e), "bad")
     except IntegrationError as e:
-        return _flash_out(back, f"{e.message}. {e.recovery}".strip(), "bad")
-    return _flash_out(RedirectResponse(f"/portal/{tid}?tab=activity&run={rid}", status_code=303),
-                      "Revising the strategy with your changes. You approve the new version when it is ready.", "ok")
-
-
-# ------------------------------------------------------------------ team (founder)
-def _team_back(tid: str, msg: str, kind: str = "ok"):
-    return _flash_out(RedirectResponse(f"/portal/{tid}?tab=team", status_code=303), msg, kind)
-
-
-async def _team_action(request: Request, tid: str, fn, ok: str):
-    me = await need_login(request)
-    await tenant_or_404(me, tid, "team:manage")
-    try:
-        await fn(me)
-    except team.MemberNotFound:
-        raise HTTPException(404, "not found")
-    except (team.TeamConflict, accounts.AccountError) as e:
-        return _team_back(tid, str(e), "bad")
-    except ForbiddenError as e:
-        raise HTTPException(403, str(e))
-    return _team_back(tid, ok)
-
-
-@router.post("/ui/{tid}/team")
-async def ui_team_add(request: Request, tid: str, email: str = Form(""), name: str = Form(""), password: str = Form(""),
-                      role: str = Form("client_viewer")):
-    return await _team_action(request, tid, lambda me: team.add_member(me, tid, email, name, password, role),
-                              f"Added {email.strip()}. They can sign in now with the password you set.")
-
-
-@router.post("/ui/{tid}/team/{uid}/role")
-async def ui_team_role(request: Request, tid: str, uid: str, role: str = Form(...)):
-    return await _team_action(request, tid, lambda me: team.update_member(me, tid, uid, role=role), "Role changed.")
-
-
-@router.post("/ui/{tid}/team/{uid}/password")
-async def ui_team_password(request: Request, tid: str, uid: str, password: str = Form("")):
-    return await _team_action(request, tid, lambda me: team.update_member(me, tid, uid, password=password),
-                              "Password reset. Share the new one with them directly.")
-
-
-@router.post("/ui/{tid}/team/{uid}/active")
-async def ui_team_active(request: Request, tid: str, uid: str, on: str = Form(...)):
-    return await _team_action(request, tid, lambda me: team.update_member(me, tid, uid, active=on == "1"),
-                              "Reactivated." if on == "1" else "Deactivated. They are signed out on their next click.")
-
-
-@router.post("/ui/{tid}/team/{uid}/remove")
-async def ui_team_remove(request: Request, tid: str, uid: str):
-    return await _team_action(request, tid, lambda me: team.remove_member(me, tid, uid), "Removed from the workspace.")
-
-
-# ------------------------------------------------------------------ platform admin
-@router.get("/admin", response_class=HTMLResponse)
-async def admin_page(request: Request, q: str = "", tab: str = "users"):
-    me = await need_login(request)
-    check(me, "admin:view")
-    if tab not in ("users", "workspaces", "memberships", "runs", "audit", "agency"):
-        tab = "users"
-    return await render(request, "admin.html", me, section="admin", tab=tab, d=await admin_service.overview(me, q))
-
-
-def _admin_back(msg: str, kind: str = "ok"):
-    return _flash_out(RedirectResponse("/admin?tab=agency", status_code=303), msg, kind)
-
-
-async def _admin_action(request: Request, fn, ok: str):
-    me = await need_login(request)
-    check(me, "agency:manage")
-    try:
-        await fn(me)
-    except team.MemberNotFound:
-        raise HTTPException(404, "not found")
-    except (team.TeamConflict, accounts.AccountError) as e:
-        return _admin_back(str(e), "bad")
-    except ForbiddenError as e:
-        raise HTTPException(403, str(e))
-    return _admin_back(ok)
-
-
-@router.post("/ui/admin/account-managers")
-async def ui_admin_create_am(request: Request, email: str = Form(""), name: str = Form(""), password: str = Form("")):
-    return await _admin_action(request, lambda me: admin_service.create_account_manager(me, email, name, password),
-                               f"Account manager {email.strip()} created.")
-
-
-@router.post("/ui/admin/assign")
-async def ui_admin_assign(request: Request, user_id: str = Form(...), tenant_id: str = Form(...), on: str = Form("1")):
-    return await _admin_action(request, lambda me: admin_service.assign(me, user_id, tenant_id, on == "1"),
-                               "Assigned." if on == "1" else "Unassigned.")
-
-
-@router.post("/ui/admin/users/{uid}/active")
-async def ui_admin_active(request: Request, uid: str, on: str = Form(...)):
-    return await _admin_action(request, lambda me: admin_service.set_active(me, uid, on == "1"),
-                               "Reactivated." if on == "1" else "Deactivated.")
-
-
-# ------------------------------------------------------------------ ops (agency)
-@router.get("/ops", response_class=HTMLResponse)
-async def ops_index(request: Request):
-    me = await need_login(request)
-    if not me.is_agency:
-        raise HTTPException(404)
-    rows = await queries.portfolio([t.id for t in await visible_tenants(me)])
-    return await render(request, "ops_index.html", me, rows=rows, section="ops")
-
-
-@router.get("/ops/{tid}", response_class=HTMLResponse)
-async def ops_client(request: Request, tid: str, tab: str = "brief"):
-    me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "run:view")
-    ctx: dict = {"tenant": tenant, "tab": tab, "k": await tenant_kpis(tid), "founder": await _founder(tenant), "section": "ops"}
-    if tab == "brief":
-        ctx["arts"] = await queries.artifacts(tid)
-        with tenant_scope(tid):
-            async with get_db().reader() as s:
-                ctx["waiting_gate"] = (await s.execute(select(RunNode.run_id).where(RunNode.status == "waiting_human"))).scalars().first()
-    elif tab == "runs":
-        ctx["runs"] = await queries.runs(tid)
-    elif tab == "content":
-        rows = await queries.posts(tid)
-        ctx["all_posts"] = sorted(rows, key=lambda r: (r["post"].status != "blocked", r["post"].status != "pending_approval"))
-    elif tab == "leads":
-        ctx["leads"], ctx["rejections"] = await queries.leads(tid), await queries.rejections(tid)
-    elif tab == "costs":
-        ctx["costs"] = await queries.cost_breakdown(tid)
-    elif tab == "guardrails":
-        ctx["incidents"] = await queries.incidents(tid)
-    elif tab == "audit":
-        ctx["audit"] = await queries.audit_log(tid)
-    return await render(request, "ops_client.html", me, **ctx)
-
-
-@router.get("/ops/{tid}/runs/{rid}", response_class=HTMLResponse)
-async def ops_run(request: Request, tid: str, rid: str):
-    me = await need_login(request)
-    tenant = await tenant_or_404(me, tid, "run:view")
-    d = await queries.run_detail(tid, rid)
-    if d is None:
-        raise HTTPException(404)
-    return await render(request, "ops_run.html", me, tenant=tenant, d=d, section="ops", labels=NODE_LABELS,
-                        usage=await queries.run_usage(tid, rid), progress=await progress_service.run_progress(tid, d["run"], d["nodes"]),
-                        waits=queries.time_breakdown(d))
-
-
-@router.post("/ui/ops/weekly")
-async def ui_weekly_all(request: Request):
-    me = await need_login(request)
-    check(me, "run:start")
-    if not me.is_agency:
-        raise HTTPException(403)
-    started = 0
-    for t in await visible_tenants(me):
-        if t.kill_switch or t.status != "active":
-            continue
-        try:
-            await run_service.start_run(me, t.id, "weekly")
-            started += 1
-        except (run_service.RunRefused, IntegrationError):
-            continue
-    return _flash_out(RedirectResponse("/ops", status_code=303), f"Started weekly runs for {started} client(s).", "ok")
-
-
-@router.post("/ui/{tid}/kill")
-async def ui_kill(request: Request, tid: str, on: str = Form(...)):
-    me = await need_login(request)
-    await tenant_or_404(me, tid, "tenant:kill_switch")
-    async with get_db().session() as s:
-        (await s.get(Tenant, tid)).kill_switch = on == "1"
-    with tenant_scope(tid):
-        async with get_db().session() as s:
-            audit(s, me.user_id, "tenant.kill_switch", "tenant", tid, on=on == "1")
-    return RedirectResponse(f"/ops/{tid}", status_code=303)
+        return _back(back, f"{e.message}. {e.recovery}".strip(), "bad")
+    return _back(f"/portal/{tid}?tab=activity&run={rid}",
+                 "Revising the strategy with your changes. You approve the new version when it is ready.")

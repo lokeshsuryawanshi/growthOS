@@ -1,9 +1,15 @@
-<div class="pagehead"><div><h1>Profile &amp; brand</h1><div class="sub">Everything the agents know about you. Changes apply to the next run; re-run research to refresh your voice profile and strategy.</div></div></div>
+<div class="pagehead"><div><h1>Client profile</h1><div class="sub">Everything the system knows about {{ tenant.founder_name or tenant.name }}. Changes apply to the next run; re-run research to refresh the voice profile and strategy.</div></div></div>
 {% if saved %}<div class="flash ok">Saved. Re-run research from the Strategy page to apply voice or market changes.</div>{% endif %}
 {% if error %}<div class="flash bad"><div><b>Not saved:</b> {{ error }}</div></div>{% endif %}
-{% if me.can('onboarding:edit') %}
 <form method="post" action="/ui/{{ tenant.id }}/settings" class="panel stack" style="gap:24px">
   {% set steps = false %}{% set submit_label = 'Save changes' %}
   {% include "partials/profile_form.html" %}
 </form>
-{% else %}<div class="flash">Your role can view but not change the profile.</div>{% endif %}
+<section class="panel stack">
+  <h2>Delete this client</h2>
+  <p class="sub">Deletes {{ tenant.name }} and everything made for it: research, calendar, posts, leads, emails and run history. This cannot be undone.</p>
+  <form method="post" action="/ui/{{ tenant.id }}/delete" class="row" style="gap:10px;align-items:end">
+    <label>Type the client's name to confirm<input name="confirm" autocomplete="off" placeholder="{{ tenant.name }}"></label>
+    <button class="danger">Delete client</button>
+  </form>
+</section>

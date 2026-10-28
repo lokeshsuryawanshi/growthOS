@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty %}
+{% block title %}Clients · Growth OS{% endblock %}
+{% block content %}
+<div class="pagehead"><div><h1>Clients</h1><div class="sub">The founders you run content and lead generation for. Each client's data is kept separate.</div></div>
+  <a class="btn primary" href="/clients/new">Add client</a></div>
+{% if rows %}
+<section class="panel"><div class="tablewrap"><table>
+  <tr><th>Client</th><th>Posts waiting</th><th>Approved</th><th>Leads</th><th>Last run</th><th></th></tr>
+  {% for r in rows %}{% set t = r.tenant %}{% set k = r.kpis %}<tr>
+    <td><b><a href="/portal/{{ t.id }}">{{ t.name }}</a></b>{% if t.is_demo %} <span class="pill synthetic">demo</span>{% endif %}<br><span class="sub">{{ t.founder_name }}{{ ' · ' if t.founder_name and t.industry }}{{ t.industry }}</span></td>
+    <td class="n">{{ k.posts_pending }}</td><td class="n">{{ k.posts_approved_total }}</td><td class="n">{{ k.leads_total }}</td>
+    <td>{% if r.last_run %}<span class="pill {{ r.last_run.status }}">{{ r.last_run.kind }}: {{ r.last_run.status.replace('_', ' ') }}</span><br><span class="sub num">{{ r.last_run.created_at.strftime('%d %b %H:%M') }}</span>{% else %}<span class="sub">none yet</span>{% endif %}</td>
+    <td><a class="btn sm" href="/portal/{{ t.id }}">Open</a></td>
+  </tr>{% endfor %}
+</table></div></section>
+{% else %}
+{% call empty('building', 'No clients yet', 'Add the first founder you work for: their company, audience, a few of their own posts and their goals. Research starts when you say so.') %}
+  <a class="btn primary" href="/clients/new">Add client</a>{% endcall %}
+{% endif %}
+{% endblock %}

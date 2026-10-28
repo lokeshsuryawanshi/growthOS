@@ -3,6 +3,8 @@ and an honest ledger of where the time went."""
 import time
 
 import pytest
+
+from tests.helpers import bare_tenants
 from sqlalchemy import select
 
 from app.core.config import Settings
@@ -39,8 +41,7 @@ def req(tier="big", chars=400, max_tokens=500):
 
 @pytest.fixture
 async def tenant(db):
-    async with db.session() as s:
-        s.add(Tenant(id="t1", slug="t1", name="T1", monthly_budget_usd=5.0))
+    await bare_tenants(db, "t1")
     return "t1"
 
 

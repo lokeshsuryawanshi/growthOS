@@ -116,13 +116,15 @@ def test_lead_source_normalizes_country_names():
 
 
 async def test_batched_scan_uses_few_classifier_calls_and_still_finds_the_injected_snippet(db):
-    from app.db.models import Tenant
+    from app.db.models import Tenant, User
     from app.guardrails.input_guard import scan, scan_many
     from app.llm.gateway import LLMGateway, set_gateway
     from app.llm.providers import MOCK_RESPONDERS
     from app.llm.types import CallContext
     async with db.session() as s:
-        s.add(Tenant(id="tg", slug="tg", name="TG"))
+        s.add(User(id="u-tg", google_sub="test:tg", email="tg@example.com", name="TG"))
+        await s.flush()
+        s.add(Tenant(id="tg", owner_user_id="u-tg", slug="tg", name="TG"))
     set_gateway(LLMGateway())
     calls = []
     real = MOCK_RESPONDERS["input_guard"]

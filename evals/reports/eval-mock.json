@@ -14,9 +14,11 @@
         "run_status": [
           "succeeded",
           "succeeded",
+          "succeeded",
+          "succeeded",
           "succeeded"
         ],
-        "seconds": 1.2,
+        "seconds": 0.9,
         "calendar_valid": 1,
         "topics_unique": 1,
         "posts": 10,
@@ -24,7 +26,7 @@
         "posts_ready_rate": 1.0,
         "avg_critic_score": 4.0,
         "avg_critic_rounds": 1.4,
-        "guard_autofixes": 2,
+        "guard_autofixes": 1,
         "pending_posts_with_violations": 0,
         "leads": 40,
         "leads_per_week": [
@@ -38,18 +40,20 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 2,
         "artifact_contamination": 0,
-        "llm_calls": 146,
-        "tokens": 146555,
-        "cost_usd": 0.0257,
-        "cost_per_client_cycle_usd": 0.0086
+        "llm_calls": 145,
+        "tokens": 145198,
+        "cost_usd": 0.0256,
+        "cost_per_client_cycle_usd": 0.0085
       },
       "shiftwise": {
         "run_status": [
           "succeeded",
           "succeeded",
+          "succeeded",
+          "succeeded",
           "succeeded"
         ],
-        "seconds": 1.1,
+        "seconds": 0.8,
         "calendar_valid": 1,
         "topics_unique": 1,
         "posts": 10,
@@ -57,7 +61,7 @@
         "posts_ready_rate": 1.0,
         "avg_critic_score": 4.0,
         "avg_critic_rounds": 1.5,
-        "guard_autofixes": 2,
+        "guard_autofixes": 1,
         "pending_posts_with_violations": 0,
         "leads": 40,
         "leads_per_week": [
@@ -71,17 +75,17 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 1,
         "artifact_contamination": 0,
-        "llm_calls": 149,
-        "tokens": 150792,
-        "cost_usd": 0.0265,
-        "cost_per_client_cycle_usd": 0.0088
+        "llm_calls": 147,
+        "tokens": 148911,
+        "cost_usd": 0.0262,
+        "cost_per_client_cycle_usd": 0.0087
       }
     },
     "calendar_valid": 1,
     "posts_ready_rate": 1.0,
     "avg_critic_score": 4.0,
     "leads_week_in_range_rate": 1.0,
-    "cost_per_client_cycle_usd": 0.0088,
+    "cost_per_client_cycle_usd": 0.0087,
     "pending_posts_with_violations": 0,
     "lead_policy_violations": 0,
     "explicit_low_fit_kept": 0,
@@ -89,7 +93,7 @@
   },
   "quality": {
     "quality_delivered_posts": 20,
-    "quality_posts_with_figures": 17,
+    "quality_posts_with_figures": 18,
     "quality_ungrounded_figure_posts": 0,
     "quality_banned_phrase_posts": 0,
     "quality_avoided_word_posts": 0,
@@ -133,88 +137,47 @@
       }
     }
   },
+  "isolation": {
+    "isolation_checks": 50,
+    "isolation_routes": 12,
+    "cross_account_access_violations": 0,
+    "session_escalations": 0,
+    "cross_account_page_leaks": 0,
+    "isolation_failures": [],
+    "owners_distinct": true,
+    "mutations": {
+      "mutations_total": 4,
+      "mutations_caught": 4,
+      "detail": {
+        "route ownership check removed": {
+          "caught": true,
+          "violations": 6,
+          "escalations": 0,
+          "leaks": 0
+        },
+        "session signature and expiry not checked": {
+          "caught": true,
+          "violations": 0,
+          "escalations": 12,
+          "leaks": 0
+        },
+        "deleted accounts keep their sessions": {
+          "caught": true,
+          "violations": 0,
+          "escalations": 2,
+          "leaks": 0
+        },
+        "every account owns every client": {
+          "caught": true,
+          "violations": 9,
+          "escalations": 0,
+          "leaks": 0
+        }
+      }
+    }
+  },
   "gate": {
     "passed": true,
     "failures": []
-  },
-  "rbac": {
-    "rbac_checks": 315,
-    "rbac_matrix_pass_rate": 1.0,
-    "cross_tenant_access_violations": 0,
-    "privilege_escalation_attempts": 14,
-    "privilege_escalation_successes": 0,
-    "rbac_failures": [],
-    "escalations": [
-      {
-        "attempt": "founder creates a platform_admin",
-        "status": 403,
-        "succeeded": false
-      },
-      {
-        "attempt": "founder promotes the viewer to platform_admin",
-        "status": 403,
-        "succeeded": false
-      },
-      {
-        "attempt": "founder creates a account_manager",
-        "status": 403,
-        "succeeded": false
-      },
-      {
-        "attempt": "founder promotes the viewer to account_manager",
-        "status": 403,
-        "succeeded": false
-      },
-      {
-        "attempt": "viewer promotes themself to owner",
-        "status": 403,
-        "succeeded": false
-      },
-      {
-        "attempt": "account manager creates an account manager",
-        "status": 403,
-        "succeeded": false
-      },
-      {
-        "attempt": "account manager assigns themself a client",
-        "status": 403,
-        "succeeded": false
-      },
-      {
-        "attempt": "founder adds a member to another workspace",
-        "status": 404,
-        "succeeded": false
-      },
-      {
-        "attempt": "last owner demotes themself",
-        "status": 409,
-        "succeeded": false
-      },
-      {
-        "attempt": "signup asks for the platform_admin role",
-        "status": 201,
-        "succeeded": false
-      },
-      {
-        "attempt": "token forged with a guessed secret",
-        "status": 401,
-        "succeeded": false
-      },
-      {
-        "attempt": "validly signed token for a user that does not exist",
-        "status": 401,
-        "succeeded": false
-      },
-      {
-        "attempt": "deactivated user's old token",
-        "status": 401,
-        "succeeded": false
-      },
-      {
-        "attempt": "removed member's old token",
-        "status": 401,
-        "succeeded": false
-      }
-    ]
   }
 }

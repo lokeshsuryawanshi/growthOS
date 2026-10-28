@@ -19,7 +19,7 @@ class TenantScopeError(PermissionError):
 @dataclass(frozen=True)
 class TenantScope:
     tenant_id: str | None
-    system: bool = False   # cross-tenant access (platform jobs, admin). Always audited by caller.
+    system: bool = False   # cross-tenant access for narrow platform jobs; every use names its reason
     reason: str = ""
 
 
@@ -50,7 +50,7 @@ def tenant_scope(tenant_id: str) -> Iterator[TenantScope]:
 
 @contextmanager
 def system_scope(reason: str) -> Iterator[TenantScope]:
-    """Explicit cross-tenant scope. Use only for platform jobs and admin views."""
+    """Explicit cross-tenant scope for narrow platform jobs (resume runs, timing medians, one account's own spend)."""
     if not reason:
         raise TenantScopeError("system scope needs a reason")
     token = _scope.set(TenantScope(tenant_id=None, system=True, reason=reason))

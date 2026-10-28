@@ -47,15 +47,13 @@ async def active_run(tenant_id: str, kind: str | None = None) -> Run | None:
 
 
 async def start_run(p: Principal, tenant_id: str, kind: str, params: dict | None = None) -> str:
-    authorize(p, "run:start", tenant_id)
+    authorize(p, tenant_id)
     if kind not in DAGS:
         raise RunRefused(f"unknown run kind '{kind}'")
     async with get_db().reader() as s:
         tenant = await s.get(Tenant, tenant_id)
-    if tenant is None or tenant.kill_switch:
-        raise RunRefused("this workspace is paused")
-    if kind == "weekly" and not await latest(tenant_id, "icp"):
-        kind = "discovery"              # the all-in-one weekly run needs a strategy first
+    if tenant is None:
+        raise RunRefused("this client no longer exists")
     if kind == "content" and not await latest(tenant_id, "content_strategy"):
         raise RunRefused("Run research and approve your strategy first: posts are written from it.")
     if kind == "leads" and not await latest(tenant_id, "icp"):
@@ -63,8 +61,7 @@ async def start_run(p: Principal, tenant_id: str, kind: str, params: dict | None
     if (cur := await active_run(tenant_id, kind)) is not None:
         raise RunRefused(f"a {cur.kind} run is already {cur.status.replace('_', ' ')}")
     preflight(kind)
-    if not p.is_agency:
-        limiter.check(f"run:{tenant_id}", 6, 3600)
+    limiter.check(f"run:{tenant_id}", 6, 3600)
     params = dict(params or {})
     if kind == "leads":                 # lead weeks follow the calendar week we are in, not the content calendar
         today = date.today()

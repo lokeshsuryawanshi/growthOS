@@ -1,0 +1,60 @@
+"""v2: one operator account (Google sign-in) owns its client profiles; no roles, teams, admin or Gmail sending.
+
+v1 accounts signed in with a password, which v2 no longer has, so they could never sign in again. Their rows are
+removed rather than left orphaned (v1 data lived on ephemeral storage and was disposable). On an empty database this
+migration only reshapes the tables.
+
+Revision ID: 0005
+Revises: 0004
+Create Date: 2026-10-29
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+revision = '0005'
+down_revision = '0004'
+branch_labels = None
+depends_on = None
+
+# Children before parents (foreign keys).
+V1_TENANT_TABLES = ['outreach_messages', 'lead_rejections', 'leads', 'posts', 'calendar_slots', 'run_nodes', 'runs',
+                    'llm_calls', 'external_calls', 'llm_cache', 'trace_events', 'artifacts', 'knowledge_docs',
+                    'client_profiles', 'suppression_entries', 'feedback', 'guardrail_incidents', 'audit_log',
+                    'integration_credentials']
+
+
+def upgrade() -> None:
+    for t in V1_TENANT_TABLES:
+        op.execute(sa.text(f'DELETE FROM {t}'))
+    op.drop_table('integration_credentials')
+    op.drop_index('ix_platform_audit_created_at', table_name='platform_audit')
+    op.drop_table('platform_audit')
+    with op.batch_alter_table('memberships') as b:
+        b.drop_index('ix_memberships_tenant_id')
+        b.drop_index('ix_memberships_user_id')
+    op.drop_table('memberships')
+    op.execute(sa.text('DELETE FROM tenants'))
+    op.drop_table('users')
+    op.create_table('users',
+        sa.Column('id', sa.String(length=32), nullable=False),
+        sa.Column('google_sub', sa.String(length=64), nullable=False),
+        sa.Column('email', sa.String(length=200), nullable=False),
+        sa.Column('name', sa.String(length=200), nullable=False),
+        sa.Column('monthly_cap_usd', sa.Float(), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('google_sub'))
+    with op.batch_alter_table('tenants') as b:
+        b.add_column(sa.Column('owner_user_id', sa.String(length=32), nullable=False))
+        b.create_index('ix_tenants_owner_user_id', ['owner_user_id'], unique=False)
+        b.create_foreign_key('fk_tenants_owner_user_id_users', 'users', ['owner_user_id'], ['id'])
+        b.drop_column('kill_switch')
+        b.drop_column('monthly_budget_usd')
+    with op.batch_alter_table('outreach_messages') as b:
+        b.drop_column('external_id')
+        b.drop_column('send_error')
+
+
+def downgrade() -> None:
+    raise NotImplementedError("v2 does not go back to password accounts; restore a v1 backup instead")

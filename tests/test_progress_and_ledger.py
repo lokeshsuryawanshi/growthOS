@@ -1,5 +1,7 @@
 """Search/contact credits in the cost ledger, and the run progress estimate shown to the founder."""
 import pytest
+
+from tests.helpers import bare_tenants
 from sqlalchemy import select
 
 from app.agents.orchestrator.engine import Orchestrator, set_orchestrator
@@ -14,8 +16,7 @@ from app.services.progress import run_progress
 
 
 async def test_external_calls_are_priced_and_reported(db):
-    async with db.session() as s:
-        s.add(Tenant(id="t1", slug="t1", name="T1"))
+    await bare_tenants(db, "t1")
     await record_external("t1", "tavily", "search", run_id="r1", node_key="market")
     await record_external("t1", "hunter", "domain_search", run_id="r1", node_key="leads")
     await record_external("t1", "hunter", "verify", run_id="r1", node_key="leads")

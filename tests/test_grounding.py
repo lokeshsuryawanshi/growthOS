@@ -1,5 +1,7 @@
 """Factual grounding: claim-level checks, copy detection, and the regressions found in the first live run."""
 import pytest
+
+from tests.helpers import weekly
 from sqlalchemy import select
 
 from app.agents.schemas import Claim
@@ -97,7 +99,7 @@ async def test_writer_claims_are_verified_in_pipeline(db):
     ids = await seed(db)
     orch, tid = Orchestrator(), ids["ledgerloop"]
     await orch.execute(tid, await orch.create_run(tid, "discovery", {"start_date": "2026-11-02", "auto_approve_gates": True}))
-    await orch.execute(tid, await orch.create_run(tid, "weekly", {}))
+    await weekly(orch, tid)
     with tenant_scope(tid):
         async with db.reader() as s:
             posts = (await s.execute(select(Post).where(Post.status == "pending_approval"))).scalars().all()

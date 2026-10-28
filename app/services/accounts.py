@@ -1,6 +1,8 @@
-"""Accounts and workspaces: signup, onboarding, profile edits. Server-side validation for every input."""
+"""Accounts and client profiles: Google sign-in accounts, adding, editing and deleting clients. Server-side validation
+for every input."""
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 from typing import Any
@@ -8,14 +10,15 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, select
 
-from app.core.config import get_settings
-from app.core.security import ForbiddenError, Principal, authorize, hash_password
+from app.core.security import Principal, authorize
 from app.core.tenancy import tenant_scope
 from app.db.audit import audit
-from app.db.models import ClientProfile, KnowledgeDoc, Membership, Tenant, User
+from app.db.models import TENANT_TABLES, Base, ClientProfile, KnowledgeDoc, Run, Tenant, User
 from app.db.session import get_db
 from app.integrations.hunter import clean_domain
 
+log = logging.getLogger(__name__)
+MAX_CLIENTS = 25
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}\.[A-Za-z]{2,24}$")
 
 
@@ -131,51 +134,61 @@ def intake_and_policy(f: OnboardingForm) -> tuple[dict, dict]:
 
 
 def slugify(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "workspace"
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "client"
 
 
-# ---------------------------------------------------------------- signup / login
-async def signup(name: str, email: str, password: str, invite_code: str = "") -> Principal:
-    st = get_settings()
-    name, email = name.strip(), email.strip().lower()
-    if st.signup_invite_code and not secrets.compare_digest(invite_code.strip(), st.signup_invite_code):
-        raise AccountError("That invite code is not valid.")
-    if not 1 <= len(name) <= 100:
-        raise AccountError("Please enter your name.")
-    if not EMAIL_RE.match(email):
-        raise AccountError("Please enter a valid email address.")
-    if len(password) < 10:
-        raise AccountError("Choose a password of at least 10 characters.")
+# ---------------------------------------------------------------- accounts
+async def google_user(sub: str, email: str, name: str) -> Principal:
+    """Find or create the account for a verified Google identity. Google's `sub` is the key; email and name follow
+    whatever Google says now."""
     async with get_db().session() as s:
-        if (await s.execute(select(User.id).where(User.email == email))).first():
-            raise AccountError("An account with that email already exists. Sign in instead.")
-        user = User(email=email, name=name, role="client_owner", password_hash=hash_password(password))
-        s.add(user)
-        await s.flush()
-        return Principal(user.id, user.name, user.role, frozenset())
+        user = (await s.execute(select(User).where(User.google_sub == sub))).scalars().first()
+        if user is None:
+            user = User(google_sub=sub, email=email, name=name)
+            s.add(user)
+            await s.flush()
+            log.info("new account %s", user.id)
+        else:
+            user.email, user.name = email, name or user.name
+        uid = user.id
+    from app.api.deps import load_principal
+    return await load_principal(uid)  # type: ignore[return-value]
 
 
-async def my_tenant_ids(user_id: str) -> list[str]:
+async def monthly_cap(p: Principal) -> float | None:
     async with get_db().reader() as s:
-        return list((await s.execute(select(Membership.tenant_id).where(Membership.user_id == user_id))).scalars().all())
+        user = await s.get(User, p.user_id)
+    return user.monthly_cap_usd if user else None
 
 
-async def create_workspace(p: Principal, form: OnboardingForm) -> Tenant:
-    if p.role != "client_owner":
-        raise ForbiddenError("only founders create workspaces")
-    if await my_tenant_ids(p.user_id):
-        raise AccountError("You already have a workspace.")
+async def set_monthly_cap(p: Principal, raw: str) -> float | None:
+    raw = (raw or "").strip().lstrip("$")
+    try:
+        cap = round(float(raw), 2) if raw else None
+    except ValueError:
+        raise AccountError("Enter the cap as a number of dollars, for example 5, or leave it empty for no cap.")
+    if cap is not None and not 0 <= cap <= 10_000:
+        raise AccountError("The monthly cap must be between $0 and $10,000.")
+    async with get_db().session() as s:
+        (await s.get(User, p.user_id)).monthly_cap_usd = cap
+    return cap
+
+
+async def create_client(p: Principal, form: OnboardingForm) -> Tenant:
     intake, policy = intake_and_policy(form)
     base = slugify(form.company_name)
     async with get_db().session() as s:
+        if (await s.get(User, p.user_id)) is None:
+            raise AccountError("Your session has ended. Please sign in again.")
+        if len(p.tenant_ids) >= MAX_CLIENTS:
+            raise AccountError(f"One account can hold up to {MAX_CLIENTS} clients.")
         slug = base
         while (await s.execute(select(Tenant.id).where(Tenant.slug == slug))).first():
             slug = f"{base}-{secrets.token_hex(2)}"
-        t = Tenant(slug=slug, name=form.company_name, industry=form.industry, founder_name=form.founder_name,
-                   status="active", monthly_budget_usd=get_settings().self_serve_monthly_budget_usd)
+        t = Tenant(owner_user_id=p.user_id, slug=slug, name=form.company_name, industry=form.industry,
+                   founder_name=form.founder_name, status="active")
         s.add(t)
         await s.flush()
-        s.add(Membership(user_id=p.user_id, tenant_id=t.id))
         tid = t.id
     with tenant_scope(tid):
         async with get_db().session() as s:
@@ -183,6 +196,41 @@ async def create_workspace(p: Principal, form: OnboardingForm) -> Tenant:
             _write_docs(s, form)
             audit(s, p.user_id, "tenant.onboarded", "tenant", tid)
     return t
+
+
+async def delete_client(p: Principal, tenant_id: str) -> None:
+    """Deletes the client and everything made for it (research, posts, leads, emails, runs, ledgers). Not undoable."""
+    authorize(p, tenant_id)
+    from app.agents.orchestrator.engine import get_orchestrator
+    with tenant_scope(tenant_id):
+        async with get_db().reader() as s:
+            run_ids = (await s.execute(select(Run.id).where(Run.status.in_(["pending", "running", "waiting_human"])))).scalars().all()
+    for rid in run_ids:
+        await get_orchestrator().stop(rid)
+    tables = [m for m in reversed(Base.metadata.sorted_tables) if m.name in TENANT_TABLES]
+    with tenant_scope(tenant_id):
+        async with get_db().session() as s:
+            for table in tables:
+                model = next(c for c in Base.__subclasses__() if getattr(c, "__tablename__", None) == table.name)
+                await s.execute(delete(model).where(model.tenant_id == tenant_id))
+    async with get_db().session() as s:
+        t = await s.get(Tenant, tenant_id)
+        if t is not None and t.owner_user_id == p.user_id:
+            await s.delete(t)
+    log.info("account %s deleted client %s", p.user_id, tenant_id)
+
+
+async def delete_account(p: Principal) -> None:
+    """Closes the account: every client, then the account itself."""
+    from app.api.deps import load_principal
+    for tid in sorted(p.tenant_ids):
+        await delete_client(p, tid)
+    async with get_db().session() as s:
+        user = await s.get(User, p.user_id)
+        if user is not None:
+            await s.delete(user)
+    assert await load_principal(p.user_id) is None
+    log.info("account %s closed", p.user_id)
 
 
 def _write_docs(s, form: OnboardingForm) -> None:
@@ -195,7 +243,7 @@ def _write_docs(s, form: OnboardingForm) -> None:
 
 
 async def update_profile(p: Principal, tenant_id: str, form: OnboardingForm) -> None:
-    authorize(p, "onboarding:edit", tenant_id)
+    authorize(p, tenant_id)
     intake, policy = intake_and_policy(form)
     with tenant_scope(tenant_id):
         async with get_db().session() as s:

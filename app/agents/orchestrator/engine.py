@@ -53,24 +53,14 @@ DAGS: dict[str, dict[str, list[str]]] = {
         "strategy": ["voice", "market", "competitors", "trends"],
         "icp": ["market", "competitors"],
         "calendar": ["strategy"],
-        "strategy_review": ["calendar", "icp"],   # human gate: account manager signs off the brief
+        "strategy_review": ["calendar", "icp"],   # human gate: the operator signs off the brief
     },
-    "weekly": {
+    # Content and leads are two independent workflows with their own buttons.
+    "content": {
         "reflect": [],                            # learn from last week's edits first
         "trends_refresh": [],
         "draft_week": ["reflect", "trends_refresh"],
         "calendar_extend": ["draft_week"],        # keep 8 weeks planned ahead
-        "leads": [],
-        "outreach": ["leads"],
-        "kpi_snapshot": ["calendar_extend", "outreach"],
-    },
-    # The founder-facing product runs content and leads as two independent workflows.
-    # ("weekly" above is kept for the agency's all-in-one run.)
-    "content": {
-        "reflect": [],
-        "trends_refresh": [],
-        "draft_week": ["reflect", "trends_refresh"],
-        "calendar_extend": ["draft_week"],
         "kpi_snapshot": ["calendar_extend"],
     },
     "leads": {
@@ -393,11 +383,23 @@ class Orchestrator:
         if run_id in self._cancels:
             self._cancels[run_id].set()
 
+    async def stop(self, run_id: str, timeout_s: float = 15.0) -> None:
+        """Cancel a run and wait for it to wind down (used before a client is deleted)."""
+        self._cancels.setdefault(run_id, asyncio.Event()).set()
+        task = self._tasks.get(run_id)
+        if task and not task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout_s)
+            except (asyncio.TimeoutError, Exception):  # noqa: BLE001 - the run is being thrown away
+                task.cancel()
+
     async def execute(self, tenant_id: str, run_id: str) -> str:
         cancel = self._cancels.setdefault(run_id, asyncio.Event())
         with tenant_scope(tenant_id):
             async with get_db().session() as s:
-                run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().one()
+                run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().first()
+                if run is None:                 # the client was deleted
+                    return "cancelled"
                 if run.status in RUN_DONE:
                     return run.status
                 run.status = "running"
@@ -407,8 +409,8 @@ class Orchestrator:
                 params, budget = dict(run.params), Budget(max_usd=max(0.0, run.budget_usd - run.cost_usd))
         async with get_db().reader() as s:
             tenant = await s.get(Tenant, tenant_id)
-        if tenant is None or tenant.kill_switch:
-            return await self._finish(tenant_id, run_id, "cancelled", "tenant kill switch is on")
+        if tenant is None:
+            return await self._finish(tenant_id, run_id, "cancelled", "the client was deleted")
 
         # Event-driven: a node starts the moment its own dependencies have succeeded, not when a whole "wave" of
         # siblings has finished (e.g. trends starts as soon as market is done, without waiting for competitors).
@@ -497,7 +499,9 @@ class Orchestrator:
     async def approve_gate(self, tenant_id: str, run_id: str, key: str, actor: str) -> None:
         with tenant_scope(tenant_id):
             async with get_db().session() as s:
-                node = (await s.execute(select(RunNode).where(RunNode.run_id == run_id, RunNode.key == key))).scalars().one()
+                node = (await s.execute(select(RunNode).where(RunNode.run_id == run_id, RunNode.key == key))).scalars().first()
+                if node is None:
+                    raise LookupError("no such step")
                 if node.status != "waiting_human":
                     raise ValueError(f"node {key} is not waiting for approval")
                 node.status, node.output, node.finished_at = "succeeded", {"approved_by": actor}, _now()
@@ -511,10 +515,10 @@ class Orchestrator:
         keys = [key] if isinstance(key, str) else list(key)
         with tenant_scope(tenant_id):
             async with get_db().session() as s:
-                run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().one()
+                run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().first()
+                if run is None or any(k not in DAGS[run.kind] for k in keys):
+                    raise LookupError("no such run or step")
                 dag = DAGS[run.kind]
-                if any(k not in dag for k in keys):
-                    raise ValueError(f"unknown step {keys}")
                 if params:
                     run.params = {**(run.params or {}), **params}
                 stale, frontier = set(keys), list(keys)
@@ -550,15 +554,15 @@ class Orchestrator:
     async def _set_node(self, tenant_id: str, node_id: str, **fields) -> None:
         with tenant_scope(tenant_id):
             async with get_db().session() as s:
-                node = (await s.execute(select(RunNode).where(RunNode.id == node_id))).scalars().one()
-                for k, v in fields.items():
+                node = (await s.execute(select(RunNode).where(RunNode.id == node_id))).scalars().first()
+                for k, v in (fields.items() if node else ()):      # None: the client was deleted mid-run
                     setattr(node, k, v)
 
     async def _set_run(self, tenant_id: str, run_id: str, **fields) -> None:
         with tenant_scope(tenant_id):
             async with get_db().session() as s:
-                run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().one()
-                for k, v in fields.items():
+                run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().first()
+                for k, v in (fields.items() if run else ()):
                     setattr(run, k, v)
 
     async def _finish(self, tenant_id: str, run_id: str, status: str, error: str) -> str:
@@ -566,9 +570,10 @@ class Orchestrator:
             async with get_db().session() as s:
                 cost = (await s.execute(select(func.coalesce(func.sum(LLMCall.cost_usd), 0.0))
                                         .where(LLMCall.run_id == run_id))).scalar_one()
-                run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().one()
-                run.status, run.error, run.cost_usd, run.finished_at = status, error, float(cost), _now()
-                audit(s, "system:orchestrator", f"run.{status}", "run", run_id, cost_usd=round(float(cost), 5))
+                run = (await s.execute(select(Run).where(Run.id == run_id))).scalars().first()
+                if run is not None:
+                    run.status, run.error, run.cost_usd, run.finished_at = status, error, float(cost), _now()
+                    audit(s, "system:orchestrator", f"run.{status}", "run", run_id, cost_usd=round(float(cost), 5))
         self._cancels.pop(run_id, None)
         return status
 

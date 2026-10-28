@@ -1,6 +1,6 @@
 """ORM models.
 
-Global tables: Tenant, User, Membership, LLMPriceSnapshot-free (prices live in config).
+Global tables: User (an operator account) and Tenant (a client profile owned by one account).
 Every other table mixes in TenantScoped; the session interceptor refuses to
 query or write those without a valid tenant scope.
 """
@@ -37,52 +37,29 @@ class TenantScoped:
 # --------------------------------------------------------------------------
 # Global tables
 # --------------------------------------------------------------------------
+class User(Base):
+    """One operator account. Signs in with Google only; identified by Google's stable `sub`, never by email."""
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    google_sub: Mapped[str] = mapped_column(String(64), unique=True)
+    email: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(200), default="")
+    monthly_cap_usd: Mapped[float | None] = mapped_column(Float, nullable=True)   # optional, set by the operator
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Tenant(Base):
+    """A client profile: one founder the operator works for. Belongs to exactly one account."""
     __tablename__ = "tenants"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     slug: Mapped[str] = mapped_column(String(64), unique=True)
     name: Mapped[str] = mapped_column(String(200))
     industry: Mapped[str] = mapped_column(String(200), default="")
     founder_name: Mapped[str] = mapped_column(String(200), default="")
-    status: Mapped[str] = mapped_column(String(32), default="onboarding")  # onboarding|active|paused
-    monthly_budget_usd: Mapped[float] = mapped_column(Float, default=25.0)
-    kill_switch: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(32), default="active")  # active
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)   # synthetic fixture client; the UI labels it
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class User(Base):
-    __tablename__ = "users"
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    email: Mapped[str] = mapped_column(String(200), unique=True)
-    name: Mapped[str] = mapped_column(String(200))
-    password_hash: Mapped[str] = mapped_column(String(200))
-    role: Mapped[str] = mapped_column(String(32))  # platform_admin|account_manager|client_owner|client_viewer
-    active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class Membership(Base):
-    """Which tenants a user may act on. Admins need none (they use system scope)."""
-    __tablename__ = "memberships"
-    __table_args__ = (UniqueConstraint("user_id", "tenant_id"),)
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
-    added_by: Mapped[str] = mapped_column(String(32), default="")      # user id; "" = created with the workspace
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class PlatformAudit(Base):
-    """Audit trail for actions that are not about one workspace (account managers created, users deactivated)."""
-    __tablename__ = "platform_audit"
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    actor: Mapped[str] = mapped_column(String(64))
-    action: Mapped[str] = mapped_column(String(64))
-    target_user: Mapped[str] = mapped_column(String(32), default="")
-    tenant_id: Mapped[str] = mapped_column(String(32), default="")
-    detail: Mapped[dict[str, Any]] = mapped_column(default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
 # --------------------------------------------------------------------------
@@ -308,26 +285,8 @@ class OutreachMessage(TenantScoped, Base):
     edit_distance: Mapped[float | None] = mapped_column(Float, nullable=True)
     decided_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    external_id: Mapped[str] = mapped_column(String(120), default="")   # Gmail message id once sent
-    send_error: Mapped[str] = mapped_column(Text, default="")
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # operator: "I sent it"
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class IntegrationCredential(TenantScoped, Base):
-    """A connected third-party account (Gmail). Tokens are encrypted at rest."""
-    __tablename__ = "integration_credentials"
-    __table_args__ = (UniqueConstraint("tenant_id", "provider"),)
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    provider: Mapped[str] = mapped_column(String(32))            # gmail
-    account_email: Mapped[str] = mapped_column(String(200), default="")
-    secret_enc: Mapped[str] = mapped_column(Text, default="")    # Fernet(JSON{refresh_token})
-    scopes: Mapped[str] = mapped_column(Text, default="")
-    status: Mapped[str] = mapped_column(String(16), default="connected")  # connected|revoked|error
-    last_error: Mapped[str] = mapped_column(Text, default="")
-    connected_by: Mapped[str] = mapped_column(String(32), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class SuppressionEntry(TenantScoped, Base):

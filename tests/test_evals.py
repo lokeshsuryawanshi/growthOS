@@ -15,14 +15,14 @@ async def test_guardrail_eval_meets_baseline():
     assert g["redteam_block_recall"] == 1.0 and g["benign_false_positive_rate"] == 0.0
 
 
-async def test_rbac_eval_matrix_passes_with_no_violations(db):
-    from app.llm.gateway import LLMGateway, set_gateway
-    from evals.rbac import eval_rbac
-    set_gateway(LLMGateway())
-    r = await eval_rbac()
-    assert r["rbac_checks"] >= 300
-    assert r["rbac_matrix_pass_rate"] == 1.0, r["rbac_failures"]
-    assert r["cross_tenant_access_violations"] == 0 and r["privilege_escalation_successes"] == 0
+async def test_isolation_eval_finds_no_violations_and_catches_every_mutation():
+    from evals.isolation import eval_isolation
+    r = await eval_isolation(mutations=True)
+    assert r["isolation_routes"] >= 12 and r["isolation_checks"] >= 50
+    assert r["cross_account_access_violations"] == r["session_escalations"] == r["cross_account_page_leaks"] == 0, \
+        r["isolation_failures"]
+    m = r["mutations"]
+    assert m["mutations_caught"] == m["mutations_total"] >= 4, m["detail"]
 
 
 def test_lead_screening_catches_every_labelled_adversarial_prospect():

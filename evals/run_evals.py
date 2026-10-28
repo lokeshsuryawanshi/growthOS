@@ -6,7 +6,7 @@
 
 Sections
   1. guardrails  red-team + benign controls for input and output guards (recall and false positives)
-  2. pipeline    discovery + weekly cycles for the two demo clients, scored against
+  2. pipeline    discovery + weekly content and lead runs for the two demo clients, scored against
                  business rules and the prospect dataset's ground-truth labels
   3. judge       critic-vs-human agreement on hand-scored drafts (live only: mock scores aren't content-based)
 The report is compared with evals/baseline.json; any threshold breach exits non-zero.
@@ -109,7 +109,10 @@ async def eval_pipeline(weeks: int) -> dict:
         tid = ids[slug]
         t0 = time.monotonic()
         st = await orch.execute(tid, await orch.create_run(tid, "discovery", {"start_date": "2026-11-02", "auto_approve_gates": True}))
-        weekly = [await orch.execute(tid, await orch.create_run(tid, "weekly", {})) for _ in range(weeks)]
+        from tests.helpers import weekly as weekly_runs
+        weekly = []
+        for _ in range(weeks):
+            weekly += list(await weekly_runs(orch, tid))
         elapsed = time.monotonic() - t0
         with tenant_scope(tid):
             async with db.reader() as sess:
@@ -226,7 +229,10 @@ def _spearman(pairs: list[tuple[float, float]]) -> float:
 def gate(report: dict, baseline: dict) -> list[str]:
     failures = []
     flat = {**report["guardrails"], **{k: v for k, v in report["pipeline"].items() if k != "clients"}}
-    flat.update({k: v for k, v in report.get("rbac", {}).items() if isinstance(v, (int, float))})
+    iso = report.get("isolation", {})
+    flat.update({k: v for k, v in iso.items() if isinstance(v, (int, float)) and not isinstance(v, bool)})
+    if iso.get("mutations"):
+        flat["isolation_mutations_missed"] = iso["mutations"]["mutations_total"] - iso["mutations"]["mutations_caught"]
     flat.update({k: v for k, v in report.get("quality", {}).items() if isinstance(v, (int, float))})
     if "judge" in report:
         flat.update({f"judge_{k}": v for k, v in report["judge"].items() if k != "pairs"})
@@ -257,18 +263,24 @@ def to_markdown(r: dict, failures: list[str]) -> str:
         lines += ["", "## Deterministic quality report (no LLM)", "", "| Area | Metric | Value |", "|---|---|---|"]
         lines += [f"| {area} | {name} | {q[key]} |" for area, name, key in QUALITY_ROWS if key in q]
         lines.append("")
-    if r.get("rbac"):
-        b = r["rbac"]
-        lines += ["", "## RBAC and tenant isolation", "", "| Metric | Value |", "|---|---|",
-                  f"| Matrix checks (role x action x endpoint, API and UI) | {b['rbac_checks']} |",
-                  f"| Matrix pass rate | {b['rbac_matrix_pass_rate']} |",
-                  f"| Cross-tenant access violations | {b['cross_tenant_access_violations']} |",
-                  f"| Privilege escalation attempts / successes | {b['privilege_escalation_attempts']} / "
-                  f"{b['privilege_escalation_successes']} |", ""]
-        if b["rbac_failures"]:
-            lines += ["Failures:", *[f"- {m}" for m in b["rbac_failures"]], ""]
-        lines += ["Escalation attempts (all must fail):", "",
-                  *[f"- {e['attempt']}: HTTP {e['status']}{' **SUCCEEDED**' if e['succeeded'] else ''}" for e in b["escalations"]], ""]
+    if r.get("isolation"):
+        b = r["isolation"]
+        lines += ["", "## Account isolation", "", "| Metric | Value |", "|---|---|",
+                  f"| Client routes found in the app (all are tested) | {b['isolation_routes']} |",
+                  f"| Checks (other account, signed out, forged/expired/stale sessions, page leaks) | {b['isolation_checks']} |",
+                  f"| Cross-account access violations | {b['cross_account_access_violations']} |",
+                  f"| Session escalations | {b['session_escalations']} |",
+                  f"| Another account's data shown on a page | {b['cross_account_page_leaks']} |"]
+        if b.get("mutations"):
+            m = b["mutations"]
+            lines.append(f"| Mutation test: deliberate breaks noticed | {m['mutations_caught']} of {m['mutations_total']} |")
+        lines.append("")
+        if b["isolation_failures"]:
+            lines += ["Failures:", *[f"- {x}" for x in b["isolation_failures"]], ""]
+        if b.get("mutations"):
+            lines += ["Mutations (each must be caught):", "",
+                      *[f"- {k}: {'caught' if v['caught'] else '**MISSED**'} ({v['violations']} violations, "
+                        f"{v['escalations']} escalations, {v['leaks']} leaks)" for k, v in b["mutations"]["detail"].items()], ""]
     if p.get("clients"):
         lines += ["## Pipeline (per demo client)", "", "| Metric | " + " | ".join(p["clients"]) + " |",
                   "|---|" + "---|" * len(p["clients"])]
@@ -313,7 +325,7 @@ async def main_async(args) -> int:
 
     report: dict = {"mode": "live" if args.live else ("a real run's data" if args.from_db else "mock")}
     sections = set(args.sections.split(",")) if args.sections else \
-        ({"guardrails", "judge"} if args.live else {"guardrails", "pipeline", "quality", "rbac"})
+        ({"guardrails", "judge"} if args.live else {"guardrails", "pipeline", "quality", "isolation"})
     report["guardrails"] = await eval_guardrails() if "guardrails" in sections else {}
     report["pipeline"] = await eval_pipeline(args.weeks) if "pipeline" in sections else {"clients": {}}
     if "quality" in sections:
@@ -323,9 +335,9 @@ async def main_async(args) -> int:
         else:
             tids = [ids[s] for s in ("ledgerloop", "shiftwise")]
             report["quality"] = {**await content_quality(tids), **lead_screening("ledgerloop")}
-    if "rbac" in sections:
-        from evals.rbac import eval_rbac
-        report["rbac"] = await eval_rbac()
+    if "isolation" in sections:
+        from evals.isolation import eval_isolation
+        report["isolation"] = await eval_isolation(mutations=True)
     if args.live and "judge" in sections:
         report["judge"] = await eval_judge()
     baseline_path = HERE / "baseline.json"
@@ -335,9 +347,7 @@ async def main_async(args) -> int:
     out = HERE / "reports"
     out.mkdir(exist_ok=True)
     name = args.out or f"eval-{report['mode']}"
-    (out / f"{name}.json").write_text(json.dumps({k: v for k, v in report.items() if k != "rbac"} |
-                                                 ({"rbac": {k: v for k, v in report["rbac"].items() if k != "matrix"}}
-                                                  if "rbac" in report else {}), indent=2, default=str))
+    (out / f"{name}.json").write_text(json.dumps(report, indent=2, default=str))
     (out / f"{name}.md").write_text(to_markdown(report, failures))
     print(to_markdown(report, failures))
     await db.dispose()
@@ -348,7 +358,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", action="store_true")
     ap.add_argument("--weeks", type=int, default=2)
-    ap.add_argument("--sections", default="", help="comma list; default guardrails,pipeline,quality,rbac (mock) or guardrails,judge (live)")
+    ap.add_argument("--sections", default="", help="comma list; default guardrails,pipeline,quality,isolation (mock) or guardrails,judge (live)")
     ap.add_argument("--from-db", default="", help="compute the quality section over a real run's database (read only)")
     ap.add_argument("--out", default="", help="report name (default eval-<mode>)")
     args = ap.parse_args()

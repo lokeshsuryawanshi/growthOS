@@ -2,6 +2,8 @@ import asyncio
 from datetime import date
 
 import pytest
+
+from tests.helpers import bare_tenants
 from sqlalchemy import func, select, text, update
 
 from app.core.tenancy import TenantScopeError, system_scope, tenant_scope
@@ -9,8 +11,7 @@ from app.db.models import Lead, Tenant
 
 
 async def _seed(db):
-    async with db.session() as s:
-        s.add_all([Tenant(id="ta", slug="a", name="A"), Tenant(id="tb", slug="b", name="B")])
+    await bare_tenants(db, "ta", "tb")
     for tid in ("ta", "tb"):
         with tenant_scope(tid):
             async with db.session() as s:
@@ -101,3 +102,13 @@ async def test_wal_pragmas_applied(db):
         mode = (await s.execute(text("PRAGMA journal_mode"))).scalar_one()
         timeout = (await s.execute(text("PRAGMA busy_timeout"))).scalar_one()
     assert mode == "wal" and timeout == 30000
+
+
+async def test_the_other_client_guard_only_knows_this_accounts_clients(db):
+    """A guardrail message must never reveal another account's client: only the operator's own clients are listed."""
+    from app.agents.blackboard import _leak_cache, other_tenant_terms
+    await bare_tenants(db, "mine-1", "mine-2", owner="u-a")
+    await bare_tenants(db, "theirs", owner="u-b")
+    _leak_cache.clear()
+    terms = await other_tenant_terms("mine-1")
+    assert "MINE-2" in terms and "THEIRS" not in terms and "MINE-1" not in terms

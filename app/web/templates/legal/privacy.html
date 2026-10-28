@@ -1,0 +1,12 @@
+{% extends "legal/base.html" %}
+{% block title %}Privacy policy · Growth OS{% endblock %}
+{% block legal %}
+<h1>Privacy policy</h1>
+<p class="sub">Last updated 29 October 2026</p>
+<p><b>What we collect.</b> Your name and email address from Google when you sign in. The information you enter about your clients. The drafts, plans and leads you create. Your API keys, which are stored encrypted and are never shown again after you save them.</p>
+<p><b>How we use it.</b> Only to provide the service to you. We do not sell your data and we do not use it for advertising.</p>
+<p><b>Who we share it with.</b> No one, except the services you choose to connect with your own API keys. When you start a task, the text needed for it is sent to those services under your account with them.</p>
+<p><b>Deleting your data.</b> Deleting a client deletes everything made for it. Closing your account deletes everything, including your keys. You can also ask us to delete your data.</p>
+<p><b>Contact.</b> {% if contact_email %}For any request about your data, email <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.{% else %}For any request about your data, use the contact address given where you found this service.{% endif %}</p>
+<p>See also our <a href="/termsofservice">terms of service</a>.</p>
+{% endblock %}

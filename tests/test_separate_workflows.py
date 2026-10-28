@@ -22,7 +22,7 @@ async def world(db):
     ids = await seed(db)
     tid = ids["ledgerloop"]
     await orch.execute(tid, await orch.create_run(tid, "discovery", {"start_date": "2026-11-02", "auto_approve_gates": True}))
-    return db, tid, orch, Principal("u-owner", "Founder", "client_owner", frozenset({tid}))
+    return db, tid, orch, Principal("u-owner", "Founder", tenant_ids=frozenset({tid}))
 
 
 async def count(db, tid, model):
@@ -57,10 +57,10 @@ async def test_lead_run_finds_leads_and_writes_no_posts(world):
 async def test_content_and_lead_runs_can_overlap_but_nothing_else_can(world):
     db, tid, orch, owner = world
     assert run_service._conflicts("content", "leads") is False
-    for a, b in [("content", "content"), ("leads", "leads"), ("discovery", "leads"), ("weekly", "content")]:
+    for a, b in [("content", "content"), ("leads", "leads"), ("discovery", "leads"), ("discovery", "content")]:
         assert run_service._conflicts(a, b) is True
     c = await orch.create_run(tid, "content", {})                # a pending content run is "active"
-    ws = await workspace_state(tid, owner, await tenant_kpis(tid))
+    ws = await workspace_state(tid, await tenant_kpis(tid))
     assert ws["can_content"] is False and ws["can_leads"] is True
     with pytest.raises(run_service.RunRefused, match="already"):
         await run_service.start_run(owner, tid, "content")
@@ -73,7 +73,7 @@ async def test_content_and_leads_refuse_before_research(db):
     set_orchestrator(Orchestrator())
     ids = await seed(db)
     tid = ids["shiftwise"]
-    owner = Principal("u", "F", "client_owner", frozenset({tid}))
+    owner = Principal("u", "F", tenant_ids=frozenset({tid}))
     for kind in ("content", "leads"):
         with pytest.raises(run_service.RunRefused, match="research"):
             await run_service.start_run(owner, tid, kind)

@@ -1,6 +1,5 @@
 <section class="panel stack">
-  <div class="row"><span class="pill {{ 'bad' if code == 403 else '' }}">{{ code }}</span><h1>{{ 'You can\'t do that here' if code == 403 else 'Nothing here' }}</h1></div>
+  <div class="row"><span class="pill {{ 'bad' if code >= 400 and code != 404 }}">{{ code }}</span><h1>{{ {404: 'Nothing here', 429: 'Slow down a little', 424: 'A service needs attention', 500: 'Something went wrong'}.get(code, 'That did not work') }}</h1></div>
   <p>{{ detail }}</p>
-  {% if code == 403 %}<p class="sub">Your access is set by the workspace owner. Ask them to change your role if you need this.</p>{% endif %}
-  <div class="row"><a class="btn primary" href="/">Back to your workspace</a></div>
+  <div class="row"><a class="btn primary" href="/">Back to your clients</a></div>
 </section>

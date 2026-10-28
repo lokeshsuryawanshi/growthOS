@@ -34,21 +34,18 @@ class Settings(BaseSettings):
     # production: real providers only. No fixtures, no mock models, no demo data.
     # demo / test: fixtures and mock models are allowed (automated tests, load test, labelled local demo).
     app_env: Literal["production", "demo", "test"] = "production"
-    app_base_url: str = "http://localhost:8000"      # public URL; used for OAuth redirects and secure cookies
-    signup_invite_code: str = ""                      # if set, signup requires it
-    admin_email: str = ""                             # optional platform admin created at startup
-    admin_password: str = ""
-    global_daily_budget_usd: float = 5.0              # hard stop on total model spend per UTC day
+    app_base_url: str = "http://localhost:8000"      # public URL; the Google sign-in redirect and secure cookies
+    allowed_emails: str = ""                          # optional comma-separated list; empty = anyone may sign in
+    contact_email: str = ""                           # shown on the privacy page for data requests
 
     # --- providers ---------------------------------------------------------
     groq_api_key: str = ""
     google_api_key: str = ""
     tavily_api_key: str = ""                          # optional web search
     hunter_api_key: str = ""                          # optional: business email discovery + verification
-    # optional: Gmail sending. GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are accepted as aliases.
+    # Sign in with Google (openid email profile). Redirect URI: APP_BASE_URL/auth/google/callback
     google_oauth_client_id: str = Field("", validation_alias=AliasChoices("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_CLIENT_ID"))
     google_oauth_client_secret: str = Field("", validation_alias=AliasChoices("GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET"))
-    google_redirect_uri: str = ""                     # must match the Google console exactly; default APP_BASE_URL/oauth/google/callback
     encryption_key: str = ""                          # Fernet key for stored OAuth tokens; derived from JWT_SECRET if empty
     # "live" calls real providers; "mock" uses deterministic offline responders
     # (tests, load test, demo only). "auto" = live if a Groq key is present.
@@ -92,11 +89,8 @@ class Settings(BaseSettings):
     circuit_failure_threshold: int = 5
     circuit_cooldown_s: float = 30.0
 
-    # --- budgets -----------------------------------------------------------
-    default_tenant_monthly_budget_usd: float = 25.0
-    default_run_budget_usd: float = 2.0
-    self_serve_monthly_budget_usd: float = 2.0       # budget for accounts created through public signup
-    budget_alert_ratio: float = 0.8
+    # --- budgets (the operator's own money: their keys, their bill) -----------
+    default_run_budget_usd: float = 2.0               # hard stop per run; the account's optional monthly cap is set in the UI
 
     # --- business targets --------------------------------------------------
     posts_per_week_target: int = 5
@@ -108,7 +102,6 @@ class Settings(BaseSettings):
     critic_max_rounds: int = 2                         # editor rounds per attempt (one revision); attempts are bounded too
     draft_attempts: int = 3                            # fresh drafts per slot until one passes guardrails and the bar
     content_time_budget_s: float = 270.0               # no new redraft attempt starts after this (in-flight ones finish)
-    outreach_daily_send_cap: int = 25
 
     @field_validator("ephemeral_storage_override", mode="before")
     @classmethod
@@ -218,7 +211,6 @@ EXTERNAL_PRICES: dict[tuple[str, str], tuple[float, float]] = {
     ("gemini_search", "search"): (1.0, 0.014),         # grounding: $14 per 1,000 requests after 5,000 free a month
     ("hunter", "domain_search"): (1.0, 0.0245),        # Starter $49 / 2,000 credits; one credit per query with results
     ("hunter", "verify"): (0.5, 0.0245),               # a verification is half a credit
-    ("gmail", "send"): (1.0, 0.0),
 }
 
 

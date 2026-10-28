@@ -2,6 +2,25 @@
 
 The original plan is in [PLAN.md](PLAN.md); the current design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). This file records where the build followed the plan, where it changed, and why. Most of the "why" comes from running the system against real models, real web search and the stress test.
 
+
+## 0. Version 2 (2026-10-29): after the review
+
+The reviewer's feedback, and what it changed. Details per decision below; the earlier sections describe v1 and are
+kept where they still hold.
+
+| Decision | Why |
+|---|---|
+| **One operator runs the system.** One person signs in and works for one or more *client profiles* (the founders). No roles, no team page, no admin console, no account managers. | The product is done-for-you: our team operates and approves, not the founder. v1 designed for the founder as the user and grew a four-role permission system around it ("too many moving parts"). |
+| **Sign in with Google only** (OIDC, `openid email profile`, PKCE, state and nonce in a signed 10-minute cookie). The ID token is verified with PyJWT against Google's published keys. | No passwords to store, reset or leak; no signup form or invite code. PyJWT and `cryptography` were already dependencies, so no new library (smaller than google-auth or Authlib). Identity is Google's `sub`, never the email. |
+| **Isolation is "this client belongs to me".** Every client route checks ownership and answers 404 otherwise; services check again; the ORM tenant interceptor stays. | The one rule is easy to see and to test. `evals/isolation.py` finds every client route in the app automatically, so a new route cannot be forgotten. |
+| **The "don't mention other clients" guard lists only the operator's own clients.** | v1 listed every tenant on the platform; a blocked edit would then have named another account's client. |
+| **No Gmail sending.** "Open in Gmail" (compose link) and "Copy email" on every approved email, then "I sent it". | Removes OAuth tokens, a send lock, crash recovery and Google's app verification. The operator sends from their own mailbox anyway. |
+| **No JSON API.** The server-rendered UI is the product. | Only tests used `/api/*`; it doubled the surface to secure and test. |
+| **Removed:** password login, invite code, `ADMIN_*`, the agency `weekly` run, the kill switch, platform-wide budgets, manual lead entry (existed only to demo Gmail sending), the 100-tenant stress test, the RLS SQL file. | The RLS file was never applied and the app never set `app.tenant_id`, so "three walls" was really two; v2 says two. Budgets are now the operator's own money (see BYOK). |
+| **v1 accounts are removed by migration 0005.** | They signed in with passwords, which no longer exist, so they could never sign in again. v1 data lived on ephemeral storage. |
+| **Tests ignore the developer's `.env`, and nothing but production may open the `.env` database.** | A set `SIGNUP_INVITE_CODE` in `.env` failed 44 tests, and an unscoped `get_db()` could have reached the live database. `Database()` now refuses the production host unless `APP_ENV=production`. |
+| **Unknown or foreign ids are 404 everywhere, never 500.** | Several UI routes used `.one()` on ids from the URL; a bad id was a server error. One of the first-use 500 paths. |
+
 ## 1. Workflow first, agents inside nodes
 
 The pipeline is a fixed DAG. Autonomy lives inside nodes: research agents choose what to search and which pages to read, the lead scout plans its own queries, and the writer revises against a critic. For a long-horizon process (8 weeks of content, a weekly lead quota) this gives predictable cost and ordering, a natural checkpoint per node, and a place to put human gates. A free-roaming planner agent would be harder to budget, test and resume.

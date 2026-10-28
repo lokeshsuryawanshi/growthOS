@@ -135,13 +135,16 @@ async def test_budget_exhaustion_stops_the_run_and_cancels_the_rest(world):
     assert not any(n.status == "succeeded" for k, n in ns.items() if k in ("strategy", "calendar"))
 
 
-async def test_kill_switch_cancels_the_run(world):
+async def test_a_deleted_clients_run_is_cancelled_not_crashed(world):
     db, ids, orch = world
     tid = ids["ledgerloop"]
-    async with db.session() as s:
-        (await s.get(Tenant, tid)).kill_switch = True
     rid = await start(orch, tid)
-    assert await orch.execute(tid, rid) == "cancelled"
+    from app.services.accounts import delete_client
+    from app.api.deps import load_principal
+    async with db.reader() as s:
+        owner_id = (await s.get(Tenant, tid)).owner_user_id
+    await delete_client(await load_principal(owner_id), tid)
+    assert await orch.execute(tid, rid) in ("cancelled", "failed")
 
 
 async def test_parallel_tenants_do_not_interfere(world):

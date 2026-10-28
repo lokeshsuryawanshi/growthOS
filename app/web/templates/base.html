@@ -40,41 +40,35 @@ document.addEventListener('htmx:responseError', function (e) {
   <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13L22 12v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6z"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></symbol>
 </defs></svg>
-{% if ephemeral %}<div class="banner">Free demo hosting: accounts and data are wiped when the server restarts, redeploys or sleeps after 15 idle minutes. Nothing here is kept.</div>{% endif %}
+{% if ephemeral %}<div class="banner">Test copy: accounts and data on this site are wiped from time to time. Nothing here is kept.</div>{% endif %}
 {% if demo_mode %}<div class="banner bad">DEMO MODE: every client, source, lead and AI output here is synthetic. Nothing is real and nothing can be sent.</div>{% endif %}
 {% if me and not bare %}
 <div class="shell">
   <aside class="sidebar">
     <a class="brand" href="/"><span class="mark">{{ icon('bolt') }}</span>Growth OS</a>
-    {% if tenant %}<div class="workspace"><b>{{ tenant.name }}</b><span>{{ tenant.industry or 'Workspace' }}{% if tenant.is_demo %} · demo{% endif %}</span></div>{% endif %}
-    {% if me.is_agency %}
-    <nav class="navgroup"><div class="navlabel">Agency</div>
-      <a class="navlink {{ 'on' if section == 'ops' }}" href="/ops">{{ icon('building') }}<span class="lbl">Clients</span></a>
-      {% if me.can('admin:view') %}<a class="navlink {{ 'on' if section == 'admin' }}" href="/admin">{{ icon('shield') }}<span class="lbl">Data view</span></a>{% endif %}
-      {% if tenant %}<a class="navlink" href="/portal/{{ tenant.id }}">{{ icon('home') }}<span class="lbl">Founder view</span></a>{% endif %}
+    {% if tenant %}<div class="workspace"><b>{{ tenant.name }}</b><span>{{ tenant.founder_name }}{{ ' · ' if tenant.founder_name and tenant.industry }}{{ tenant.industry }}{% if tenant.is_demo %} · demo{% endif %}</span></div>{% endif %}
+    <nav class="navgroup"><div class="navlabel">Account</div>
+      <a class="navlink {{ 'on' if section == 'clients' }}" href="/clients">{{ icon('building') }}<span class="lbl">Clients</span><span class="count">{{ my_clients | length }}</span></a>
+      <a class="navlink {{ 'on' if section == 'account' }}" href="/account">{{ icon('plug') }}<span class="lbl">API keys &amp; spend</span></a>
     </nav>
-    {% elif tenant %}
-    <nav class="navgroup"><div class="navlabel">Workspace</div>
-      {% for key, label, ic in [('overview','Overview','home'),('content','Content','edit'),('calendar','Calendar','calendar'),('leads','Leads','users'),('research','Strategy','compass'),('activity','Activity','activity')] %}
+    {% if tenant %}
+    <nav class="navgroup"><div class="navlabel">{{ tenant.name }}</div>
+      {% for key, label, ic in [('overview','Overview','home'),('content','Content','edit'),('calendar','Calendar','calendar'),('leads','Leads','users'),('research','Strategy','compass'),('activity','Activity','activity'),('settings','Client profile','settings')] %}
       <a class="navlink {{ 'on' if tab == key }}" href="/portal/{{ tenant.id }}?tab={{ key }}">{{ icon(ic) }}<span class="lbl">{{ label }}</span>
         {% if key == 'content' and nav_counts and nav_counts.posts %}<span class="count">{{ nav_counts.posts }}</span>{% endif %}
         {% if key == 'leads' and nav_counts and nav_counts.dms %}<span class="count">{{ nav_counts.dms }}</span>{% endif %}</a>
       {% endfor %}
     </nav>
-    <nav class="navgroup"><div class="navlabel">Setup</div>
-      <a class="navlink {{ 'on' if tab == 'integrations' }}" href="/portal/{{ tenant.id }}?tab=integrations">{{ icon('plug') }}<span class="lbl">Integrations</span></a>
-      <a class="navlink {{ 'on' if tab == 'settings' }}" href="/portal/{{ tenant.id }}?tab=settings">{{ icon('settings') }}<span class="lbl">Profile &amp; brand</span></a>
-      {% if me.can('team:view') %}<a class="navlink {{ 'on' if tab == 'team' }}" href="/portal/{{ tenant.id }}?tab=team">{{ icon('users') }}<span class="lbl">Team</span></a>{% endif %}
-    </nav>
     {% endif %}
     <div class="side-foot">
-      <div><b>{{ me.name }}</b><span class="who-email">{{ me.role.replace('_', ' ') }}</span></div>
+      <div><b>{{ me.name }}</b><span class="who-email">{{ me.email }}</span></div>
       <a href="/logout" class="row" style="gap:8px">{{ icon('logout') }}<span class="lbl">Sign out</span></a>
     </div>
   </aside>
   <main class="content">
     {% if flash %}<div class="flash {{ flash_kind or '' }}">{{ flash }}</div>{% endif %}
     {% block content %}{% endblock %}
+    {% include "partials/footer.html" %}
   </main>
 </div>
 {% else %}

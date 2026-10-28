@@ -48,7 +48,7 @@ async def researched(db):
     tid = (await seed(db))["ledgerloop"]
     rid = await orch.create_run(tid, "discovery", {"start_date": "2026-11-02"})
     assert await orch.execute(tid, rid) == "waiting_human"
-    return db, tid, rid, orch, Principal("u-owner", "Founder", "client_owner", frozenset({tid}))
+    return db, tid, rid, orch, Principal("u-owner", "Founder", tenant_ids=frozenset({tid}))
 
 
 async def versions(db, tid, kind):
@@ -80,10 +80,10 @@ async def test_suggestions_are_refused_while_a_run_is_busy_or_before_research(re
             (await s.execute(select(Run).where(Run.id == rid))).scalars().one().status = "running"
     with pytest.raises(strategy_service.SuggestionRefused, match="in progress"):
         await strategy_service.suggest_changes(owner, tid, "Add a pillar on pricing transparency.", ["strategy"])
-    viewer = Principal("u-v", "Viewer", "client_viewer", frozenset({tid}))
+    stranger = Principal("u-v", "Another account", tenant_ids=frozenset({"someone-elses-client"}))
     from app.core.security import ForbiddenError
     with pytest.raises(ForbiddenError):
-        await strategy_service.suggest_changes(viewer, tid, "Add a pillar on pricing transparency.", ["strategy"])
+        await strategy_service.suggest_changes(stranger, tid, "Add a pillar on pricing transparency.", ["strategy"])
 
 
 async def test_suggested_changes_after_posts_were_drafted_keep_the_drafted_week(researched):

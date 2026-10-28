@@ -116,11 +116,15 @@ async def other_tenant_terms(tenant_id: str) -> list[str]:
     hit = _leak_cache.get(tenant_id)
     if hit and time.monotonic() - hit[0] < 60:
         return hit[1]
-    # Reading every client's names is a cross-tenant read, so it is explicit and narrow.
-    with system_scope("output guard: build cross-tenant leakage list"):
+    # The operator's other clients only: mixing up two founders you work for is the real risk. Other accounts' clients
+    # are never read here (a guardrail message naming them would itself leak them).
+    async with get_db().reader() as s:
+        me = await s.get(Tenant, tenant_id)
+        tenants = (await s.execute(select(Tenant).where(Tenant.owner_user_id == me.owner_user_id))).scalars().all() if me else []
+    with system_scope("output guard: this account's other clients' product names"):
         async with get_db().reader() as s:
-            tenants = (await s.execute(select(Tenant))).scalars().all()
-            profiles = (await s.execute(select(ClientProfile.tenant_id, ClientProfile.policy))).all()
+            profiles = (await s.execute(select(ClientProfile.tenant_id, ClientProfile.policy)
+                                        .where(ClientProfile.tenant_id.in_([t.id for t in tenants])))).all()
     products = {tid: (pol or {}).get("products", []) for tid, pol in profiles}
     terms: list[str] = []
     for t in tenants:
