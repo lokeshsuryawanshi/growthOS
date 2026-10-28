@@ -11,19 +11,22 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agents.orchestrator.engine import get_orchestrator
 from app.bootstrap import init_database
-from app.core.config import ConfigError, get_settings
+from app.core.config import get_settings
+from app.core.scrub import install_log_scrubber, scrub
 from app.core.security import NoTenantAccess
 from app.db.session import get_db
 from app.integrations.errors import IntegrationError
 from app.web.routes import router as web_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+install_log_scrubber()              # nothing that looks like an API key reaches the logs
 log = logging.getLogger("growthos")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     s = get_settings()
+    install_log_scrubber()                   # uvicorn configures its own handlers after import
     for w in s.validate_runtime():          # raises ConfigError on fatal misconfiguration: the app refuses to start
         log.warning("config: %s", w)
     await init_database(get_db())
@@ -105,6 +108,14 @@ async def friendly_error(request: Request, exc: HTTPException):
 async def not_yours(request: Request, exc: NoTenantAccess):
     """The service-layer ownership check (behind the route check) answers like the route check: plain 404."""
     return await friendly_error(request, HTTPException(404, "not found"))
+
+
+@app.exception_handler(Exception)
+async def unexpected(request: Request, exc: Exception):
+    """Last resort: a plain page, never a stack trace; the log line is scrubbed of keys."""
+    log.error("unhandled error on %s %s: %s", request.method, request.url.path, scrub(f"{type(exc).__name__}: {exc}"))
+    return await friendly_error(request, HTTPException(500, "Something went wrong on our side. Nothing was lost; "
+                                                            "please try again."))
 
 
 @app.exception_handler(IntegrationError)

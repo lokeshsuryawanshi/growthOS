@@ -257,3 +257,5 @@ details.panel > summary, details.prov > summary { list-style-position: outside; 
 .btn.google { display: flex; gap: 10px; align-items: center; }
 .btn.disabled, button[disabled] { opacity: .5; cursor: not-allowed; pointer-events: none; }
 .sendbox { border-top: 1px solid var(--line); padding-top: 10px; }
+.keyrow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: end; padding: 12px 0; border-top: 1px solid var(--line); }
+@media (max-width: 760px) { .keyrow { grid-template-columns: 1fr; } }

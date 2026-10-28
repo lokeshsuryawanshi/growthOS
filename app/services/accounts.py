@@ -221,10 +221,12 @@ async def delete_client(p: Principal, tenant_id: str) -> None:
 
 
 async def delete_account(p: Principal) -> None:
-    """Closes the account: every client, then the account itself."""
+    """Closes the account: every client, every saved key, then the account itself."""
     from app.api.deps import load_principal
     for tid in sorted(p.tenant_ids):
         await delete_client(p, tid)
+    from app.services import keys
+    await keys.delete_all(p.user_id)
     async with get_db().session() as s:
         user = await s.get(User, p.user_id)
         if user is not None:

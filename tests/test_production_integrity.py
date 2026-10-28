@@ -18,31 +18,49 @@ from app.core.config import ConfigError, Settings
 
 ROOT = Path(__file__).resolve().parents[1]
 STRONG = "s" * 48
+FERNET = "q0x6pUm8wuh9cUQBF1uqnrLKF0UQiS2Mfeg2rKeVc0s="       # a valid Fernet key used only by these tests
 
 
 # ---------------------------------------------------------------- settings rules
 def test_production_forbids_mock_models_and_fixtures():
-    s = Settings(_env_file=None, app_env="production", jwt_secret=STRONG, llm_mode="auto", groq_api_key="")
+    s = Settings(_env_file=None, app_env="production", jwt_secret=STRONG, encryption_key=FERNET, llm_mode="auto")
     assert s.fixtures_allowed is False and s.uses_fixture_sources is False
-    assert s.effective_llm_mode == "unconfigured"                      # no key: NOT silently mock
+    assert s.effective_llm_mode == "live"                              # each account's own key decides; never a mock
     with pytest.raises(ConfigError):
         Settings(_env_file=None, app_env="production", jwt_secret=STRONG, llm_mode="mock").effective_llm_mode
     with pytest.raises(ConfigError):
-        Settings(_env_file=None, app_env="production", jwt_secret=STRONG, llm_mode="mock").validate_runtime()
-
-
-def test_live_requires_a_key_and_never_degrades_to_mock():
-    assert Settings(_env_file=None, app_env="production", jwt_secret=STRONG, llm_mode="auto", groq_api_key="k").effective_llm_mode == "live"
-    assert Settings(_env_file=None, app_env="production", jwt_secret=STRONG, llm_mode="live", groq_api_key="").effective_llm_mode == "unconfigured"
-    assert Settings(_env_file=None, app_env="demo", llm_mode="auto", groq_api_key="").effective_llm_mode == "mock"   # labelled demo only
+        Settings(_env_file=None, app_env="production", jwt_secret=STRONG, encryption_key=FERNET, llm_mode="mock").validate_runtime()
+    assert Settings(_env_file=None, app_env="demo", llm_mode="auto").effective_llm_mode == "mock"   # labelled demo only
 
 
 @pytest.mark.parametrize("secret", ["", "short", "dev-only-change-me-0123456789abcdef"])
 def test_production_refuses_weak_or_default_jwt_secret(secret):
     kw = {"jwt_secret": secret} if secret else {}
     with pytest.raises(ConfigError, match="JWT_SECRET"):
-        Settings(_env_file=None, app_env="production", llm_mode="auto", **kw).validate_runtime()
-    Settings(_env_file=None, app_env="production", llm_mode="auto", jwt_secret=STRONG).validate_runtime()
+        Settings(_env_file=None, app_env="production", llm_mode="auto", encryption_key=FERNET, **kw).validate_runtime()
+    Settings(_env_file=None, app_env="production", llm_mode="auto", jwt_secret=STRONG, encryption_key=FERNET).validate_runtime()
+
+
+@pytest.mark.parametrize("key", ["", "any passphrase at all", "x" * 44, f"{'y' * 44},{'z' * 44}"])
+def test_production_refuses_a_missing_or_invalid_encryption_key(key):
+    with pytest.raises(ConfigError, match="ENCRYPTION_KEY"):
+        Settings(_env_file=None, app_env="production", llm_mode="auto", jwt_secret=STRONG, encryption_key=key).validate_runtime()
+    Settings(_env_file=None, app_env="production", llm_mode="auto", jwt_secret=STRONG, encryption_keys=f"{FERNET},{FERNET}").validate_runtime()
+
+
+PROVIDER_ENV = ("GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TAVILY_API_KEY", "HUNTER_API_KEY", "GOOGLE_API_KEY")
+
+
+def test_the_app_never_reads_provider_keys_from_the_environment(monkeypatch):
+    """BYOK: the server holds no provider key. Settings have no such fields, and no app module reads one from os.environ."""
+    for name in PROVIDER_ENV:
+        monkeypatch.setenv(name, "from-the-environment-0123456789")
+    s = Settings(_env_file=None, app_env="production", llm_mode="auto", jwt_secret=STRONG, encryption_key=FERNET)
+    dumped = str(s.model_dump())
+    assert "from-the-environment" not in dumped
+    offenders = [str(p) for p in (ROOT / "app").rglob("*.py")
+                 if any(name in p.read_text() for name in PROVIDER_ENV)]
+    assert offenders == []
 
 
 def test_importing_fixtures_in_production_fails():
@@ -81,7 +99,8 @@ def free_port() -> int:
 def prod_server(tmp_path_factory):
     port, db = free_port(), tmp_path_factory.mktemp("prod") / "prod.db"
     env = {k: v for k, v in os.environ.items() if not k.startswith(("GROQ", "GOOGLE", "TAVILY", "HUNTER", "LLM_MODE", "APP_ENV"))}
-    env.update(APP_ENV="production", JWT_SECRET=STRONG, DATABASE_URL=f"sqlite+aiosqlite:///{db}", APP_BASE_URL="http://127.0.0.1")
+    env.update(APP_ENV="production", JWT_SECRET=STRONG, ENCRYPTION_KEY=FERNET, DATABASE_URL=f"sqlite+aiosqlite:///{db}",
+               APP_BASE_URL="http://127.0.0.1")
     env["PYTHONPATH"] = str(ROOT)
     # cwd is a scratch directory so the project's .env (real keys) can never leak into this hermetic server
     proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(port), "--log-level", "warning"],
@@ -104,7 +123,7 @@ def prod_server(tmp_path_factory):
 def test_production_boots_empty_with_no_demo_accounts_and_no_test_login(prod_server):
     base, db = prod_server
     h = httpx.get(base + "/healthz").json()
-    assert h == {"ok": True, "env": "production", "llm_mode": "unconfigured", "fixtures": False, "database": "sqlite",
+    assert h == {"ok": True, "env": "production", "llm_mode": "live", "fixtures": False, "database": "sqlite",
                  "ephemeral_storage": False}
     # the sign-in shortcut used by tests and the demo does not exist here, and nor do passwords or signup
     for path in ("/auth/test-login", "/login", "/signup", "/api/auth/login", "/api/auth/signup"):
@@ -146,7 +165,7 @@ def test_production_user_journey_produces_no_synthetic_output(prod_server):
         for tab in ("overview", "content", "calendar", "leads", "research", "activity", "settings"):
             page = c.get(f"/portal/{tid}?tab={tab}")
             assert page.status_code == 200 and "synthetic" not in page.text.lower() and "DEMO" not in page.text, tab
-        # No AI key: starting research is refused with the fix, never answered with mock output.
+        # No key saved for this account: starting research is refused with the fix, never answered with mock output.
         r = c.post(f"/ui/{tid}/runs", data={"kind": "discovery"})
         assert r.status_code == 303
         assert "No AI provider" in c.get(r.headers["location"]).text
@@ -187,4 +206,4 @@ def test_migrations_match_the_models(tmp_path):
 
 def test_an_empty_optional_setting_in_env_does_not_stop_startup():
     from app.core.config import Settings
-    assert Settings(app_env="test", EPHEMERAL_STORAGE="", database_url="sqlite+aiosqlite:////tmp/x.db").ephemeral_storage
+    assert Settings(_env_file=None, app_env="test", EPHEMERAL_STORAGE="", database_url="sqlite+aiosqlite:////tmp/x.db").ephemeral_storage

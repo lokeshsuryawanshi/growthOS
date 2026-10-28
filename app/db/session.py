@@ -20,6 +20,7 @@ SQLITE_BUSY when a read transaction later tries to upgrade.
 """
 from __future__ import annotations
 
+import uuid
 from contextlib import asynccontextmanager
 from itertools import chain
 from typing import AsyncIterator
@@ -42,8 +43,14 @@ SQLITE_PRAGMAS = (
 
 
 def _make_engine(url: str, immediate: bool) -> AsyncEngine:
-    engine = create_async_engine(url, pool_size=10, max_overflow=20) if not url.startswith("sqlite") \
-        else create_async_engine(url, connect_args={"timeout": 30})
+    if not url.startswith("sqlite"):
+        # Neon's "-pooler" host is PgBouncer in transaction mode: a connection may change between statements, so asyncpg
+        # must not cache prepared statements, and each prepared statement needs a unique name.
+        engine = create_async_engine(url, pool_size=5, max_overflow=10, pool_pre_ping=True, pool_recycle=300,
+                                     connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0,
+                                                   "prepared_statement_name_func": lambda: f"__gx_{uuid.uuid4().hex}__"})
+    else:
+        engine = create_async_engine(url, connect_args={"timeout": 30})
     if url.startswith("sqlite"):
         sync_engine = engine.sync_engine
 
@@ -102,6 +109,7 @@ class Database:
     """Holds a write engine (BEGIN IMMEDIATE) and a read engine (deferred BEGIN)."""
 
     def __init__(self, url: str):
+        url = normalize_database_url(url)
         guard_not_production(url)
         self.url = url
         self.write_engine = _make_engine(url, immediate=True)

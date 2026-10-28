@@ -153,10 +153,12 @@ def screen_prospect(p: dict[str, Any], seen_keys: set[str], sup_email: set[str],
 
 async def _attach_contacts(ctx: AgentContext, pool: list[dict], titles: list[str], stats: dict) -> None:
     """Find a decision-maker email for qualified companies only, within the Hunter.io quota left this month."""
-    hunter = HunterClient()
-    if not hunter.configured:
+    from app.services import keys
+    _, sec = await keys.for_client(ctx.tenant_id, "contacts")      # optional: the operator's own Hunter key
+    if sec is None:
         stats["contacts"] = "not configured"
         return
+    hunter = HunterClient(sec.reveal(), quota_id=sec.fingerprint)
     if not pool:
         return
     remaining = await hunter_searches_left(hunter)
@@ -169,7 +171,7 @@ async def _attach_contacts(ctx: AgentContext, pool: list[dict], titles: list[str
     async def one(p: dict):
         try:
             contacts = await hunter.domain_search(p["company_domain"], limit=6)
-            _spend_hunter_search()
+            _spend_hunter_search(hunter)
             await record_external(ctx.tenant_id, "hunter", "domain_search", ctx.call.run_id, ctx.call.node_key)
             c = best_contact(contacts, titles)
             if c is None:
@@ -193,38 +195,27 @@ async def _attach_contacts(ctx: AgentContext, pool: list[dict], titles: list[str
     stats["contacts"] = {k: results.count(k) for k in set(results)}
 
 
-_HUNTER_QUOTA: dict = {}
+_HUNTER_QUOTA: dict[str, dict] = {}      # per Hunter key (fingerprint), never shared between accounts
 
 
-async def hunter_searches_left(hunter: HunterClient | None = None, max_age_s: float = 300) -> int | None:
-    """Domain searches left this month (Hunter's free /account call), cached for five minutes. None if unknown."""
-    hunter = hunter or HunterClient()
-    if not hunter.configured:
-        return None
-    if _HUNTER_QUOTA and time.monotonic() - _HUNTER_QUOTA["at"] < max_age_s:
-        return _HUNTER_QUOTA["searches_left"]
+async def hunter_searches_left(hunter: HunterClient, max_age_s: float = 300) -> int | None:
+    """Domain searches left this month on this key (Hunter's free /account call), cached five minutes. None if unknown."""
+    q = _HUNTER_QUOTA.get(hunter.quota_id)
+    if q and time.monotonic() - q["at"] < max_age_s:
+        return q["searches_left"]
     try:
         acc = await hunter.account()
     except IntegrationError:
         return None
     left = acc.get("searches", {}).get("remaining")
-    _HUNTER_QUOTA.update(at=time.monotonic(), searches_left=left, account=acc)
+    _HUNTER_QUOTA[hunter.quota_id] = {"at": time.monotonic(), "searches_left": left}
     return left
 
 
-async def hunter_quota(hunter: HunterClient | None = None) -> dict | None:
-    """Plan and remaining searches/verifications this month (cached with hunter_searches_left)."""
-    await hunter_searches_left(hunter)
-    acc = _HUNTER_QUOTA.get("account")
-    if acc is None:
-        return None
-    left = _HUNTER_QUOTA.get("searches_left")
-    return {**acc, "searches": {**acc.get("searches", {}), "remaining": left}}
-
-
-def _spend_hunter_search() -> None:
-    if _HUNTER_QUOTA.get("searches_left") is not None:
-        _HUNTER_QUOTA["searches_left"] = max(0, _HUNTER_QUOTA["searches_left"] - 1)
+def _spend_hunter_search(hunter: HunterClient) -> None:
+    q = _HUNTER_QUOTA.get(hunter.quota_id)
+    if q and q.get("searches_left") is not None:
+        q["searches_left"] = max(0, q["searches_left"] - 1)
 
 
 class SearchPlan(BaseModel):

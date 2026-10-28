@@ -48,7 +48,7 @@ async def test_hunter_without_key_is_not_configured_and_never_calls_out():
     transport(lambda r: called.append(r) or httpx.Response(200, json={}))
     with pytest.raises(IntegrationError) as e:
         await HunterClient("").domain_search("acme.com")
-    assert e.value.code == NOT_CONFIGURED and "HUNTER_API_KEY" in e.value.recovery and not called
+    assert e.value.code == NOT_CONFIGURED and "API keys" in e.value.recovery and not called
 
 
 @pytest.mark.parametrize("status,code", [(401, AUTH_FAILED), (429, QUOTA)])
@@ -81,51 +81,41 @@ def test_domain_cleaning_rejects_garbage():
     assert clean_domain("not a domain") is None and clean_domain("localhost") is None and clean_domain("") is None
 
 
-# ------------------------------------------------------------------ web search chain
-async def test_search_fails_loudly_when_nothing_is_configured(monkeypatch):
-    monkeypatch.setattr(get_settings(), "google_api_key", "")
-    monkeypatch.setattr(get_settings(), "tavily_api_key", "")
+# ------------------------------------------------------------------ web search (Tavily, the operator's own key)
+async def test_search_uses_the_given_key_in_a_header_and_parses_results():
+    seen = {}
+
+    def fn(r):
+        seen["auth"], seen["url"], seen["body"] = r.headers.get("authorization"), str(r.url), json.loads(r.content)
+        return httpx.Response(200, json={"answer": "A", "results": [{"title": "T", "url": "https://x.example/a", "content": "c"}]})
+    transport(fn)
+    res = await WebSearch("tvly-dev-abc123456789").search('"student housing" site:linkedin.com')
+    assert seen["auth"] == "Bearer tvly-dev-abc123456789" and "tvly" not in seen["url"]
+    assert seen["body"]["query"] == "student housing"                      # plain words only
+    assert res.provider == "tavily" and [h.url for h in res.hits] == ["https://x.example/a"]
+
+
+async def test_search_without_a_saved_key_says_how_to_fix_it(db):
+    from tests.helpers import bare_tenants
+    from app.integrations.search import search_for_client
+    await bare_tenants(db, "t1")
     with pytest.raises(IntegrationError) as e:
-        await WebSearch().search("anything")
-    assert e.value.code == NOT_CONFIGURED and "TAVILY_API_KEY" in e.value.recovery
+        await search_for_client("t1")
+    assert e.value.code == NOT_CONFIGURED and "Tavily key under API keys" in e.value.recovery
 
 
-async def test_search_falls_back_and_labels_the_provider(monkeypatch):
-    monkeypatch.setattr(get_settings(), "tavily_api_key", "tv-key")
-    monkeypatch.setattr(get_settings(), "search_providers", "gemini_search,tavily")
-    ws = WebSearch()
-
-    async def gemini_over_quota(q):
-        raise IntegrationError("gemini_search", QUOTA, "Gemini search quota exceeded")
-    monkeypatch.setattr(ws, "_gemini", gemini_over_quota)
-    monkeypatch.setattr(get_settings(), "google_api_key", "g-key")
-    transport(lambda r: httpx.Response(200, json={"answer": "A", "results": [{"title": "T", "url": "https://x.example/a", "content": "c"}]}))
-    res = await ws.search("q")
-    assert res.provider == "tavily" and res.skipped == ["gemini_search: Gemini search quota exceeded"]
-    assert [h.url for h in res.hits] == ["https://x.example/a"]
-    # the quota failure is remembered, so the next query does not waste a call on the dead provider
-    assert ws._usable("gemini_search") is False
-
-
-async def test_tavily_is_tried_first_by_default(monkeypatch):
-    monkeypatch.setattr(get_settings(), "tavily_api_key", "tv-key")
-    monkeypatch.setattr(get_settings(), "google_api_key", "g-key")
-    ws = WebSearch()
-
-    async def gemini_should_not_run(q):
-        raise AssertionError("Gemini grounding was called although Tavily answered")
-    monkeypatch.setattr(ws, "_gemini", gemini_should_not_run)
-    transport(lambda r: httpx.Response(200, json={"answer": "", "results": [{"title": "T", "url": "https://x.example/b", "content": "c"}]}))
-    assert (await ws.search("q")).provider == "tavily"
-
-
-async def test_search_reports_every_provider_failure(monkeypatch):
-    monkeypatch.setattr(get_settings(), "tavily_api_key", "tv-key")
-    monkeypatch.setattr(get_settings(), "google_api_key", "")
-    transport(lambda r: httpx.Response(432, json={}))
+@pytest.mark.parametrize("status,code", [(401, AUTH_FAILED), (432, QUOTA), (500, UNAVAILABLE)])
+async def test_search_failures_are_explicit_and_never_echo_the_key(status, code):
+    transport(lambda r: httpx.Response(status, json={}))
     with pytest.raises(IntegrationError) as e:
-        await WebSearch().search("q")
-    assert e.value.code == UNAVAILABLE and "tavily" in e.value.message
+        await WebSearch("tvly-dev-secretsecret99").search("q")
+    assert e.value.code == code and "secretsecret" not in str(e.value) + e.value.recovery
+
+
+async def test_an_empty_result_is_an_answer_not_an_outage():
+    transport(lambda r: httpx.Response(200, json={"answer": "", "results": []}))
+    res = await WebSearch("tvly-dev-abc123456789").search("very niche query")
+    assert res.provider == "tavily" and res.hits == []
 
 
 # ------------------------------------------------------------------ safe fetch
@@ -165,22 +155,15 @@ def test_search_queries_are_reduced_to_plain_words():
     assert clean_query('"ecommerce" AND hiring OR Mumbai (expansion)') == "ecommerce hiring Mumbai expansion"
 
 
-async def test_an_empty_result_is_an_answer_not_an_outage(monkeypatch):
-    monkeypatch.setattr(get_settings(), "tavily_api_key", "tv-key")
-    monkeypatch.setattr(get_settings(), "google_api_key", "")
-    ws = WebSearch()
-    transport(lambda r: httpx.Response(200, json={"answer": "", "results": []}))
-    res = await ws.search("very niche query")
-    assert res.provider == "tavily" and res.hits == [] and ws._usable("tavily")     # still usable for the next query
-
-
-def test_any_encryption_key_value_works_and_round_trips(monkeypatch):
-    """Regression: a non-Fernet ENCRYPTION_KEY (e.g. a passphrase) used to crash with ValueError."""
-    from app.integrations.crypto import decrypt, encrypt
-    for key in ("not-a-fernet-key-just-words", "", "q0x6pUm8wuh9cUQBF1uqnrLKF0UQiS2Mfeg2rKeVc0s="):
-        monkeypatch.setattr(get_settings(), "encryption_key", key)
-        assert decrypt(encrypt('{"refresh_token": "rt"}')) == '{"refresh_token": "rt"}'
-    monkeypatch.setattr(get_settings(), "encryption_key", "passphrase-one")
+def test_encryption_round_trips_rotates_and_detects_a_changed_key(monkeypatch):
+    from cryptography.fernet import Fernet
+    from app.integrations.crypto import decrypt, encrypt, rotate
+    old, new = Fernet.generate_key().decode(), Fernet.generate_key().decode()
+    monkeypatch.setattr(get_settings(), "encryption_keys", old)
     token = encrypt("secret")
-    monkeypatch.setattr(get_settings(), "encryption_key", "passphrase-two")
-    assert decrypt(token) is None                       # a changed key is detected, never mis-decrypted
+    assert decrypt(token) == "secret"
+    monkeypatch.setattr(get_settings(), "encryption_keys", f"{new},{old}")      # rotation: newest first, old still reads
+    assert decrypt(token) == "secret"
+    rotated = rotate(token)
+    monkeypatch.setattr(get_settings(), "encryption_keys", new)
+    assert decrypt(rotated) == "secret" and decrypt(token) is None             # retired key: refused, never mis-read

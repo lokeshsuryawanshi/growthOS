@@ -1,4 +1,4 @@
-"""Hunter.io: find and verify business emails. Optional until HUNTER_API_KEY is set."""
+"""Hunter.io: find and verify business emails. Optional: used only when the operator saved a Hunter key."""
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 import httpx
 
-from app.core.config import get_settings
 from app.integrations import http
 from app.integrations.errors import (AUTH_FAILED, BAD_RESPONSE, NOT_CONFIGURED, QUOTA, RATE_LIMITED, TIMEOUT, UNAVAILABLE,
                                      IntegrationError)
@@ -41,8 +40,11 @@ def clean_domain(raw: str) -> str | None:
 
 
 class HunterClient:
-    def __init__(self, api_key: str | None = None):
-        self.key = api_key if api_key is not None else get_settings().hunter_api_key
+    """Always built with the operator's own key (app.services.keys); the server has none."""
+
+    def __init__(self, api_key: str, quota_id: str = ""):
+        self.key = api_key
+        self.quota_id = quota_id or "default"
 
     @property
     def configured(self) -> bool:
@@ -50,8 +52,8 @@ class HunterClient:
 
     async def _get(self, path: str, params: dict) -> dict:
         if not self.key:
-            raise IntegrationError("hunter", NOT_CONFIGURED, "HUNTER_API_KEY is not set",
-                                   "Create a key at hunter.io -> API, then set HUNTER_API_KEY and restart.")
+            raise IntegrationError("hunter", NOT_CONFIGURED, "No Hunter.io key is saved",
+                                   "Optional: add a Hunter.io key under API keys & spend.")
         last: IntegrationError | None = None
         for attempt in range(3):                                   # bounded retries for transient failures only
             try:
@@ -70,8 +72,8 @@ class HunterClient:
                 except ValueError:
                     pass
                 if r.status_code == 401:
-                    raise IntegrationError("hunter", AUTH_FAILED, "Hunter.io rejected the API key",
-                                           "Check HUNTER_API_KEY at hunter.io -> API.")
+                    raise IntegrationError("hunter", AUTH_FAILED, "Hunter.io rejected the saved API key",
+                                           "Replace the Hunter.io key under API keys & spend.")
                 if r.status_code in (403, 429):
                     if err_id in ("rate_limit_exceeded",):
                         last = IntegrationError("hunter", RATE_LIMITED, "Hunter.io rate limit hit")

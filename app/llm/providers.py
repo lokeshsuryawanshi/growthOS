@@ -1,4 +1,5 @@
-"""Provider adapters. Each normalises errors into three classes the gateway understands."""
+"""Provider adapters (Groq, OpenAI, Anthropic, and the offline mock). Each normalises errors into the classes the gateway
+understands."""
 from __future__ import annotations
 
 import asyncio
@@ -135,12 +136,28 @@ class Provider:
 
 
 # ---------------------------------------------------------------------------
+# Real adapters. Each is built per account key (never shared across accounts) and maps the provider's errors onto
+# RateLimited / TransientError / FatalError, plus KeyRejected for a bad key (the run stops at once, no retries).
+class KeyRejected(FatalError):
+    """The provider refused the key itself (401/403) or the account behind it (no credit)."""
+
+    def __init__(self, msg: str, reason: str = "rejected"):
+        super().__init__(msg)
+        self.reason = reason       # rejected | no_credit
+
+
+def _openai_tools(req: LLMRequest) -> dict[str, Any]:
+    if req.tools:
+        return {"tools": [t.to_openai() for t in req.tools], "tool_choice": "auto"}
+    return {"response_format": {"type": "json_object"}} if req.json_mode else {}
+
+
 class GroqProvider(Provider):
     name = "groq"
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, http_client=None):
         from groq import AsyncGroq
-        self.client = AsyncGroq(api_key=api_key, max_retries=0, timeout=90)
+        self.client = AsyncGroq(api_key=api_key, max_retries=0, timeout=90, http_client=http_client)
 
     async def complete(self, model: str, req: LLMRequest) -> RawResponse:
         import groq
@@ -152,14 +169,12 @@ class GroqProvider(Provider):
             kwargs["reasoning_effort"] = req.reasoning
         elif model.startswith("qwen/"):
             kwargs["reasoning_format"] = "hidden"  # keep thinking out of the JSON answer
-        if req.tools:
-            kwargs["tools"] = [t.to_openai() for t in req.tools]
-            kwargs["tool_choice"] = "auto"
-        elif req.json_mode:
-            kwargs["response_format"] = {"type": "json_object"}
+        kwargs.update(_openai_tools(req))
         try:
             raw = await self.client.chat.completions.with_raw_response.create(**kwargs)
             r = await raw.parse()          # async client: parse() is a coroutine
+        except (groq.AuthenticationError, groq.PermissionDeniedError) as e:
+            raise KeyRejected(str(e)) from e
         except groq.RateLimitError as e:
             ra = e.response.headers.get("retry-after") if e.response is not None else None
             raise RateLimited(str(e), float(ra) if ra else retry_hint(str(e)), daily=is_daily_limit(str(e))) from e
@@ -184,61 +199,136 @@ class GroqProvider(Provider):
                            reset_tokens_s=parse_duration(raw.headers.get("x-ratelimit-reset-tokens")))
 
 
-# ---------------------------------------------------------------------------
-class GeminiProvider(Provider):
-    name = "gemini"
+class OpenAIProvider(Provider):
+    """Chat Completions with JSON mode and tool calls. `base_url` lets the same code run against any
+    OpenAI-compatible endpoint; it is exercised live against Groq's (https://api.groq.com/openai/v1)."""
+    name = "openai"
 
-    def __init__(self, api_key: str):
-        from google import genai
-        self.client = genai.Client(api_key=api_key)
+    def __init__(self, api_key: str, base_url: str | None = None, http_client=None):
+        from openai import AsyncOpenAI
+        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url, max_retries=0, timeout=90, http_client=http_client)
 
     async def complete(self, model: str, req: LLMRequest) -> RawResponse:
-        from google.genai import errors, types
+        import openai
 
+        # No temperature: current OpenAI reasoning models accept only the default. max_completion_tokens is the
+        # current name of the output cap (it also bounds reasoning tokens).
+        kwargs: dict[str, Any] = dict(model=model, messages=req.messages, max_completion_tokens=req.max_tokens)
+        kwargs.update(_openai_tools(req))
+        try:
+            r = await self.client.chat.completions.create(**kwargs)
+        except (openai.AuthenticationError, openai.PermissionDeniedError) as e:
+            raise KeyRejected(str(e)) from e
+        except openai.RateLimitError as e:
+            if getattr(e, "code", None) == "insufficient_quota" or "insufficient_quota" in str(e):   # billing, not speed
+                raise KeyRejected(str(e), reason="no_credit") from e
+            ra = e.response.headers.get("retry-after") if e.response is not None else None
+            raise RateLimited(str(e), float(ra) if ra else retry_hint(str(e))) from e
+        except (openai.APIConnectionError, openai.APITimeoutError, openai.InternalServerError) as e:
+            raise TransientError(str(e)) from e
+        except openai.BadRequestError as e:
+            if any(code in str(e) for code in ("tool_use_failed", "json_validate_failed")):
+                raise TransientError(str(e)) from e
+            raise FatalError(str(e)) from e
+        except openai.APIStatusError as e:
+            raise (TransientError if e.status_code >= 500 else FatalError)(str(e)) from e
+        if not r.choices:
+            raise TransientError("empty response")
+        msg = r.choices[0].message
+        calls = [ToolCall(id=c.id, name=c.function.name, arguments=c.function.arguments or "{}")
+                 for c in (msg.tool_calls or []) if getattr(c, "function", None)]
+        u = r.usage
+        return RawResponse(msg.content, calls, u.prompt_tokens if u else 0, u.completion_tokens if u else 0)
+
+
+def to_anthropic(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+    """OpenAI-shaped history -> (system, Messages API messages). Tool calls become tool_use blocks; consecutive tool
+    results are merged into one user message of tool_result blocks, which is what the Messages API expects."""
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system" and m.get("content"))
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        role = m["role"]
+        if role == "system":
+            continue
+        if role == "tool":
+            block = {"type": "tool_result", "tool_use_id": m["tool_call_id"], "content": str(m.get("content") or "")}
+            if out and out[-1]["role"] == "user" and isinstance(out[-1]["content"], list) and \
+                    all(b.get("type") == "tool_result" for b in out[-1]["content"]):
+                out[-1]["content"].append(block)
+            else:
+                out.append({"role": "user", "content": [block]})
+        elif role == "assistant" and m.get("tool_calls"):
+            blocks: list[dict[str, Any]] = [{"type": "text", "text": m["content"]}] if m.get("content") else []
+            for c in m["tool_calls"]:
+                try:
+                    args = json.loads(c["function"]["arguments"] or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                blocks.append({"type": "tool_use", "id": c["id"], "name": c["function"]["name"], "input": args})
+            out.append({"role": "assistant", "content": blocks})
+        else:
+            out.append({"role": role, "content": str(m.get("content") or "") or "(empty)"})
+    return system, out
+
+
+class AnthropicProvider(Provider):
+    """Messages API: system prompt as its own field, tool use blocks, max_tokens always set. No temperature (the API
+    refuses sampling parameters) and no assistant prefill. Thinking is kept short: off where the model allows it."""
+    name = "anthropic"
+
+    def __init__(self, api_key: str, http_client=None):
+        from anthropic import AsyncAnthropic
+        self.client = AsyncAnthropic(api_key=api_key, max_retries=0, timeout=90, http_client=http_client)
+
+    @staticmethod
+    def _thinking(model: str) -> dict[str, Any]:
+        # Sonnet 5.5 refuses {"type": "disabled"}; "between_tools" is its thinking-off mode. Haiku accepts disabled.
+        return {"type": "between_tools"} if "sonnet" in model else {"type": "disabled"}
+
+    async def complete(self, model: str, req: LLMRequest) -> RawResponse:
+        import anthropic
+
+        system, messages = to_anthropic(req.messages)
+        if req.json_mode and not req.tools:
+            system += "\n\nReply with one JSON object only: no prose before or after it."
+        kwargs: dict[str, Any] = dict(model=model, max_tokens=req.max_tokens, messages=messages,
+                                      thinking=self._thinking(model),
+                                      output_config={"effort": {"low": "low", "medium": "medium"}.get(req.reasoning, "high")})
+        if system.strip():
+            kwargs["system"] = system
         if req.tools:
-            raise FatalError("gemini adapter is used for judging only; tools not supported here")
-        system = "\n\n".join(m["content"] for m in req.messages if m["role"] == "system")
-        contents = [types.Content(role="model" if m["role"] == "assistant" else "user",
-                                  parts=[types.Part(text=m["content"] or "")])
-                    for m in req.messages if m["role"] in ("user", "assistant")]
-        config = types.GenerateContentConfig(
-            system_instruction=system or None, temperature=req.temperature, max_output_tokens=req.max_tokens,
-            response_mime_type="application/json" if req.json_mode else None)
+            kwargs["tools"] = [{"name": t.name, "description": t.description, "input_schema": t.parameters}
+                               for t in req.tools]
+            kwargs["tool_choice"] = {"type": "auto"}      # forced tool choice is refused by current models
         try:
-            r = await asyncio.wait_for(self.client.aio.models.generate_content(
-                model=model, contents=contents, config=config), timeout=60)
-        except asyncio.TimeoutError as e:
-            raise TransientError("gemini timeout") from e
-        except errors.ClientError as e:
-            if e.code == 429:
-                raise RateLimited(str(e)[:300], retry_hint(str(e)), daily="perday" in str(e).lower().replace(" ", "")) from e
-            raise FatalError(str(e)[:300]) from e
-        except errors.ServerError as e:
-            raise TransientError(str(e)[:300]) from e
-        um = r.usage_metadata
-        return RawResponse(r.text, [], (um.prompt_token_count or 0) if um else 0,
-                           (um.candidates_token_count or 0) if um else 0)
+            r = await self.client.messages.create(**kwargs)
+        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
+            raise KeyRejected(str(e)) from e
+        except anthropic.RateLimitError as e:
+            ra = e.response.headers.get("retry-after") if e.response is not None else None
+            raise RateLimited(str(e), float(ra) if ra else None) from e
+        except (anthropic.APIConnectionError, anthropic.APITimeoutError, anthropic.InternalServerError,
+                anthropic.OverloadedError) as e:
+            raise TransientError(str(e)) from e
+        except anthropic.APIStatusError as e:
+            if e.status_code == 402 or getattr(e, "type", "") == "billing_error":
+                raise KeyRejected(str(e), reason="no_credit") from e
+            raise (TransientError if e.status_code >= 500 else FatalError)(str(e)) from e
+        if r.stop_reason == "refusal":
+            raise FatalError("the model declined this request")
+        text = "".join(b.text for b in r.content if b.type == "text") or None
+        calls = [ToolCall(id=b.id, name=b.name, arguments=json.dumps(b.input)) for b in r.content if b.type == "tool_use"]
+        return RawResponse(text, calls, r.usage.input_tokens, r.usage.output_tokens)
 
-    async def grounded_search(self, model: str, query: str) -> dict[str, Any]:
-        """Google-Search-grounded answer with source URLs."""
-        from google.genai import errors, types
-        try:
-            r = await asyncio.wait_for(self.client.aio.models.generate_content(
-                model=model, contents=query,
-                config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])),
-                timeout=45)
-        except asyncio.TimeoutError as e:
-            raise TransientError("gemini search timeout") from e
-        except errors.ClientError as e:
-            if e.code == 429:
-                raise RateLimited(str(e)[:300]) from e
-            raise FatalError(str(e)[:300]) from e
-        except errors.ServerError as e:
-            raise TransientError(str(e)[:300]) from e
-        gm = r.candidates[0].grounding_metadata if r.candidates else None
-        sources = [{"title": c.web.title, "url": c.web.uri} for c in (gm.grounding_chunks or [])
-                   if c.web] if gm else []
-        return {"answer": r.text or "", "sources": sources}
+
+def build_provider(provider: str, api_key: str, http_client=None) -> Provider:
+    if provider == "groq":
+        return GroqProvider(api_key, http_client=http_client)
+    if provider == "openai":
+        return OpenAIProvider(api_key, http_client=http_client)
+    if provider == "anthropic":
+        return AnthropicProvider(api_key, http_client=http_client)
+    raise FatalError(f"unknown AI provider {provider!r}")
 
 
 # ---------------------------------------------------------------------------

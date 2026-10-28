@@ -29,6 +29,7 @@
     "session_escalations": {"max": 0},
     "cross_account_page_leaks": {"max": 0},
     "isolation_mutations_missed": {"max": 0},
+    "secret_exposure_findings": {"max": 0},
     "judge_within_one_point": {"min": 0.75},
     "judge_spearman": {"min": 0.6}
   }

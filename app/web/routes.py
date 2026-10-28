@@ -25,7 +25,7 @@ from app.db.models import Lead, OutreachMessage, RunNode, Tenant
 from app.db.session import get_db
 from app.guardrails.state import IllegalTransition
 from app.integrations.errors import IntegrationError
-from app.services import accounts, approvals, compose, queries, runs as run_service, strategy
+from app.services import accounts, approvals, compose, keys, queries, runs as run_service, strategy
 from app.services import progress as progress_service
 from app.services.kpis import tenant_kpis
 
@@ -243,9 +243,31 @@ async def delete_client(request: Request, tid: str, confirm: str = Form("")):
 async def account_page(request: Request):
     me = await need_login(request)
     resp = await render(request, "account.html", me, section="account", spend=await queries.account_spend(me),
-                        cap=await accounts.monthly_cap(me))
+                        cap=await accounts.monthly_cap(me), saved_keys=await keys.list_keys(me.user_id),
+                        key_events=await keys.events(me.user_id), providers=keys.PROVIDERS, labels=keys.LABELS)
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@router.post("/account/keys")
+async def account_key_save(request: Request, kind: str = Form(""), provider: str = Form(""), key: str = Form("")):
+    me = await need_login(request)
+    limiter.check(f"keys:{me.user_id}", 10, 600)          # each save makes one call to the provider
+    try:
+        v = await keys.save_key(me, kind, provider, key)
+    except keys.KeyRefused as e:
+        return _back("/account", str(e), "bad")             # the message never contains the key
+    return _back("/account", f"{v.label} key ending in {v.last4} checked and saved.")
+
+
+@router.post("/account/keys/{kind}/delete")
+async def account_key_delete(request: Request, kind: str):
+    me = await need_login(request)
+    limiter.check(f"keys:{me.user_id}", 10, 600)
+    if kind not in keys.PROVIDERS:
+        raise HTTPException(404, "not found")
+    deleted = await keys.delete_key(me, kind)
+    return _back("/account", "Key deleted." if deleted else "There was no key to delete.")
 
 
 @router.post("/account/cap")
@@ -271,6 +293,9 @@ async def account_delete(request: Request, confirm: str = Form("")):
 
 # ------------------------------------------------------------------ a client's workspace
 async def workspace_state(tid: str, k: dict) -> dict:
+    owner = await keys.owner_of(tid)
+    saved = await keys.list_keys(owner) if owner else {}
+    keys_ok = get_settings().uses_fixture_sources or all(saved.get(x) and saved[x].status == "valid" for x in ("llm", "search"))
     arts = await queries.artifacts(tid)
     runs = await queries.runs(tid, 12)
 
@@ -287,7 +312,11 @@ async def workspace_state(tid: str, k: dict) -> dict:
             gate_run = (await s.execute(select(RunNode.run_id).where(RunNode.status == "waiting_human"))).scalars().first()
     disc_ok = any(r.kind == "discovery" and r.status in ("succeeded", "succeeded_with_shortfall") for r in runs)
     ready = disc_ok and not gate_run and active_disc is None
-    steps = [{"title": "Client profile", "detail": "Profile, writing samples and brand rules are saved.", "state": "done"}]
+    steps = [{"title": "Client profile", "detail": "Profile, writing samples and brand rules are saved.", "state": "done"},
+             {"title": "Your API keys", "detail": "An AI key (Groq, OpenAI or Anthropic) and a Tavily search key are saved "
+              "and working." if keys_ok else "Add an AI key (Groq, OpenAI or Anthropic) and a Tavily key. Runs use your "
+              "own accounts.", "state": "done" if keys_ok else "active", "cta": None if keys_ok else "Add keys",
+              "href": "/account", "primary": not keys_ok}]
     research = "Research the market and learn the founder's voice"
     if disc_ok:
         steps.append({"title": research, "detail": "Market, competitors, trends, strategy and an eight-week calendar are ready.",
@@ -337,7 +366,7 @@ async def workspace_state(tid: str, k: dict) -> dict:
                       "customer profile. Separate from the posts.", "state": "todo",
                       "cta": "Find leads" if ready and active_leads is None else None,
                       "post": f"/ui/{tid}/runs?kind=leads", "primary": disc_ok})
-    return {"steps": steps, "done_count": sum(1 for s in steps if s["state"] == "done"), "gate_run": gate_run,
+    return {"steps": steps, "done_count": sum(1 for s in steps if s["state"] == "done"), "gate_run": gate_run, "keys_ok": keys_ok,
             "can_discover": active is None, "can_content": ready and active_content is None,
             "can_leads": ready and active_leads is None, "active": active, "arts": arts, "runs": runs}
 
@@ -535,7 +564,7 @@ async def ui_rerun(request: Request, tid: str, rid: str, key: str):
     await tenant_or_404(me, tid)
     dest = f"/portal/{tid}?tab=activity&run={rid}"
     try:
-        run_service.preflight("rerun")
+        await run_service.preflight("rerun", tid)
         await get_orchestrator().rerun_from(tid, rid, key, me.user_id)
     except LookupError:
         raise HTTPException(404, "not found")

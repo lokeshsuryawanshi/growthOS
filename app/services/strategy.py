@@ -41,7 +41,7 @@ async def suggest_changes(p: Principal, tenant_id: str, note: str, parts: list[s
                  ("waiting_human", "succeeded", "succeeded_with_shortfall")), None)
     if disc is None:
         raise SuggestionRefused("Run research first: there is no strategy to change yet.")
-    preflight("rerun")                       # an honest error now if the AI provider is not configured
+    await preflight("rerun", tenant_id)      # an honest error now if the account has no usable key
     entry = {"note": note, "parts": parts, "by": p.user_id, "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     history = list((disc.params or {}).get("strategy_feedback", [])) + [entry]
     with tenant_scope(tenant_id):

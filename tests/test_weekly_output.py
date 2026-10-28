@@ -102,8 +102,10 @@ def test_lead_evidence_must_quote_the_prospects_own_data():
     assert grounded_evidence(["Strong overall fit for the ICP"], p) == []           # generic, about nothing in the data
 
 
-async def test_hunter_lookups_stop_at_the_quota_left_this_month(monkeypatch):
-    monkeypatch.setattr(get_settings(), "hunter_api_key", "hk")
+async def test_hunter_lookups_stop_at_the_quota_left_this_month(db):
+    from tests.helpers import bare_tenants, give_key
+    await bare_tenants(db, "t")
+    await give_key("u-test", "hunter")                    # the operator's own optional Hunter key
     leads_mod._HUNTER_QUOTA.clear()
     searched = []
 

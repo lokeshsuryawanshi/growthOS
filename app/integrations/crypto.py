@@ -1,29 +1,26 @@
-"""Encryption for stored OAuth tokens (Fernet). The key comes from ENCRYPTION_KEY or is derived from JWT_SECRET."""
+"""Encryption for operators' stored API keys (Fernet, with rotation through MultiFernet).
+
+Production requires a valid ENCRYPTION_KEY (or ENCRYPTION_KEYS, newest first) and refuses to start without one
+(Settings.validate_runtime). Tests and the local demo may run without one: the key is then derived from JWT_SECRET.
+"""
 from __future__ import annotations
 
 import base64
 import hashlib
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 from app.core.config import get_settings
 
 
-def _derive(passphrase: str) -> bytes:
-    return base64.urlsafe_b64encode(hashlib.sha256(("growthos-enc:" + passphrase).encode()).digest())
-
-
-def _fernet() -> Fernet:
-    """ENCRYPTION_KEY may be a Fernet key or any passphrase (hashed into one); without it, JWT_SECRET is used.
-
-    Regression: a non-Fernet ENCRYPTION_KEY used to raise ValueError the moment a founder connected Gmail."""
+def _fernet() -> MultiFernet:
     s = get_settings()
-    if s.encryption_key:
-        try:
-            return Fernet(s.encryption_key.encode())
-        except (ValueError, TypeError):
-            return Fernet(_derive("key:" + s.encryption_key))
-    return Fernet(_derive(s.jwt_secret))
+    keys = s.fernet_keys
+    if not keys:
+        if s.app_env == "production":
+            raise RuntimeError("ENCRYPTION_KEY is required in production")
+        keys = [base64.urlsafe_b64encode(hashlib.sha256(("growthos-dev:" + s.jwt_secret).encode()).digest()).decode()]
+    return MultiFernet([Fernet(k.encode()) for k in keys])
 
 
 def encrypt(text: str) -> str:
@@ -34,4 +31,9 @@ def decrypt(token: str) -> str | None:
     try:
         return _fernet().decrypt(token.encode()).decode()
     except InvalidToken:
-        return None   # key changed: caller treats the connection as lost and asks the user to reconnect
+        return None   # wrong or retired key, or a tampered value: the caller treats the key as missing
+
+
+def rotate(token: str) -> str:
+    """Re-encrypt under the newest key (after ENCRYPTION_KEYS gained a new first entry)."""
+    return _fernet().rotate(token.encode()).decode()

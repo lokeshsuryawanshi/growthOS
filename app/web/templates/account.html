@@ -2,6 +2,35 @@
 {% block title %}API keys and spend · Growth OS{% endblock %}
 {% block content %}
 <div class="pagehead"><div><h1>API keys and spend</h1><div class="sub">You use your own AI and search accounts, so you pay those providers directly. This page shows what your runs cost.</div></div></div>
+<section class="panel stack" id="keys">
+  <div class="row"><h2>API keys</h2><span class="spacer"></span><span class="pill">yours only</span></div>
+  <p class="sub">Keys are checked with one free call before saving, stored encrypted, used only for your own clients, and never shown again. Replace or delete them at any time.</p>
+  {% for kind, title, hint in [('llm', 'AI model', 'Required. Groq has a free tier (console.groq.com). OpenAI and Anthropic need a paid account.'),
+                                ('search', 'Web search (Tavily)', 'Required for research and leads. Free tier at tavily.com.'),
+                                ('contacts', 'Contacts (Hunter.io)', 'Optional. Adds verified emails to leads when found.')] %}
+  {% set k = saved_keys.get(kind) %}
+  <div class="keyrow">
+    <div><b>{{ title }}</b><div class="sub">{{ hint }}</div>
+      {% if k %}<div class="row" style="gap:6px;margin-top:6px"><span class="pill {{ 'ok' if k.status == 'valid' else 'bad' }}">{{ k.label }} ···{{ k.last4 }}</span>
+        <span class="pill {{ 'ok' if k.status == 'valid' else 'bad' }}">{{ 'working' if k.status == 'valid' else 'not working' }}</span>
+        {% if k.validated_at %}<span class="sub">checked {{ k.validated_at.strftime('%d %b %H:%M') }} UTC</span>{% endif %}</div>
+        {% if k.status != 'valid' and k.status_detail %}<div class="sub" style="color:var(--bad)">{{ k.status_detail }}</div>{% endif %}
+      {% else %}<div class="sub" style="margin-top:6px">Not set.</div>{% endif %}
+    </div>
+    <form method="post" action="/account/keys" class="row" style="gap:8px;align-items:end" autocomplete="off">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      {% if providers[kind] | length > 1 %}<label>Provider<select name="provider">{% for pv in providers[kind] %}<option value="{{ pv }}" {{ 'selected' if k and k.provider == pv }}>{{ labels[pv] }}</option>{% endfor %}</select></label>
+      {% else %}<input type="hidden" name="provider" value="{{ providers[kind][0] }}">{% endif %}
+      <label>{{ 'Replace key' if k else 'API key' }}<input name="key" type="password" autocomplete="new-password" spellcheck="false" required placeholder="paste the key"></label>
+      <button class="{{ 'primary' if not k }}">{{ 'Replace' if k else 'Check and save' }}</button>
+    </form>
+    {% if k %}<form method="post" action="/account/keys/{{ kind }}/delete"><button class="sm danger">Delete</button></form>{% endif %}
+  </div>
+  {% endfor %}
+  {% if key_events %}<details><summary>Key activity</summary><ul class="violations" style="color:var(--ink-2)">
+    {% for e in key_events %}<li>{{ e.created_at.strftime('%d %b %H:%M') }} UTC · {{ e.action.replace('key.', 'key ').replace('_', ' ') }} · {{ labels.get(e.detail.get('provider'), e.detail.get('provider', '')) }}</li>{% endfor %}
+  </ul></details>{% endif %}
+</section>
 <section class="panel stack">
   <div class="row"><h2>Spend in {{ spend.month }}</h2><span class="spacer"></span><span class="pill accent num">AI ${{ '%.4f' % spend.ai_month }}</span><span class="pill num">search and contacts ${{ '%.3f' % spend.external_month }}</span></div>
   <p class="sub">At the providers' list prices. Free tiers bill nothing, so your real bill can be lower.</p>

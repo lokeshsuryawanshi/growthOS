@@ -62,6 +62,34 @@ class Tenant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class AccountSecret(Base):
+    """An operator's own API key for one kind of service. Owned by the account, not by a client. The ciphertext is read
+    only by app/services/keys.py; the UI only ever sees provider, last four characters and status."""
+    __tablename__ = "account_secrets"
+    __table_args__ = (UniqueConstraint("user_id", "kind"),)     # one AI provider, one search key, one contacts key
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))        # llm | search | contacts
+    provider: Mapped[str] = mapped_column(String(16))    # groq | openai | anthropic | tavily | hunter
+    ciphertext: Mapped[str] = mapped_column(Text)        # Fernet({"u": user_id, "k": kind, "p": provider, "v": key})
+    last4: Mapped[str] = mapped_column(String(4))
+    status: Mapped[str] = mapped_column(String(16), default="valid")    # valid | invalid (rejected after saving)
+    status_detail: Mapped[str] = mapped_column(String(300), default="")
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AccountEvent(Base):
+    """Account-level audit trail (keys added, replaced, deleted; caps changed). Never contains a key."""
+    __tablename__ = "account_events"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    action: Mapped[str] = mapped_column(String(64))
+    detail: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 # --------------------------------------------------------------------------
 # Tenant-scoped tables
 # --------------------------------------------------------------------------

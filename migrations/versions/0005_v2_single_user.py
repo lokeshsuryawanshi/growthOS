@@ -1,4 +1,5 @@
-"""v2: one operator account (Google sign-in) owns its client profiles; no roles, teams, admin or Gmail sending.
+"""v2: one operator account (Google sign-in) owns its client profiles and its own API keys; no roles, teams, admin or
+Gmail sending.
 
 v1 accounts signed in with a password, which v2 no longer has, so they could never sign in again. Their rows are
 removed rather than left orphaned (v1 data lived on ephemeral storage and was disposable). On an empty database this
@@ -54,6 +55,31 @@ def upgrade() -> None:
     with op.batch_alter_table('outreach_messages') as b:
         b.drop_column('external_id')
         b.drop_column('send_error')
+    op.create_table('account_secrets',
+        sa.Column('id', sa.String(length=32), nullable=False),
+        sa.Column('user_id', sa.String(length=32), nullable=False),
+        sa.Column('kind', sa.String(length=16), nullable=False),
+        sa.Column('provider', sa.String(length=16), nullable=False),
+        sa.Column('ciphertext', sa.Text(), nullable=False),
+        sa.Column('last4', sa.String(length=4), nullable=False),
+        sa.Column('status', sa.String(length=16), nullable=False),
+        sa.Column('status_detail', sa.String(length=300), nullable=False),
+        sa.Column('validated_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id']),
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('user_id', 'kind'))
+    op.create_index('ix_account_secrets_user_id', 'account_secrets', ['user_id'], unique=False)
+    op.create_table('account_events',
+        sa.Column('id', sa.String(length=32), nullable=False),
+        sa.Column('user_id', sa.String(length=32), nullable=False),
+        sa.Column('action', sa.String(length=64), nullable=False),
+        sa.Column('detail', sa.JSON(), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id']),
+        sa.PrimaryKeyConstraint('id'))
+    op.create_index('ix_account_events_user_id', 'account_events', ['user_id'], unique=False)
 
 
 def downgrade() -> None:

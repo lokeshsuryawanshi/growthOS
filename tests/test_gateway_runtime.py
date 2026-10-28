@@ -34,7 +34,7 @@ async def test_retry_on_429_then_success_and_ledger(db, tenant):
     set_gateway(gw)
     MOCK_RESPONDERS["t_echo"] = lambda req: {"content": {"answer": "hi", "score": 3}}
     calls = {"n": 0}
-    orig = gw.providers["mock"].complete
+    orig = gw.mock.complete
 
     async def flaky(model, req):
         calls["n"] += 1
@@ -43,7 +43,7 @@ async def test_retry_on_429_then_success_and_ledger(db, tenant):
             raise RateLimited("429", retry_after=0.01)
         return await orig(model, req)
 
-    gw.providers["mock"].complete = flaky
+    gw.mock.complete = flaky
     res = await structured("t_echo", "small", "sys", "user", Out, ctx(tenant))
     assert res.output.answer == "hi"
     with tenant_scope(tenant):
@@ -103,14 +103,13 @@ async def test_circuit_breaker_opens(db, tenant):
     from app.llm.gateway import LLMUnavailable
     gw = LLMGateway(mock_config=MockConfig(transient_rate=1.0))
     gw.s = gw.s.model_copy(update={"llm_max_retries": 0, "circuit_failure_threshold": 2})
-    gw.breakers["mock"].threshold = 2
     set_gateway(gw)
     MOCK_RESPONDERS["t_echo"] = lambda req: {"content": {"answer": "hi", "score": 3}}
     req = LLMRequest(agent="t_echo", tier="small", messages=[{"role": "user", "content": "x"}])
     for _ in range(2):
         with pytest.raises(LLMUnavailable):
             await gw.complete(req, CallContext(tenant_id=tenant))
-    assert gw.breakers["mock"].is_open
+    assert gw.breakers[("mock", "mock")].is_open
     with pytest.raises(LLMUnavailable, match="circuit open"):
         await gw.complete(req, CallContext(tenant_id=tenant))
 

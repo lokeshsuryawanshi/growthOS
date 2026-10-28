@@ -96,7 +96,7 @@ async def _web_search(args: SearchArgs, ctx: AgentContext, with_answer: bool = T
     key = (ctx.tenant_id, re.sub(r"\s+", " ", args.query.strip().lower()))
     hit = _SEARCH_CACHE.get(key)
     cached = bool(hit and time.time() - hit[0] < SEARCH_CACHE_TTL_S)
-    res = hit[1] if cached else await get_research().search(args.query)   # IntegrationError aborts the node with the fix
+    res = hit[1] if cached else await get_research(ctx.tenant_id).search(args.query)   # IntegrationError aborts the node with the fix
     if not cached:
         _SEARCH_CACHE[key] = (time.time(), res)
         if not res.synthetic:
@@ -146,7 +146,7 @@ async def _store_page(ctx: AgentContext, url: str, title: str, text: str, kind: 
 
 async def _fetch_page(args: FetchArgs, ctx: AgentContext):
     st = research_state(ctx)
-    backend = get_research()
+    backend = get_research(ctx.tenant_id)
     url = args.url.strip()
     host = (urlparse(url).hostname or "").removeprefix("www.")
     if not (backend.may_fetch(_norm(url), st["allowed"]) or _norm(url) in st["allowed"] or host in st["hosts"]):
@@ -312,7 +312,7 @@ async def ingest_website(tenant_id: str, ctx: AgentContext) -> str:
     """Read the client's own website once, so strategy is grounded in what the company says about itself."""
     intake = (await profile(tenant_id)).intake
     url = intake.get("website", "")
-    backend = get_research()
+    backend = get_research(tenant_id)
     if not url or backend.synthetic:
         return "skipped: no website given" if not url else "skipped"
     try:

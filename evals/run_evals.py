@@ -270,13 +270,14 @@ def to_markdown(r: dict, failures: list[str]) -> str:
                   f"| Checks (other account, signed out, forged/expired/stale sessions, page leaks) | {b['isolation_checks']} |",
                   f"| Cross-account access violations | {b['cross_account_access_violations']} |",
                   f"| Session escalations | {b['session_escalations']} |",
-                  f"| Another account's data shown on a page | {b['cross_account_page_leaks']} |"]
+                  f"| Another account's data shown on a page | {b['cross_account_page_leaks']} |",
+                  f"| API keys visible in pages, headers or database rows, or used for the wrong account | {b.get('secret_exposure_findings')} |"]
         if b.get("mutations"):
             m = b["mutations"]
             lines.append(f"| Mutation test: deliberate breaks noticed | {m['mutations_caught']} of {m['mutations_total']} |")
         lines.append("")
-        if b["isolation_failures"]:
-            lines += ["Failures:", *[f"- {x}" for x in b["isolation_failures"]], ""]
+        if b["isolation_failures"] or b.get("secret_findings"):
+            lines += ["Failures:", *[f"- {x}" for x in b["isolation_failures"] + b.get("secret_findings", [])], ""]
         if b.get("mutations"):
             lines += ["Mutations (each must be caught):", "",
                       *[f"- {k}: {'caught' if v['caught'] else '**MISSED**'} ({v['violations']} violations, "

@@ -28,6 +28,7 @@ from app.agents.research.agents import (competitor_analyst, ingest_website, mark
 from app.agents.runtime.loop import AgentContext
 from app.agents.strategy.agents import calendar_planner, icp_builder, next_monday, strategist
 from app.core.config import get_settings
+from app.core.scrub import scrub
 from app.core.tenancy import tenant_scope
 from app.db.audit import audit
 from app.db.models import CalendarSlot, KnowledgeDoc, LLMCall, Lead, Run, RunNode, Tenant
@@ -478,20 +479,20 @@ class Orchestrator:
             except (BudgetExceeded, TenantPaused) as e:
                 await nctx.agent.flush()
                 cancel.set()  # no point continuing other nodes
-                await self._set_node(tenant_id, node.id, status="failed", error=f"stopped: {e}", finished_at=_now())
+                await self._set_node(tenant_id, node.id, status="failed", error=scrub(f"stopped: {e}"), finished_at=_now())
                 return
             except Exception as e:  # noqa: BLE001 - recorded on the node
                 await nctx.agent.flush()
-                log.warning("node %s/%s attempt %d failed: %s", run_id, node.key, attempt, e)
+                log.warning("node %s/%s attempt %d failed: %s", run_id, node.key, attempt, scrub(e))
                 if isinstance(e, IntegrationError) and not e.retryable:
                     # Missing key, bad credentials, exhausted quota: another attempt cannot help. Say so and stop.
-                    await self._set_node(tenant_id, node.id, status="failed", error=str(e)[:2000],
+                    await self._set_node(tenant_id, node.id, status="failed", error=scrub(e)[:2000],
                                          output={"integration": e.as_dict()}, finished_at=_now())
                     return
                 if attempt == MAX_ATTEMPTS:
                     if isinstance(e, IntegrationError):
                         await self._set_node(tenant_id, node.id, output={"integration": e.as_dict()})
-                    await self._set_node(tenant_id, node.id, status="failed", error=f"{type(e).__name__}: {e}"[:2000],
+                    await self._set_node(tenant_id, node.id, status="failed", error=scrub(f"{type(e).__name__}: {e}")[:2000],
                                          finished_at=_now())
                     return
                 await asyncio.sleep(0.5 * attempt)

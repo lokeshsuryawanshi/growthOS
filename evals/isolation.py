@@ -11,6 +11,8 @@ researched client. Then:
    and A's data must be byte-for-byte unchanged afterwards. The same routes called signed-out must go to /login.
 2. Sessions. Forged, unsigned (alg=none), tampered, expired and stale (deleted account) cookies must all be signed out.
 3. Leaks. Every page B can open is searched for A's client names, post text and lead companies.
+4. Secrets. Both accounts save keys; no page, header or database row may contain one, and each client's model call
+   must be made with its own account's key.
 """
 from __future__ import annotations
 
@@ -209,6 +211,64 @@ async def _markers(tid: str) -> list[str]:
     return [re.sub(r"\s+", " ", p)[:60] for p in posts] + list(companies)
 
 
+async def secret_checks(a_tid: str, b_tid: str) -> dict:
+    """Both accounts save keys through the real keys service. Then: no page either account opens, and no row of any
+    table, contains a key; a call for A's client is made with A's key and B's with B's."""
+    import json as _json
+    from sqlalchemy import text
+    from app.core.config import Settings
+    from app.db.models import Base, Tenant
+    from app.db.session import get_db
+    from app.llm.gateway import LLMGateway
+    from app.llm.providers import Provider, RawResponse
+    from app.llm.types import CallContext, LLMRequest
+    from tests.helpers import FAKE_KEYS, give_key
+    async with get_db().reader() as s:
+        a_owner, b_owner = (await s.get(Tenant, a_tid)).owner_user_id, (await s.get(Tenant, b_tid)).owner_user_id
+    secrets = {"A-groq": "gsk_" + "Q" * 52, "B-groq": "gsk_" + "R" * 52, "A-tavily": FAKE_KEYS["tavily"],
+               "B-hunter": FAKE_KEYS["hunter"]}
+    await give_key(a_owner, "groq", secrets["A-groq"])
+    await give_key(a_owner, "tavily", secrets["A-tavily"])
+    await give_key(b_owner, "groq", secrets["B-groq"])
+    await give_key(b_owner, "hunter", secrets["B-hunter"])
+    findings: list[str] = []
+
+    def scan(where: str, blob: str) -> None:
+        for name, v in secrets.items():
+            if v in blob or v[6:28] in blob:
+                findings.append(f"{name} key visible in {where}")
+    for email, tid in (("a@iso.example", a_tid), ("b@iso.example", b_tid)):
+        c = await _signed_in(email)
+        for url in ["/account", "/clients"] + [f"/portal/{tid}?tab={t}" for t in
+                                               ("overview", "content", "calendar", "leads", "research", "activity", "settings")]:
+            r = await c.get(url)
+            scan(f"{email} {url}", r.text + str(r.headers))
+        await c.aclose()
+    async with get_db().reader() as s:
+        for table in Base.metadata.sorted_tables:
+            rows = (await s.execute(text(f"SELECT * FROM {table.name}"))).all()
+            scan(f"table {table.name}", _json.dumps([list(map(str, r)) for r in rows]))
+
+    seen: dict[str, str] = {}
+
+    class Recorder(Provider):
+        def __init__(self, key):
+            self.key = key
+
+        async def complete(self, model, req):
+            seen[req.metadata["client"]] = self.key
+            return RawResponse("{}", [], 1, 1)
+    gw = LLMGateway(Settings(_env_file=None, app_env="test", llm_mode="live"), provider_factory=lambda p, k: Recorder(k))
+    for name, tid in (("A", a_tid), ("B", b_tid)):
+        await gw.complete(LLMRequest(agent="t", tier="small", messages=[{"role": "user", "content": "x"}],
+                                     metadata={"client": name}), CallContext(tenant_id=tid))
+    if seen.get("A") != secrets["A-groq"]:
+        findings.append("A's client did not use A's key")
+    if seen.get("B") != secrets["B-groq"]:
+        findings.append("B's client did not use B's key")
+    return {"secret_exposure_findings": len(findings), "secret_findings": findings, "secret_checks": 9 * 2 + 3}
+
+
 async def eval_isolation(mutations: bool = False) -> dict:
     from app.db.session import Database, get_db, set_db
     from app.llm.gateway import LLMGateway, set_gateway
@@ -222,6 +282,7 @@ async def eval_isolation(mutations: bool = False) -> dict:
         await db.create_all()
         a, b = await _world()
         report = await run_checks(a, b)
+        report.update(await secret_checks(a, b))
         if mutations:
             report["mutations"] = await run_mutations(a, b)
         return report
@@ -266,12 +327,27 @@ def _mutations():
 
     async def owner_check_without_service_check(p, tenant_id):   # route check off; the service check is the backstop
         return await no_owner_check(p, tenant_id)
+
+    from app.services import keys as keys_mod
+    original_secret = keys_mod.secret
+
+    async def any_accounts_key(tenant_id, kind):                # a shared key: the first saved one, whoever owns it
+        from sqlalchemy import select
+        from app.db.models import AccountSecret
+        async with get_db().reader() as s:
+            uids = (await s.execute(select(AccountSecret.user_id).where(AccountSecret.kind == kind)
+                                    .order_by(AccountSecret.user_id.desc()))).scalars().all()
+        for uid in uids:
+            if (sec := await original_secret(uid, kind)) is not None:
+                return uid, sec
+        return None, None
     return {
         "route ownership check removed": [mock.patch.object(routes, "tenant_or_404", no_owner_check)],
         "session signature and expiry not checked": [mock.patch.object(deps, "decode_token", unverified)],
         "deleted accounts keep their sessions": [mock.patch.object(deps, "load_principal", trusts_the_token)],
         "every account owns every client": [mock.patch.object(deps, "load_principal", every_client),
                                             mock.patch.object(routes, "tenant_or_404", owner_check_without_service_check)],
+        "runs use whichever account's key is found first": [mock.patch.object(keys_mod, "for_client", any_accounts_key)],
     }
 
 
@@ -281,10 +357,11 @@ async def run_mutations(a: str, b: str) -> dict:
         with ExitStack() as stack:
             for p in patches:
                 stack.enter_context(p)
-            r = await run_checks(a, b)
-        caught = r["cross_account_access_violations"] + r["session_escalations"] + r["cross_account_page_leaks"] > 0
+            r = {**await run_checks(a, b), **await secret_checks(a, b)}
+        caught = r["cross_account_access_violations"] + r["session_escalations"] + r["cross_account_page_leaks"] + \
+            r["secret_exposure_findings"] > 0
         out[name] = {"caught": caught, "violations": r["cross_account_access_violations"],
-                     "escalations": r["session_escalations"], "leaks": r["cross_account_page_leaks"]}
+                     "escalations": r["session_escalations"], "leaks": r["cross_account_page_leaks"] + r["secret_exposure_findings"]}
     return {"mutations_total": len(out), "mutations_caught": sum(v["caught"] for v in out.values()), "detail": out}
 
 
@@ -297,7 +374,8 @@ def main() -> None:
     mutations = "--mutations" in sys.argv
     r = asyncio.run(eval_isolation(mutations))
     print(json.dumps(r, indent=2))
-    ok = r["cross_account_access_violations"] == r["session_escalations"] == r["cross_account_page_leaks"] == 0
+    ok = r["cross_account_access_violations"] == r["session_escalations"] == r["cross_account_page_leaks"] == \
+        r["secret_exposure_findings"] == 0
     if mutations:
         ok = ok and r["mutations"]["mutations_caught"] == r["mutations"]["mutations_total"]
     sys.exit(0 if ok else 1)

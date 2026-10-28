@@ -118,3 +118,24 @@ async def bare_tenants(db, *tids: str, owner: str = "u-test") -> None:
             await s.flush()
         for tid in tids:
             s.add(Tenant(id=tid, owner_user_id=owner, slug=tid, name=tid.upper()))
+
+
+FAKE_KEYS = {"groq": "gsk_" + "a" * 52, "openai": "sk-proj-" + "b" * 40, "anthropic": "sk-ant-api03-" + "c" * 40,
+             "tavily": "tvly-dev-" + "d" * 30, "hunter": "e" * 40}
+KIND_OF = {"groq": "llm", "openai": "llm", "anthropic": "llm", "tavily": "search", "hunter": "contacts"}
+
+
+async def give_key(user_id: str, provider: str = "groq", value: str | None = None):
+    """Save a key for an account through the real keys service; the provider's check is answered by a mock (200)."""
+    from app.core.security import Principal
+    from app.services import keys
+    saved = (http._transport, http._transport2)
+    import httpx2
+    http.set_transport(httpx.MockTransport(lambda r: httpx.Response(200, json={"data": [], "account": {}})),
+                       httpx2.MockTransport(lambda r: httpx2.Response(200, json={"data": [], "has_more": False,
+                                                                                  "first_id": None, "last_id": None})))
+    try:
+        return await keys.save_key(Principal(user_id, user_id), KIND_OF[provider], provider,
+                                   value or FAKE_KEYS[provider])
+    finally:
+        http.set_transport(*saved)

@@ -5,7 +5,7 @@ from typing import Protocol
 
 from app.core.config import get_settings
 from app.integrations.fetch import fetch_page
-from app.integrations.search import SearchResponse, get_web_search
+from app.integrations.search import SearchResponse, search_for_client
 
 
 class ResearchBackend(Protocol):
@@ -21,8 +21,11 @@ class LiveResearch:
     name = "live"
     synthetic = False
 
+    def __init__(self, tenant_id: str):
+        self.tenant_id = tenant_id
+
     async def search(self, query: str) -> SearchResponse:
-        return await get_web_search().search(query)
+        return await (await search_for_client(self.tenant_id)).search(query)   # the client's owner's own key
 
     async def fetch(self, url: str) -> tuple[str, str]:
         page = await fetch_page(url)
@@ -32,11 +35,8 @@ class LiveResearch:
         return url in allowed          # only URLs that came from a search result or from the client's own intake
 
 
-_live = LiveResearch()
-
-
-def get_research() -> ResearchBackend:
+def get_research(tenant_id: str) -> ResearchBackend:
     if get_settings().uses_fixture_sources:
         from app.fixtures.sources import FixtureResearch   # raises if fixtures are disabled
         return FixtureResearch()
-    return _live
+    return LiveResearch(tenant_id)

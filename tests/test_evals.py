@@ -21,8 +21,9 @@ async def test_isolation_eval_finds_no_violations_and_catches_every_mutation():
     assert r["isolation_routes"] >= 12 and r["isolation_checks"] >= 50
     assert r["cross_account_access_violations"] == r["session_escalations"] == r["cross_account_page_leaks"] == 0, \
         r["isolation_failures"]
+    assert r["secret_exposure_findings"] == 0, r["secret_findings"]
     m = r["mutations"]
-    assert m["mutations_caught"] == m["mutations_total"] >= 4, m["detail"]
+    assert m["mutations_caught"] == m["mutations_total"] >= 5, m["detail"]
 
 
 def test_lead_screening_catches_every_labelled_adversarial_prospect():

@@ -122,7 +122,7 @@ class DeadSearch:
 async def test_search_outage_stops_research_with_the_fix_and_stores_nothing(world, monkeypatch, err):
     db, ids, orch = world
     tid = ids["ledgerloop"]
-    monkeypatch.setattr("app.agents.research.agents.get_research", lambda: DeadSearch(err))
+    monkeypatch.setattr("app.agents.research.agents.get_research", lambda tenant_id: DeadSearch(err))
     rid, status = await discover(orch, tid)
     assert status == "failed"
     with tenant_scope(tid):
