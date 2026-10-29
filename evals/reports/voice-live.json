@@ -1,0 +1,121 @@
+{
+  "people": {
+    "april_dunford": "April Dunford",
+    "arvid_kahl": "Arvid Kahl",
+    "bunnie_huang": "Andrew 'bunnie' Huang",
+    "jason_cohen": "Jason Cohen",
+    "paras_chopra": "Paras Chopra",
+    "seth_godin": "Seth Godin"
+  },
+  "sanity": {
+    "heldout_nearest_own_rate": 0.417,
+    "heldout_samples": 12,
+    "leave_one_out_nearest_own_rate": 0.479,
+    "samples": 48,
+    "chance": 0.167,
+    "mean_margin": -0.022
+  },
+  "voice": {
+    "per_person": {
+      "seth_godin": {
+        "posts": 15,
+        "to_own_founder": 0.953,
+        "to_nearest_other": 0.88,
+        "nearest_is_own_rate": 0.133,
+        "template_baseline_to_own_founder": 1.491,
+        "real_heldout_to_own_train": 0.828
+      },
+      "jason_cohen": {
+        "posts": 9,
+        "to_own_founder": 0.908,
+        "to_nearest_other": 0.923,
+        "nearest_is_own_rate": 0.444,
+        "template_baseline_to_own_founder": 1.178,
+        "real_heldout_to_own_train": 0.822
+      },
+      "april_dunford": {
+        "posts": 10,
+        "to_own_founder": 0.954,
+        "to_nearest_other": 0.759,
+        "nearest_is_own_rate": 0.0,
+        "template_baseline_to_own_founder": 1.394,
+        "real_heldout_to_own_train": 0.77
+      },
+      "paras_chopra": {
+        "posts": 5,
+        "to_own_founder": 0.851,
+        "to_nearest_other": 0.754,
+        "nearest_is_own_rate": 0.0,
+        "template_baseline_to_own_founder": 1.43,
+        "real_heldout_to_own_train": 0.771
+      },
+      "arvid_kahl": {
+        "posts": 9,
+        "to_own_founder": 0.798,
+        "to_nearest_other": 0.853,
+        "nearest_is_own_rate": 0.667,
+        "template_baseline_to_own_founder": 1.453,
+        "real_heldout_to_own_train": 0.711
+      },
+      "bunnie_huang": {
+        "posts": 4,
+        "to_own_founder": 0.815,
+        "to_nearest_other": 0.814,
+        "nearest_is_own_rate": 0.5,
+        "template_baseline_to_own_founder": 1.638,
+        "real_heldout_to_own_train": 0.768
+      }
+    },
+    "voice_nearest_own_rate": 0.269,
+    "voice_posts_closer_than_template_rate": 1.0
+  },
+  "template": {
+    "human_cross_person_structure_similarity": 0.291,
+    "generated_cross_client_structure_similarity": 0.394,
+    "template_baseline_cross_structure_similarity": 0.432,
+    "generic_template_post_rate": 0.019,
+    "per_client": {
+      "seth_godin": {
+        "posts": 15,
+        "with_generic_pattern": 1,
+        "patterns": [
+          "stock LinkedIn phrase"
+        ]
+      },
+      "jason_cohen": {
+        "posts": 9,
+        "with_generic_pattern": 0,
+        "patterns": []
+      },
+      "april_dunford": {
+        "posts": 10,
+        "with_generic_pattern": 0,
+        "patterns": []
+      },
+      "paras_chopra": {
+        "posts": 5,
+        "with_generic_pattern": 0,
+        "patterns": []
+      },
+      "arvid_kahl": {
+        "posts": 9,
+        "with_generic_pattern": 0,
+        "patterns": []
+      },
+      "bunnie_huang": {
+        "posts": 4,
+        "with_generic_pattern": 0,
+        "patterns": []
+      }
+    },
+    "template_similarity_excess": 0.103,
+    "same_client_across_weeks_similarity": {
+      "seth_godin": 0.446,
+      "jason_cohen": 0.342,
+      "april_dunford": 0.401,
+      "paras_chopra": 0.389,
+      "arvid_kahl": 0.375,
+      "bunnie_huang": 0.487
+    }
+  }
+}
