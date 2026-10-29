@@ -356,6 +356,8 @@ async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date, broaden: 
         kept += len(take)
         stats["kept"] += len(take)
     stats["week_total"] = kept
+    if stats["rounds"] == 0:
+        stats["already_met"] = True                  # the week already had enough leads: nothing was searched
     funnel["searches"], funnel["budget"] = budget.searches, {"searches": [budget.searches, budget.max_searches],
                                                              "page_reads": [budget.fetches, budget.max_fetches]}
     stats["warnings"] = stats.get("warnings", []) + funnel.pop("warnings", [])

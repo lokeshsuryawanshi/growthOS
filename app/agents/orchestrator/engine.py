@@ -301,7 +301,7 @@ async def _leads(n: NodeCtx) -> dict:
 def lead_shortfall(st: dict) -> list[str]:
     """Why the week has fewer leads than the client's minimum, in the founder's terms."""
     if st.get("week_total", st.get("kept", 0)) >= st.get("target_min", 0):
-        return []
+        return []                                    # includes "already met": nothing to explain
     out = [f"{st.get('week_total', st.get('kept', 0))} of the {st.get('target_min')}-{st.get('target_max')} leads wanted this week"]
     f = st.get("funnel") or {}
     if f.get("queries"):

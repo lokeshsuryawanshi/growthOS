@@ -203,6 +203,20 @@ async def test_broaden_skips_the_region_filter(client):
     assert "kaffeehaus.de" in got and stats["dropped"].get("region", 0) == 0
 
 
+async def test_a_week_that_already_has_its_leads_searches_nothing_and_says_so(client):
+    web = Web(results=[hit("Roasters", "https://news.example/roasters",
+                           "Hilltop Roast is hiring a head of operations; Kaffee Haus roasts in Berlin")],
+              pages={"hilltoproast.example": homepage("Hilltop Roast", "<p>hello@hilltoproast.example</p>"),
+                     "kaffeehaus.de": homepage("Kaffee Haus", "<p>kontakt@kaffeehaus.de</p>")})
+    http.set_transport(httpx.MockTransport(web.handler))
+    week = __import__("datetime").date(2026, 11, 2)
+    first = await find_leads("t1", ctx(), week, broaden=True)
+    assert first["week_total"] >= 2 and not first.get("already_met")
+    searched = len(web.searches)
+    again = await find_leads("t1", ctx(), week)
+    assert again["already_met"] and again["rounds"] == 0 and len(web.searches) == searched
+
+
 # ---------------------------------------------------------------- the pieces
 def test_list_pages_yield_company_links_not_the_publisher_or_social_sites():
     from app.integrations.fetch import parse_html

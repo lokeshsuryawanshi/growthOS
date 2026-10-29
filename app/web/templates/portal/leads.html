@@ -5,6 +5,7 @@
 <section class="panel stack">
   <div class="row"><h2>Last lead search</h2><span class="sub num">{{ lead_run._at.strftime('%d %b %H:%M') }} UTC</span><span class="spacer"></span>
     <span class="pill {{ 'ok' if lead_run.week_total >= lead_run.target_min else 'warn' }}">{{ lead_run.week_total }} of {{ lead_run.target_min }}-{{ lead_run.target_max }} this week</span></div>
+  {% if lead_run.get('already_met') %}<div class="flash ok">This week's leads were already found ({{ lead_run.week_total }}), so nothing was searched. Leads for next week can be found from Monday.</div>{% endif %}
   <div class="funnel">
     <div><b class="num">{{ f.queries }}</b><span>searches across {{ f.families | length }} kinds of source</span></div>
     <div><b class="num">{{ f.found_in_results + f.found_on_lists }}</b><span>companies found ({{ f.found_on_lists }} from list pages)</span></div>
