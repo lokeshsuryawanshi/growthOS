@@ -198,15 +198,22 @@ async def test_a_node_starts_as_soon_as_its_own_dependencies_finish(world, handl
     _, wrap = handlers
     log: list[str] = []
     real_comp, real_trends = engine.HANDLERS["competitors"], engine.HANDLERS["trends"]
+    trends_began = asyncio.Event()
 
     async def slow_competitors(n):
-        await asyncio.sleep(1.0)
+        # Competitors cannot finish until trends has started. With wave scheduling trends would wait for competitors,
+        # so this would time out; independent of how slow the database is.
+        try:
+            await asyncio.wait_for(trends_began.wait(), 30)
+        except asyncio.TimeoutError:
+            log.append("timed_out")
         out = await real_comp(n)
         log.append("competitors_done")
         return out
 
     async def trends(n):
         log.append("trends_started")
+        trends_began.set()
         return await real_trends(n)
 
     wrap("competitors", slow_competitors)

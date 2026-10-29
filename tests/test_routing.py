@@ -1,5 +1,6 @@
 """Speed under free-tier limits: per-model pacing, spillover to a free model, request-size limits, daily quotas,
 and an honest ledger of where the time went."""
+import asyncio
 import time
 
 import pytest
@@ -112,8 +113,13 @@ async def test_pacing_wait_is_recorded_separately_from_latency(db, tenant, monke
     monkeypatch.setenv("MODEL_ROUTES_JSON", '{"groq": {"big": ["openai/gpt-oss-120b"]}}')
     gw = live_gateway()
     lane = await gw.lane(tenant)
-    gw.buckets[(lane.fingerprint, "openai/gpt-oss-120b")] = TokenBucket(tokens_per_minute=60000)   # 1000 tokens/s
-    gw.buckets[(lane.fingerprint, "openai/gpt-oss-120b")].tokens = -400                            # ~0.4 s of debt
+    bucket = TokenBucket(tokens_per_minute=60000)
+
+    async def paced(amount):                  # a fixed 0.4 s wait, whatever the database latency before the call
+        await asyncio.sleep(0.4)
+        return 0.4
+    bucket.acquire = paced
+    gw.buckets[(lane.fingerprint, "openai/gpt-oss-120b")] = bucket
     await gw.complete(req("big", chars=400, max_tokens=100), CallContext(tenant_id=tenant))
     with tenant_scope(tenant):
         async with db.reader() as s:
