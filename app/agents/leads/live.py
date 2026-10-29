@@ -303,6 +303,7 @@ async def read_homepages(ctx: AgentContext, cands: list[dict], budget: SearchBud
             try:
                 page = await fetch_page("https://" + c["domain"])
             except IntegrationError:
+                c["_site_failed"] = True             # a domain that does not load is probably not the company's
                 return
         verdict = await scan(page.text[:1800], ctx.call)
         c["about"] = "" if verdict.quarantined else re.sub(r"\s+", " ", f"{page.title}. {verdict.clean_text}")[:500]

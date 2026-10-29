@@ -182,6 +182,17 @@ async def test_a_thin_web_presence_explains_each_drop(client, monkeypatch):
     assert "reach a person" in stats["suggestion"] or stats["suggestion"]
 
 
+async def test_a_company_whose_site_does_not_load_is_dropped(client, monkeypatch):
+    monkeypatch.setitem(MOCK_RESPONDERS, "company_scout", lambda req: {"content": {"companies": [
+        {"name": "Gorilla Roast", "domain": "gorillaroas.example", "evidence_url": "https://news.example/g"}]}})
+    web = Web(results=[hit("Gorilla Roast opens", "https://news.example/g", "Gorilla Roast opens a roastery")])
+    http.set_transport(httpx.MockTransport(web.handler))
+    stats = await find_leads("t1", ctx(), __import__("datetime").date(2026, 11, 2))
+    got, rejected = await leads(client)
+    assert got == {} and stats["dropped"]["site_does_not_load"] == 1
+    assert any(r.reason == "site_does_not_load" and r.company == "Gorilla Roast" for r in rejected)
+
+
 async def test_companies_clearly_outside_the_size_range_are_dropped_unless_broadened(client, monkeypatch):
     def qualifier(req):
         return {"content": {"scores": [{"prospect_id": p["id"], "fit_score": 90, "size": "too_big",

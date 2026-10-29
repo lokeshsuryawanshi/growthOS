@@ -270,6 +270,9 @@ async def find_leads(tenant_id: str, ctx: AgentContext, week_of: date, broaden: 
                                       budget, funnel)
             for p in candidates:
                 p["about"] = p["_live"].get("about", "")
+                if p["_live"].get("_site_failed"):
+                    _drop(stats, rejections, p, "site_does_not_load", f"https://{p['company_domain']} did not load")
+            candidates = [p for p in candidates if not p["_live"].get("_site_failed")]
         # Third-party text about a prospect is scanned for injection before any model scores it (batched classifier).
         for i, verdict in enumerate(await scan_many([p.get("signal", "") for p in candidates], ctx.call)):
             if verdict.flagged:
