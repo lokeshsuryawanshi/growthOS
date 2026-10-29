@@ -20,7 +20,7 @@ Misses:
 | Area | Metric | Value |
 |---|---|---|
 | Factual accuracy | Delivered drafts with a figure not backed by a verbatim source quote | 0 |
-| Factual accuracy | Delivered drafts that use figures (each checked) | 20 |
+| Factual accuracy | Delivered drafts that use figures (each checked) | 18 |
 | Factual accuracy | Research claims kept as verified / flagged unverified | 21 / 1 |
 | Factual accuracy | Research figures labelled outdated (3+ years old) | 2 |
 | Brand voice | Drafts using a banned phrase (global or the client's own) | 0 |
@@ -58,21 +58,21 @@ Mutations (each must be caught):
 - session signature and expiry not checked: caught (0 violations, 12 escalations, 0 leaks)
 - deleted accounts keep their sessions: caught (0 violations, 2 escalations, 0 leaks)
 - every account owns every client: caught (11 violations, 0 escalations, 0 leaks)
-- runs use whichever account's key is found first: caught (1 violations, 0 escalations, 1 leaks)
+- runs use whichever account's key is found first: caught (0 violations, 0 escalations, 1 leaks)
 
 ## Pipeline (per demo client)
 
 | Metric | ledgerloop | shiftwise |
 |---|---|---|
 | run_status | ['succeeded', 'succeeded', 'succeeded', 'succeeded', 'succeeded'] | ['succeeded', 'succeeded', 'succeeded', 'succeeded', 'succeeded'] |
-| seconds | 0.9 | 0.9 |
+| seconds | 1.4 | 1.2 |
 | calendar_valid | 1 | 1 |
 | topics_unique | 1 | 1 |
 | posts | 10 | 10 |
 | posts_ready | 10 | 10 |
 | posts_ready_rate | 1.0 | 1.0 |
 | avg_critic_score | 4.0 | 4.0 |
-| avg_critic_rounds | 2.0 | 2.0 |
+| avg_critic_rounds | 1.9 | 2.0 |
 | guard_autofixes | 1 | 0 |
 | pending_posts_with_violations | 0 | 0 |
 | leads | 40 | 40 |
@@ -84,7 +84,7 @@ Mutations (each must be caught):
 | outreach_drafts | 40 | 40 |
 | injection_pages_caught | 2 | 1 |
 | artifact_contamination | 0 | 0 |
-| llm_calls | 158 | 156 |
-| tokens | 173121 | 170836 |
-| cost_usd | 0.0299 | 0.0296 |
-| cost_per_client_cycle_usd | 0.01 | 0.0099 |
+| llm_calls | 156 | 157 |
+| tokens | 169638 | 171136 |
+| cost_usd | 0.0293 | 0.0296 |
+| cost_per_client_cycle_usd | 0.0098 | 0.0099 |

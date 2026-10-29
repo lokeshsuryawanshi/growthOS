@@ -18,14 +18,14 @@
           "succeeded",
           "succeeded"
         ],
-        "seconds": 0.9,
+        "seconds": 1.4,
         "calendar_valid": 1,
         "topics_unique": 1,
         "posts": 10,
         "posts_ready": 10,
         "posts_ready_rate": 1.0,
         "avg_critic_score": 4.0,
-        "avg_critic_rounds": 2.0,
+        "avg_critic_rounds": 1.9,
         "guard_autofixes": 1,
         "pending_posts_with_violations": 0,
         "leads": 40,
@@ -40,10 +40,10 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 2,
         "artifact_contamination": 0,
-        "llm_calls": 158,
-        "tokens": 173121,
-        "cost_usd": 0.0299,
-        "cost_per_client_cycle_usd": 0.01
+        "llm_calls": 156,
+        "tokens": 169638,
+        "cost_usd": 0.0293,
+        "cost_per_client_cycle_usd": 0.0098
       },
       "shiftwise": {
         "run_status": [
@@ -53,7 +53,7 @@
           "succeeded",
           "succeeded"
         ],
-        "seconds": 0.9,
+        "seconds": 1.2,
         "calendar_valid": 1,
         "topics_unique": 1,
         "posts": 10,
@@ -75,8 +75,8 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 1,
         "artifact_contamination": 0,
-        "llm_calls": 156,
-        "tokens": 170836,
+        "llm_calls": 157,
+        "tokens": 171136,
         "cost_usd": 0.0296,
         "cost_per_client_cycle_usd": 0.0099
       }
@@ -85,7 +85,7 @@
     "posts_ready_rate": 1.0,
     "avg_critic_score": 4.0,
     "leads_week_in_range_rate": 1.0,
-    "cost_per_client_cycle_usd": 0.01,
+    "cost_per_client_cycle_usd": 0.0099,
     "pending_posts_with_violations": 0,
     "lead_policy_violations": 0,
     "explicit_low_fit_kept": 0,
@@ -93,7 +93,7 @@
   },
   "quality": {
     "quality_delivered_posts": 20,
-    "quality_posts_with_figures": 20,
+    "quality_posts_with_figures": 18,
     "quality_ungrounded_figure_posts": 0,
     "quality_banned_phrase_posts": 0,
     "quality_avoided_word_posts": 0,
@@ -178,7 +178,7 @@
         },
         "runs use whichever account's key is found first": {
           "caught": true,
-          "violations": 1,
+          "violations": 0,
           "escalations": 0,
           "leaks": 1
         }
