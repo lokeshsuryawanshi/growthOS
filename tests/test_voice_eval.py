@@ -1,4 +1,5 @@
 """The voice and template measures are instruments: check they measure something before trusting their verdicts."""
+import pytest
 from app.agents.content.style import describe, style_card, template_markers, template_problems
 from evals.voice import load_people, sanity, template_baseline, template_report, voice_distance
 
@@ -56,6 +57,8 @@ def test_the_style_card_describes_what_the_founder_does_and_allows_their_own_hab
 async def test_the_blind_review_kit_round_trips(db, tmp_path):
     """Export a shuffled, unlabelled sheet; fill it with made-up test ratings; import: the groups come back apart.
     These ratings are a test fixture, never a result."""
+    if not db.url.startswith("sqlite"):
+        pytest.skip("the review kit reads live runs' SQLite files")
     import csv
     import json
     import sys

@@ -1,6 +1,6 @@
 # Growth OS: handoff
 
-State as of 2026-10-29. All v2 work is on the branch **`feature/v2-single-user`**, committed in small steps and
+State as of 2026-10-29 (end of the build). All v2 work is on the branch **`feature/v2-single-user`**, committed in small steps and
 pushed, **not merged**. `main` (and so the live site, which auto-deploys from `main`) still runs v1. Untracked on
 purpose, never to be committed: `AGENT_PROMPT.md`, `AGENT_PLAN_V2.md`, `coding-round-links.md`, `data/`.
 
@@ -10,6 +10,11 @@ A done-for-you growth portal run by one operator for the founders they work for:
 calendar, five or more posts a week in each founder's voice, leads with a real way to reach a person, and short
 outreach emails. The operator approves everything; nothing is posted or sent by the system. Start reviewers at
 `docs/REVIEWER_GUIDE.md`.
+
+**Measured results** are in `docs/REVIEWER_GUIDE.md` (section 2) and `docs/EVALS_AND_GUARDRAILS.md`. In one line:
+tests and the eval gate pass; isolation holds with its mutation test; posts avoid the generic template but are not yet
+in each founder's own voice and rarely reach the editor's bar on Groq's free model; leads are traceable and never
+invented, but only one of six profiles reached 10 a week. No human has rated anything yet.
 
 ## 2. Run it
 
@@ -38,7 +43,7 @@ outreach emails. The operator approves everything; nothing is posted or sent by 
 5. **Rate drafts** (30-45 minutes): `scripts/export_blind_review.py` builds a shuffled, unlabelled sheet; fill
    `ratings.csv`; `scripts/import_ratings.py` reports the result. Until then the honest headline is "no human ratings
    yet".
-6. Local `.env`: lines 33 and 34 are not `NAME=value` lines (python-dotenv cannot read them); please fix or remove
+6. Local `.env`: lines 32 and 33 are not `NAME=value` lines (python-dotenv cannot read them); please fix or remove
    them. `ADMIN_PASSWORD`, `SIGNUP_INVITE_CODE`, `GLOBAL_DAILY_BUDGET_USD`, `SELF_SERVE_MONTHLY_BUDGET_USD`,
    `GROQ_MODEL` and `GOOGLE_REDIRECT_URI` are no longer read and can go.
 
