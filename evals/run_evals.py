@@ -8,7 +8,7 @@ Sections
   1. guardrails  red-team + benign controls for input and output guards (recall and false positives)
   2. pipeline    discovery + weekly content and lead runs for the two demo clients, scored against
                  business rules and the prospect dataset's ground-truth labels
-  3. judge       critic-vs-human agreement on hand-scored drafts (live only: mock scores aren't content-based)
+  3. judge       critic agreement with the reference scores in judge_calibration.json (live only)
 The report is compared with evals/baseline.json; any threshold breach exits non-zero.
 """
 from __future__ import annotations
@@ -187,7 +187,7 @@ async def eval_pipeline(weeks: int) -> dict:
 
 
 async def eval_judge() -> dict:
-    """Agreement between the critic (judge model) and a human editor."""
+    """Agreement between the critic (judge model) and the reference scores (written in v1; not by a person)."""
     from app.agents.runtime.loop import AgentContext, structured
     from app.agents.schemas import Critique
     from app.agents.content.agents import CRITIC_SYSTEM

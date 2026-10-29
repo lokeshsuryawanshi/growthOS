@@ -1,7 +1,7 @@
 # Evals and guardrails
 
 Principle: **the model proposes, code disposes.** Anything code can check is checked in code, not asked for in a
-prompt. A model judges only what code cannot (is this draft good?), and that judge is measured against a human. Who
+prompt. A model judges only what code cannot (is this draft good?), and that judge is measured against reference scores. Who
 measured what is always said: numbers from scripts are from scripts; the lead review was done by the implementing agent
 (an AI), which is not the same as a human; **no human has rated the posts yet**.
 
@@ -70,10 +70,10 @@ competitor neutrally, text containing the word "instructions"), so false positiv
 | Benign false-positive rate | 0.0 | **0.0** | **0.0** |
 | Input-injection recall | 0.8 | 0.8 (the miss is an obfuscated case only the classifier is meant to catch) | **1.0** |
 
-### 2.3 The editor against a human (live)
+### 2.3 The editor against reference scores (live)
 
-The editor model is used as a quality gate, so it is checked against hand scores: `evals/datasets/judge_calibration.json`
-holds 8 drafts scored by hand (1 = unusable, 5 = publish as is). Gate: within one point of the human at least 75% of the
+The editor model is used as a quality gate, so it is checked against reference scores: `evals/datasets/judge_calibration.json`
+holds 8 drafts with a score each (1 = unusable, 5 = publish as is). Gate: within one point of the reference at least 75% of the
 time, Spearman at least 0.6. Measured on 2026-10-29 with the v2 editor prompt (`qwen/qwen3.8-27b` on Groq),
 `python -m evals.run_evals --live`:
 
@@ -82,8 +82,9 @@ time, Spearman at least 0.6. Measured on 2026-10-29 with the v2 editor prompt (`
 | 1 | **0.75** | 0.74 | a 3 scored 1.0; a 1 scored 2.8 |
 | 2 | **0.875** | 0.81 | |
 
-It passes, but only just in run 1. With 8 items one disagreement moves the result 12.5 points. These hand scores are
-the earlier reviewer's, not the user's; the blind review (2.6) is the real test.
+It passes, but only just in run 1. With 8 items one disagreement moves the result 12.5 points. The reference scores
+were written during the v1 build; the dataset does not record who wrote them, most likely the earlier implementing
+agent, so this is **not** agreement with a human. The blind review (2.6) is the real test.
 
 ### 2.4 Voice and template (live output)
 
