@@ -55,7 +55,10 @@ EMAIL = re.compile(r"(?<![\w.+-])([A-Za-z0-9._%+-]{1,64})@([A-Za-z0-9-]+(?:\.[A-
 ROLE_INBOX = {"info", "hello", "hi", "contact", "sales", "team", "press", "media", "partnerships", "partners",
               "business", "founders", "office", "enquiries", "inquiries", "enquiry", "inquiry", "support", "marketing",
               "bd", "growth", "general", "admin", "connect", "studio", "projects", "project", "work", "newbusiness",
-              "new", "ask", "talk", "start", "go", "help", "careers", "jobs", "mail", "contactus", "letstalk"}
+              "new", "ask", "talk", "start", "go", "help", "mail", "contactus", "letstalk"}
+NOT_FOR_SALES = {"hr", "jobs", "job", "careers", "career", "recruit", "recruiting", "recruitment", "talent", "hiring",
+                 "privacy", "legal", "gdpr", "dpo", "abuse", "security", "noreply", "no", "donotreply", "billing",
+                 "accounts", "invoices", "finance", "webmaster", "postmaster", "unsubscribe"}
 CCTLD = {"in": "india", "uk": "uk", "de": "germany", "fr": "france", "es": "spain", "it": "italy", "nl": "netherlands",
          "sg": "singapore", "au": "australia", "ca": "canada", "jp": "japan", "br": "brazil", "se": "sweden",
          "ch": "switzerland", "ie": "ireland", "nz": "new zealand", "ae": "uae", "za": "south africa", "mx": "mexico"}
@@ -324,6 +327,7 @@ def better_name(name: str, domain: str, title: str) -> str:
     def matches(text: str) -> bool:
         t = re.sub(r"[^a-z0-9]", "", text.lower())
         return bool(t) and (t in root or root in t or (len(t) >= 4 and t[:4] == root[:4]))
+    name = re.sub(r"(?i)\s+\d(?:\.\d)?\s+(?:\d+\s+)?(?:reviews?|ratings?|stars?)\b.*$", "", name).strip()
     if matches(name) and not re.fullmatch(r"(?i)(?:www\.)?[a-z0-9-]+(?:\.[a-z]{2,})+", name.strip()):
         return name                                  # a bare domain ("render.com") is not a name
     for seg in re.split(r"\s[|\-–—:·]\s|\s[|–—·]|[|–—·]\s", title or ""):
@@ -391,6 +395,8 @@ def site_emails(text: str, links: list[tuple[str, str]], domain: str) -> list[st
         if "@" not in e:
             continue
         host = e.split("@", 1)[1]
+        if re.split(r"[._+-]", e.split("@", 1)[0])[0] in NOT_FOR_SALES:
+            continue                                 # hiring, legal or billing inboxes are not a way to sell
         if (host == domain or host.endswith("." + domain)) and e not in out and not re.search(r"\.(png|jpe?g|gif|svg|webp)$", e):
             out.append(e)
     return out

@@ -263,8 +263,10 @@ def test_names_from_link_labels_are_repaired_and_testimonials_are_not_staff():
     assert live.better_name("case studies", "seahawkmedia.com", "") == "Seahawkmedia"
     assert live.better_name("Bean Barn Roastery", "beanbarn.example", "") == "Bean Barn Roastery"
     assert live.better_name("render.com", "render.com", "Render | The cloud for builders") == "Render"
+    assert live.better_name("IT Monks Agency 5.0 93 reviews from 6 verified platforms", "itmonks.com", "") == "IT Monks Agency"
     assert not live.works_here("Senior Director, Global Digital Marketing JLL", "Moove Agency", "mooveagency.com")
     assert not live.works_here("Co-Founder @ Floresco", "Yellow Peach", "yellowpeach.co.uk")
     assert live.works_here("Founder and Head Roaster", "Bean Barn", "beanbarn.example")
     assert live.clean_name("Chris Januszewski \U0001F399️") == "Chris Januszewski"
     assert live.is_role_inbox("studio@impactmedia.co.uk") and live.is_role_inbox("go@codal.com")
+    assert live.site_emails("hr@acme.io jobs@acme.io privacy@acme.io sales@acme.io", [], "acme.io") == ["sales@acme.io"]
