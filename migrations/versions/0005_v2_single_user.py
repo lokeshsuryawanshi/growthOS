@@ -55,6 +55,9 @@ def upgrade() -> None:
     with op.batch_alter_table('outreach_messages') as b:
         b.drop_column('external_id')
         b.drop_column('send_error')
+    with op.batch_alter_table('leads') as b:
+        b.add_column(sa.Column('contact_url', sa.String(length=500), nullable=False, server_default=''))
+        b.add_column(sa.Column('contact_confidence', sa.String(length=8), nullable=False, server_default=''))
     with op.batch_alter_table('posts') as b:
         b.add_column(sa.Column('rating_voice', sa.Integer(), nullable=True))
         b.add_column(sa.Column('rating_would_post', sa.Boolean(), nullable=True))
