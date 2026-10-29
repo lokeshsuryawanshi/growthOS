@@ -324,8 +324,8 @@ def better_name(name: str, domain: str, title: str) -> str:
     def matches(text: str) -> bool:
         t = re.sub(r"[^a-z0-9]", "", text.lower())
         return bool(t) and (t in root or root in t or (len(t) >= 4 and t[:4] == root[:4]))
-    if matches(name):
-        return name
+    if matches(name) and not re.fullmatch(r"(?i)(?:www\.)?[a-z0-9-]+(?:\.[a-z]{2,})+", name.strip()):
+        return name                                  # a bare domain ("render.com") is not a name
     for seg in re.split(r"\s[|\-–—:·]\s|\s[|–—·]|[|–—·]\s", title or ""):
         seg = seg.strip()
         if seg and len(seg) <= 60 and matches(seg):
