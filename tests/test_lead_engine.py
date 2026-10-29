@@ -164,6 +164,7 @@ async def test_an_empty_search_ends_in_zero_with_the_reason_and_a_suggestion(cli
     assert "adjacent industries" in stats["suggestion"]
     assert len(web.searches) <= live.SearchBudget().max_searches                     # bounded, and reported
     assert stats["funnel"]["budget"]["searches"][0] == len(web.searches)
+    assert stats["funnel"]["queries"] <= stats["funnel"]["budget"]["searches"][0]          # reported = actually run
 
 
 async def test_a_thin_web_presence_explains_each_drop(client, monkeypatch):

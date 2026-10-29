@@ -218,6 +218,7 @@ async def discover(ctx: AgentContext, icp: dict, intake: dict, need: int, round_
     async def one(fam: str, q: str):
         if not budget.take_search():
             return None
+        f["queries"] += 1                            # only searches that ran: the budget may stop the rest
         try:
             r = await _web_search(SearchArgs(query=q), ctx, with_answer=False)
             return fam, r
@@ -227,7 +228,6 @@ async def discover(ctx: AgentContext, icp: dict, intake: dict, need: int, round_
             failures.append(e)
             return None
     results = [r for r in await asyncio.gather(*[one(fam, q) for fam, q in queries]) if r]
-    f["queries"] += len(queries)
     f["searches"] = budget.searches
     for fam, r in results:
         f["families"][fam] = f["families"].get(fam, 0) + len(r["results"])
