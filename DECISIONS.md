@@ -129,7 +129,7 @@ Roles were correct in the policy table but hard to see: there was no way to add 
 
 ## 6. Evals
 
-- **Deterministic checks are the backbone**, scored against ground truth: the prospect dataset labels every adversarial row, and calendar and post rules are checkable. LLM-as-judge is used only for subjective quality, and is itself measured against reference scores (v1's, not made by a person; see the evals doc).
+- **Deterministic checks are the backbone**, scored against ground truth: the prospect dataset labels every adversarial row, and calendar and post rules are checkable. LLM-as-judge is used only for subjective quality, and is itself measured against reference scores (written in v1, author not recorded; see the evals doc).
 - **The red-team suite includes benign controls** (for example a post that names a competitor neutrally, or text containing the word "instructions") so the gate measures false positives as well as recall.
 - **One case is planted to fail offline**: an injection with letters spaced out. Heuristics miss it and the Prompt Guard classifier is the layer meant to catch it. The mock report shows the miss on purpose.
 - **Online signals** come from founder behaviour: approval rate, *edit distance* between draft and approved text (the main quality signal), and rejection notes. Edits feed a reflection step that writes durable rules into the voice profile, and the next weekly cycle uses them.

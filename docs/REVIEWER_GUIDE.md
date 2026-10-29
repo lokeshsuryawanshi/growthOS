@@ -75,7 +75,7 @@ its target ends "succeeded with shortfall" and says why.
 282 tests (`pytest -q`); the same suite runs on Neon Postgres. Offline eval gate: **PASS** (red team 22 cases, recall
 1.0, false positives 0; isolation as above; deterministic quality all zero). Live: injection recall 1.0 with Prompt
 Guard; the editor model is within one point of the v1 reference scores 0.75 and 0.875 of the time in two runs (gate 0.75;
-those scores were not made by a person). Details
+who wrote those scores is not recorded, so this is not agreement with a person). Details
 and the per-file test table: [EVALS_AND_GUARDRAILS.md](EVALS_AND_GUARDRAILS.md).
 
 ## 6. Limitations

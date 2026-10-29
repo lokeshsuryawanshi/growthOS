@@ -187,7 +187,7 @@ async def eval_pipeline(weeks: int) -> dict:
 
 
 async def eval_judge() -> dict:
-    """Agreement between the critic (judge model) and the reference scores (written in v1; not by a person)."""
+    """Agreement between the critic (judge model) and the reference scores (written in v1; who wrote them is not recorded)."""
     from app.agents.runtime.loop import AgentContext, structured
     from app.agents.schemas import Critique
     from app.agents.content.agents import CRITIC_SYSTEM
