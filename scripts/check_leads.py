@@ -23,8 +23,11 @@ async def check(db: str) -> dict:
     from app.integrations.fetch import fetch_page
     con = sqlite3.connect(db)
     client = con.execute("select name from tenants").fetchone()[0]
+    run = con.execute("select id from runs where kind='leads' and status like 'succeeded%' "
+                      "order by created_at desc limit 1").fetchone()
     rows = con.execute("select company, company_domain, full_name, title, email, contact_source, contact_url, "
-                       "linkedin_url, source_url, fit_score, signal, evidence from leads").fetchall()
+                       "linkedin_url, source_url, fit_score, signal, evidence from leads where run_id = ?",
+                       (run[0] if run else "",)).fetchall()
     con.close()
     cache: dict[str, str | None] = {}
 

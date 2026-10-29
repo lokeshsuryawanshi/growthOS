@@ -129,7 +129,7 @@ async def main(args) -> int:
         tenant = await accounts.create_client(p, accounts.OnboardingForm.from_form(profile))
     saved = await keys.list_keys(p.user_id)
     for provider, kind in (("groq", "llm"), ("tavily", "search"), ("hunter", "contacts")):
-        if KEYS.get(provider) and (kind not in saved or saved[kind].status != "valid"):
+        if KEYS.get(provider) and (kind not in saved or saved[kind].status != "valid" or (args.rekey and kind == "llm")):
             await keys.save_key(p, kind, provider, KEYS[provider])        # the real check call, as in the UI
     me = await load_principal(p.user_id)
     orch = get_orchestrator()
@@ -152,7 +152,14 @@ async def main(args) -> int:
     weekly = [k for k in kinds if k in ("content", "leads")]
     if weekly:
         t_week = time.monotonic()
-        rids = {k: await run_service.start_run(me, tenant.id, k) for k in weekly}
+        from datetime import date, timedelta
+        extra = {}
+        if args.next_week:
+            today = date.today()
+            extra["week_start"] = (today - timedelta(days=today.weekday()) + timedelta(days=7)).isoformat()
+        if args.broaden:
+            extra["broaden"] = True
+        rids = {k: await run_service.start_run(me, tenant.id, k, dict(extra) if k == "leads" else None) for k in weekly}
         for k, rid in rids.items():
             print(k, await wait_run(tenant.id, rid), flush=True)
             out["runs"][k] = await report_for(tenant.id, rid)
@@ -183,6 +190,9 @@ if __name__ == "__main__":
     ap.add_argument("--runs", default="discovery,content,leads")
     ap.add_argument("--out", default="loadtest/reports/live-run")
     ap.add_argument("--hunter", action="store_true", help="also save HUNTER_API_KEY (optional enrichment)")
+    ap.add_argument("--next-week", action="store_true", help="leads for next week (this week's target already met)")
+    ap.add_argument("--broaden", action="store_true", help="leads with the region and size filters relaxed")
+    ap.add_argument("--rekey", action="store_true", help="replace the account's AI key with --groq-key-var's (e.g. after a daily quota)")
     a = ap.parse_args()
     _prepare_env(a)
     sys.exit(asyncio.run(main(a)))
