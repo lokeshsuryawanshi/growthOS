@@ -12,6 +12,11 @@ AI, search or contact keys: every operator saves their own on the **API keys & s
    the demo refuse to open the database named in `.env`'s `DATABASE_URL`, so they can never touch production.
 3. Nothing else: the schema is created by Alembic migrations when the app starts.
 
+Checked on 2026-10-29 against a Neon test branch with `scripts/check_persistence.py`: the migrations built the schema
+(version 0005), an account, a client and an encrypted key written by one process were read back by another, and the
+app booted in production mode in between (`/healthz`: production, PostgreSQL, not ephemeral, no fixtures; no test
+sign-in route) with the data intact.
+
 ## 2. Google sign-in
 
 Google Cloud console → APIs & Services:
