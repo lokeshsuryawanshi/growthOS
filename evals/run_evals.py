@@ -205,6 +205,23 @@ async def eval_judge() -> dict:
     return {"pairs": pairs, "within_one_point": round(within1, 3), "spearman": round(_spearman(pairs), 3)}
 
 
+async def _give_operator_key(var: str) -> None:
+    """Live models run on an account's own key: save the developer's Groq key into the demo operator's account, through
+    the same service (and the same check call) the keys page uses. The key is never printed."""
+    from dotenv import dotenv_values
+    from sqlalchemy import select
+    from app.api.deps import load_principal
+    from app.db.models import Tenant
+    from app.db.session import get_db
+    from app.services import keys
+    raw = dotenv_values(HERE.parent / ".env").get(var) or os.environ.get(var) or ""
+    if not raw:
+        sys.exit(f"--live needs {var} in .env")
+    async with get_db().reader() as s:
+        owner = (await s.execute(select(Tenant.owner_user_id).where(Tenant.id == _EVAL_TENANT["id"]))).scalar_one()
+    await keys.save_key(await load_principal(owner), "llm", "groq", raw)
+
+
 def _spearman(pairs: list[tuple[float, float]]) -> float:
     def ranks(xs):
         order = sorted(range(len(xs)), key=lambda i: xs[i])
@@ -323,6 +340,8 @@ async def main_async(args) -> int:
     from app.fixtures.seed import seed
     ids = await seed(db)
     _EVAL_TENANT["id"] = ids["ledgerloop"]
+    if args.live:
+        await _give_operator_key(args.groq_key_var)
 
     report: dict = {"mode": "live" if args.live else ("a real run's data" if args.from_db else "mock")}
     sections = set(args.sections.split(",")) if args.sections else \
@@ -359,6 +378,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", action="store_true")
     ap.add_argument("--weeks", type=int, default=2)
+    ap.add_argument("--groq-key-var", default="GROQ_API_KEY", help="the .env variable whose Groq key --live uses")
     ap.add_argument("--sections", default="", help="comma list; default guardrails,pipeline,quality,isolation (mock) or guardrails,judge (live)")
     ap.add_argument("--from-db", default="", help="compute the quality section over a real run's database (read only)")
     ap.add_argument("--out", default="", help="report name (default eval-<mode>)")

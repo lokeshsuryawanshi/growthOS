@@ -1,0 +1,49 @@
+{
+  "mode": "live",
+  "guardrails": {},
+  "pipeline": {
+    "clients": {}
+  },
+  "judge": {
+    "pairs": [
+      [
+        5,
+        4.6
+      ],
+      [
+        5,
+        4.6
+      ],
+      [
+        4,
+        4.5
+      ],
+      [
+        3,
+        2.2
+      ],
+      [
+        2,
+        1.0
+      ],
+      [
+        1,
+        2.8
+      ],
+      [
+        4,
+        4.6
+      ],
+      [
+        2,
+        1.5
+      ]
+    ],
+    "within_one_point": 0.875,
+    "spearman": 0.807
+  },
+  "gate": {
+    "passed": true,
+    "failures": []
+  }
+}

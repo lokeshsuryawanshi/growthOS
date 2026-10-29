@@ -14,6 +14,6 @@ Gate: **PASS**
 
 ## Judge calibration
 
-Within one point of the human: 0.875, Spearman: 0.889
+Within one point of the human: 0.75, Spearman: 0.738
 
-Pairs (human, model): [(5, 4.9), (5, 4.9), (4, 4.8), (3, 1.5), (2, 1.0), (1, 1.5), (4, 4.7), (2, 1.0)]
+Pairs (human, model): [(5, 4.3), (5, 4.6), (4, 4.5), (3, 1.0), (2, 1.0), (1, 2.8), (4, 3.4), (2, 1.7)]

@@ -44,34 +44,36 @@ Misses:
 
 | Metric | Value |
 |---|---|
-| Client routes found in the app (all are tested) | 12 |
-| Checks (other account, signed out, forged/expired/stale sessions, page leaks) | 50 |
+| Client routes found in the app (all are tested) | 15 |
+| Checks (other account, signed out, forged/expired/stale sessions, page leaks) | 56 |
 | Cross-account access violations | 0 |
 | Session escalations | 0 |
 | Another account's data shown on a page | 0 |
-| Mutation test: deliberate breaks noticed | 4 of 4 |
+| API keys visible in pages, headers or database rows, or used for the wrong account | 0 |
+| Mutation test: deliberate breaks noticed | 5 of 5 |
 
 Mutations (each must be caught):
 
-- route ownership check removed: caught (6 violations, 0 escalations, 0 leaks)
+- route ownership check removed: caught (8 violations, 0 escalations, 0 leaks)
 - session signature and expiry not checked: caught (0 violations, 12 escalations, 0 leaks)
 - deleted accounts keep their sessions: caught (0 violations, 2 escalations, 0 leaks)
-- every account owns every client: caught (9 violations, 0 escalations, 0 leaks)
+- every account owns every client: caught (11 violations, 0 escalations, 0 leaks)
+- runs use whichever account's key is found first: caught (1 violations, 0 escalations, 1 leaks)
 
 ## Pipeline (per demo client)
 
 | Metric | ledgerloop | shiftwise |
 |---|---|---|
 | run_status | ['succeeded', 'succeeded', 'succeeded', 'succeeded', 'succeeded'] | ['succeeded', 'succeeded', 'succeeded', 'succeeded', 'succeeded'] |
-| seconds | 0.9 | 0.8 |
+| seconds | 1.1 | 0.9 |
 | calendar_valid | 1 | 1 |
 | topics_unique | 1 | 1 |
 | posts | 10 | 10 |
 | posts_ready | 10 | 10 |
 | posts_ready_rate | 1.0 | 1.0 |
 | avg_critic_score | 4.0 | 4.0 |
-| avg_critic_rounds | 1.4 | 1.5 |
-| guard_autofixes | 1 | 1 |
+| avg_critic_rounds | 1.9 | 2.0 |
+| guard_autofixes | 1 | 0 |
 | pending_posts_with_violations | 0 | 0 |
 | leads | 40 | 40 |
 | leads_per_week | [20, 20] | [20, 20] |
@@ -82,7 +84,7 @@ Mutations (each must be caught):
 | outreach_drafts | 40 | 40 |
 | injection_pages_caught | 2 | 1 |
 | artifact_contamination | 0 | 0 |
-| llm_calls | 145 | 147 |
-| tokens | 145198 | 148911 |
-| cost_usd | 0.0256 | 0.0262 |
-| cost_per_client_cycle_usd | 0.0085 | 0.0087 |
+| llm_calls | 157 | 157 |
+| tokens | 170100 | 171121 |
+| cost_usd | 0.0294 | 0.0296 |
+| cost_per_client_cycle_usd | 0.0098 | 0.0099 |

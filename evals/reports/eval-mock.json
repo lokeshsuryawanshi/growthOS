@@ -18,14 +18,14 @@
           "succeeded",
           "succeeded"
         ],
-        "seconds": 0.9,
+        "seconds": 1.1,
         "calendar_valid": 1,
         "topics_unique": 1,
         "posts": 10,
         "posts_ready": 10,
         "posts_ready_rate": 1.0,
         "avg_critic_score": 4.0,
-        "avg_critic_rounds": 1.4,
+        "avg_critic_rounds": 1.9,
         "guard_autofixes": 1,
         "pending_posts_with_violations": 0,
         "leads": 40,
@@ -40,10 +40,10 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 2,
         "artifact_contamination": 0,
-        "llm_calls": 145,
-        "tokens": 145198,
-        "cost_usd": 0.0256,
-        "cost_per_client_cycle_usd": 0.0085
+        "llm_calls": 157,
+        "tokens": 170100,
+        "cost_usd": 0.0294,
+        "cost_per_client_cycle_usd": 0.0098
       },
       "shiftwise": {
         "run_status": [
@@ -53,15 +53,15 @@
           "succeeded",
           "succeeded"
         ],
-        "seconds": 0.8,
+        "seconds": 0.9,
         "calendar_valid": 1,
         "topics_unique": 1,
         "posts": 10,
         "posts_ready": 10,
         "posts_ready_rate": 1.0,
         "avg_critic_score": 4.0,
-        "avg_critic_rounds": 1.5,
-        "guard_autofixes": 1,
+        "avg_critic_rounds": 2.0,
+        "guard_autofixes": 0,
         "pending_posts_with_violations": 0,
         "leads": 40,
         "leads_per_week": [
@@ -75,17 +75,17 @@
         "outreach_drafts": 40,
         "injection_pages_caught": 1,
         "artifact_contamination": 0,
-        "llm_calls": 147,
-        "tokens": 148911,
-        "cost_usd": 0.0262,
-        "cost_per_client_cycle_usd": 0.0087
+        "llm_calls": 157,
+        "tokens": 171121,
+        "cost_usd": 0.0296,
+        "cost_per_client_cycle_usd": 0.0099
       }
     },
     "calendar_valid": 1,
     "posts_ready_rate": 1.0,
     "avg_critic_score": 4.0,
     "leads_week_in_range_rate": 1.0,
-    "cost_per_client_cycle_usd": 0.0087,
+    "cost_per_client_cycle_usd": 0.0099,
     "pending_posts_with_violations": 0,
     "lead_policy_violations": 0,
     "explicit_low_fit_kept": 0,
@@ -138,20 +138,23 @@
     }
   },
   "isolation": {
-    "isolation_checks": 50,
-    "isolation_routes": 12,
+    "isolation_checks": 56,
+    "isolation_routes": 15,
     "cross_account_access_violations": 0,
     "session_escalations": 0,
     "cross_account_page_leaks": 0,
     "isolation_failures": [],
     "owners_distinct": true,
+    "secret_exposure_findings": 0,
+    "secret_findings": [],
+    "secret_checks": 21,
     "mutations": {
-      "mutations_total": 4,
-      "mutations_caught": 4,
+      "mutations_total": 5,
+      "mutations_caught": 5,
       "detail": {
         "route ownership check removed": {
           "caught": true,
-          "violations": 6,
+          "violations": 8,
           "escalations": 0,
           "leaks": 0
         },
@@ -169,9 +172,15 @@
         },
         "every account owns every client": {
           "caught": true,
-          "violations": 9,
+          "violations": 11,
           "escalations": 0,
           "leaks": 0
+        },
+        "runs use whichever account's key is found first": {
+          "caught": true,
+          "violations": 1,
+          "escalations": 0,
+          "leaks": 1
         }
       }
     }
