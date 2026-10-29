@@ -99,15 +99,15 @@ public writers (`evals/datasets/voice_samples/`, 8 posts each, 2 held out), coll
   read it per founder, not per post.
 
 Measured on 2026-10-29 over every delivered post of the live runs (Groq free tier, `openai/gpt-oss-120b` writing):
-52 posts for six profiles; report in `evals/reports/voice-live.json`.
+56 posts for six profiles; report in `evals/reports/voice-live.json`.
 
 | Metric | Generated posts | Real held-out posts | Generic template |
 |---|---|---|---|
 | Nearest of the six founders is the right one | **0.27** (chance 0.17) | 0.42 | |
-| Closer to its own founder than the generic template is | **52 of 52** | | |
+| Closer to its own founder than the generic template is | **56 of 56** | | |
 | Skeleton similarity across different clients (lower = more distinct) | **0.39** | 0.29 | 0.43 |
-| Posts with a generic LinkedIn pattern left in | **1 of 52** (a stock phrase) | | |
-| Delivered at the editor's 4.0 bar | **10 of 52** (19%) | | |
+| Posts with a generic LinkedIn pattern left in | **1 of 56** (a stock phrase) | | |
+| Delivered at the editor's 4.0 bar | **13 of 56** (23%) | | |
 
 What this says, plainly:
 - The posts are not the generic template: every one is closer to its founder than the template is, and the template
@@ -116,10 +116,12 @@ What this says, plainly:
   (real writing: 42%), and posts for different clients share more of one skeleton (0.39) than real writers do (0.29),
   though less than the template (0.43). There is a house style.
 - The editor's bar is rarely reached on the free-tier model; the rest are delivered labelled "below the editor's bar"
-  and do not count toward the weekly target. No live post run fully met its target; five runs failed outright when
-  Groq's free daily token limit ran out (they stopped and said so).
-- Found in these runs and fixed afterwards (not re-measured live, the daily limit was used up): a number inside a
-  product name ("Baochip-1x") was treated as a statistic, which blocked most drafts for one profile.
+  and do not count toward the weekly target. No live post run fully met its target (12 ended "succeeded with shortfall"); 8 more stopped
+  when Groq's free daily token limit ran out, and said so. Two lead runs failed on bugs since fixed (a column missing
+  from migration 0005; text too long for the injection classifier).
+- Found in these runs and fixed: a number inside a product name ("Baochip-1x") was treated as a statistic, which
+  blocked most drafts for that profile. Re-run after the fix: that profile went from 4 delivered posts (2 at the bar)
+  to 8 (5 at the bar).
 - Known strictness kept on purpose: a figure is blocked when the words around it differ from the source's ("1,110
   backers, a sizable community" against "1,110 backers"). Loosening it lets a customer count pass as a market size,
   the bug it was written for.

@@ -58,22 +58,22 @@
         "real_heldout_to_own_train": 0.711
       },
       "bunnie_huang": {
-        "posts": 4,
-        "to_own_founder": 0.815,
-        "to_nearest_other": 0.814,
-        "nearest_is_own_rate": 0.5,
+        "posts": 8,
+        "to_own_founder": 0.847,
+        "to_nearest_other": 0.828,
+        "nearest_is_own_rate": 0.375,
         "template_baseline_to_own_founder": 1.638,
         "real_heldout_to_own_train": 0.768
       }
     },
-    "voice_nearest_own_rate": 0.269,
+    "voice_nearest_own_rate": 0.268,
     "voice_posts_closer_than_template_rate": 1.0
   },
   "template": {
     "human_cross_person_structure_similarity": 0.291,
     "generated_cross_client_structure_similarity": 0.394,
     "template_baseline_cross_structure_similarity": 0.432,
-    "generic_template_post_rate": 0.019,
+    "generic_template_post_rate": 0.018,
     "per_client": {
       "seth_godin": {
         "posts": 15,
@@ -103,7 +103,7 @@
         "patterns": []
       },
       "bunnie_huang": {
-        "posts": 4,
+        "posts": 8,
         "with_generic_pattern": 0,
         "patterns": []
       }
@@ -115,7 +115,7 @@
       "april_dunford": 0.401,
       "paras_chopra": 0.389,
       "arvid_kahl": 0.375,
-      "bunnie_huang": 0.487
+      "bunnie_huang": 0.463
     }
   }
 }

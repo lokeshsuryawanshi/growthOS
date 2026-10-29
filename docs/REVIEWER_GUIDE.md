@@ -1,111 +1,103 @@
 # Growth OS: reviewer guide
 
-A done-for-you growth portal for busy founders: content marketing, personal branding and lead generation. Agents research the founder's market, competitors and voice from real web sources, plan an 8-week LinkedIn calendar, write at least five posts a week in the founder's voice, find qualified leads and draft outreach emails. **The founder only approves, edits or asks for changes; nothing is posted or sent without them.** Built for 12 clients next month, with a tested path to 100.
+A done-for-you growth portal. **One operator** (the agency person doing the work) signs in with Google and runs it for
+the founders they work for. For each founder it researches the market, competitors and the founder's voice from real
+sources, plans an 8-week LinkedIn calendar, drafts at least five posts a week in that founder's voice, finds companies
+that fit with a real way to reach someone there, and drafts short outreach emails. **The operator approves, edits or
+rejects everything; the system never posts or sends.** Each operator brings their own AI, search and (optional) contact
+keys and pays those providers directly.
 
-**Status.** Live at https://growthos-b0t9.onrender.com. 224 automated tests pass (223 on Postgres, where one SQLite-only check is skipped); the eval gate passes offline and live. Measured on real providers (free tiers): research and strategy in **90 s**, a week of posts in **147 s** (5 of 5 ready), a lead run in **18 s** (8 leads, 6 with verified emails): **about 4 minutes end to end**, down from 25 to 35. Not exercised live: sending through Gmail (needs the founder's own Google consent in a browser).
+Deeper documents: [Architecture](ARCHITECTURE.md) · [Evals and guardrails](EVALS_AND_GUARDRAILS.md) ·
+[Cost and run time](ECONOMICS.md) · [Deploying](DEPLOY.md) · [Decisions and lessons](../DECISIONS.md)
 
-Deeper documents: [Architecture](ARCHITECTURE.md) · [Evals and guardrails](EVALS_AND_GUARDRAILS.md) · [Cost and run time](ECONOMICS.md) · [Deploying](DEPLOY.md) · [Decisions and lessons](../DECISIONS.md) · [Live run report](../loadtest/reports/live-run.md)
+## 1. Feedback received and what changed
 
-## 1. Where each requirement lives
+The first version was turned down with five points. Each one, and what answers it:
 
-| Requirement | How it is met | Code |
+| Feedback | What changed | Evidence |
 |---|---|---|
-| Agentic loops, long-horizon planning | Research decide-act loop, writer and critic, bounded redrafts, calendar repair, goal-seeking lead rounds, learning from edits; an 8-week calendar kept full | `app/agents/` |
-| Coordination | Event-driven DAGs with database checkpoints, retries, crash resume, a human approval gate, a fair scheduler across clients | `app/agents/orchestrator/` |
-| Voice, industry, competitors, trends, strategy | Research with every claim checked against its source; founders can **suggest changes** before approving | `app/agents/research/`, `app/agents/strategy/` |
-| Leads and templated outreach a human approves or edits | Web search + Hunter.io, evidence-backed scoring, email drafts, a send gate | `app/agents/leads/`, `app/services/approvals.py` |
-| Content previews for final approval | LinkedIn-style preview cards with the source behind every figure | `app/web/templates/` |
-| Evals, cost, guardrails | Offline and live eval gates, a cost ledger, deterministic guardrails | `evals/`, `app/llm/gateway.py`, `app/guardrails/` |
-| RBAC, tenant isolation | Deny-by-default policy table, team and admin pages, an ORM tenant interceptor, a 315-check RBAC eval | `app/core/security.py`, `app/db/session.py`, `evals/rbac.py` |
-| Stress and performance | 12 and 100 clients through the real orchestrator, with injected failures | `loadtest/` |
+| **1. Ask who runs the system.** It is done-for-you: the team operates and approves, not the founder. | The founder-facing roles, team pages, admin console and invite codes are gone. One operator account owns its clients; there are no roles to get wrong. Sign-in is Google only. | `app/api/deps.py` (one ownership rule, `tenant_or_404`); the app code is 218 lines *shorter* than v1 although it gained Google sign-in, three AI providers, own keys and a new lead engine |
+| **2. Hold output to a human bar.** Posts read as a generic template; test with real samples and human review, not a model grading itself. | A style card measured from the founder's own posts drives the writer; code (not the model) detects seven generic LinkedIn patterns and blocks them unless the founder writes that way; invented anecdotes and copied sentences are blocked. Measured on six real public writers with a style-distance metric and a cross-client template test. A blind human-rating kit and in-app ratings are built. | [EVALS 2.4](EVALS_AND_GUARDRAILS.md#24-voice-and-template-live-output); **no human has rated the posts yet**, so no claim is made that they pass a human bar |
+| **3. Test beyond one example.** A lead run for the reviewer's profile returned zero. | A new lead engine: seven kinds of search, company links mined from list pages, each company's own site read, four contact routes that need no Hunter. Every run shows its funnel (found → dropped, and why); a short week offers *Broaden and retry*. Run live on six different profiles. | [EVALS 2.5](EVALS_AND_GUARDRAILS.md#25-leads-live-output) |
+| **4. Click through the live app.** The first sign-up hit a server error. | Every error is a friendly page (no stack traces); a browser test signs in, adds a client, saves a key, runs research, opens a calendar card and the post, uses both outreach buttons and deletes the client; `scripts/check_deploy.py` checks the deployed site. | `tests/e2e/test_browser.py` passes locally. The live click-through on the deployed site **has not been done yet**: it needs the branch merged and the owner to sign in with Google once |
+| **5. Stay inside the brief.** | v2 has fewer moving parts, not more: roles, team and admin pages, Gmail sending, password sign-in, the agency all-in-one run and the 100-client stress harness were removed. | `DECISIONS.md` section 0 |
 
-## 2. Architecture in one picture
+## 2. Status
+
+Measured on 2026-10-29. All v2 work is on the branch `feature/v2-single-user`, **not merged**, so the live site still
+runs v1.
+
+| Area | Result |
+|---|---|
+| Tests | 282; all pass on SQLite. On a Neon Postgres test branch: the full suite, then every file changed afterwards again; all pass except one test that reads SQLite run files and is skipped there. Running on Postgres found two timing assumptions in tests, now fixed |
+| Offline eval gate | **PASS** (guardrails, pipeline, quality, account isolation with its mutation test) |
+| Data survives a restart on Neon Postgres (production mode, real migrations) | **yes** (`scripts/check_persistence.py`, [DEPLOY.md](DEPLOY.md)) |
+| Live runs on six real public profiles (Groq free tier, Tavily) | research and strategy, posts, leads and outreach for each |
+| Posts | 56 delivered; 13 of 56 at the editor's bar; closer to their own founder than the template in 56 of 56, but the right founder is the nearest only 27% of the time ([details](EVALS_AND_GUARDRAILS.md#24-voice-and-template-live-output)) |
+| Leads | 33 across six profiles, 28 traced to a page naming the company, no invented emails; one profile met the weekly minimum of 10, one found none until broadened ([details](EVALS_AND_GUARDRAILS.md#25-leads-live-output)) |
+| Cost | about $0.35 of AI and $1.01 of search per client per month on Groq ([ECONOMICS.md](ECONOMICS.md)) |
+| Not verified | human ratings; the deployed site click-through; OpenAI and Anthropic against their own APIs |
+
+## 3. How it works
 
 ```mermaid
 flowchart LR
-  F[Founder, team, agency] --> API[FastAPI: auth, RBAC, CSRF, rate limits]
-  API --> O[Orchestrator: DAG, checkpoints, human gate]
-  O --> A[Agents]
-  A --> G[LLM gateway: per-model pacing, spillover routing, budgets, cache, ledger]
-  G --> M[Groq gpt-oss-120b / 20b / qwen3.8, Gemini Flash-Lite, Prompt Guard]
-  A --> T[Tavily search, safe fetch, Hunter.io]
-  A --> R[Guardrails: input, claims, output, state machines]
-  R --> H[Human approval] --> X[Founder posts to LinkedIn / Gmail sends]
+  O[Operator signs in with Google] --> W[FastAPI pages: own clients only]
+  W --> E[Workflow engine: steps, checkpoints, approval gate]
+  E --> A[Agents: research, strategy, writer + editor, leads]
+  A --> G[Model gateway: the account's own key, budgets, cache, ledger]
+  G --> P[Groq / OpenAI / Anthropic]
+  A --> S[Tavily search, safe page reader, optional Hunter]
+  A --> R[Guardrails in code]
+  R --> H[Operator approves] --> X[Operator copies the post to LinkedIn / opens the email in Gmail]
 ```
 
-**A fixed workflow with real agents inside each step.** Order, checkpoints, budgets and approvals are deterministic code, so cost is predictable, runs resume after a crash and every gate is testable. Three workflows: research and strategy (once, then an approval gate), posts and calendar (weekly), lead search and outreach (weekly; independent of posts). A run ends `succeeded` only if the client's KPI targets were met; otherwise `succeeded_with_shortfall` with the reasons (for example "4 of 5 posts ready: 1 stayed below the editor's bar").
+Three workflows, each a fixed set of steps with real agent loops inside: **research and strategy** (once, then the
+operator approves or suggests changes), **posts** (weekly), **leads and outreach** (weekly). Order, checkpoints, budgets
+and approvals are code, so cost is bounded, a run resumes after a crash, and every gate is testable. A run that misses
+its target ends "succeeded with shortfall" and says why.
 
-| Agent loop | Bounds |
+## 4. Accounts and keys
+
+- **Isolation.** Every client belongs to one account; someone else's client is a 404. An ORM interceptor refuses any
+  query on client data without a client scope. `evals/isolation.py` finds every client route from the app itself and
+  attacks it as another account and with forged, expired and stale sessions: 15 routes, 56 checks, **0 violations**;
+  its mutation test breaks isolation five ways and **all 5 are caught**.
+- **Own keys.** Saved keys are checked with one free call, encrypted with the owner's id bound inside, read by one
+  module only, never shown again, scrubbed from errors and logs. A run uses only the key of the account that owns the
+  client. Providers: Groq (run live), OpenAI (**protocol verified against an OpenAI-compatible endpoint, not against
+  OpenAI**: `scripts/live_adapters.py` passed text, JSON mode, tool calls and a rejected key on Groq's endpoint),
+  Anthropic (**contract-tested with mocks, not run against Anthropic's API**). No paid OpenAI or Anthropic key was
+  available.
+
+## 5. Tests and evals
+
+282 tests (`pytest -q`); the same suite runs on Neon Postgres. Offline eval gate: **PASS** (red team 22 cases, recall
+1.0, false positives 0; isolation as above; deterministic quality all zero). Live: injection recall 1.0 with Prompt
+Guard; the editor model agrees with the hand scores within one point 0.75 and 0.875 in two runs (gate 0.75). Details
+and the per-file test table: [EVALS_AND_GUARDRAILS.md](EVALS_AND_GUARDRAILS.md).
+
+## 6. Limitations
+
+| Limitation | Why, and what would fix it |
 |---|---|
-| Research: the model picks searches and pages from compact observations, code runs them in parallel, one extraction reads the evidence; every claim is then checked against its page in code | 3 steps, 6-7 pages |
-| Writer and critic (different model families), then guard auto-fix, then fresh redrafts told why the last fell short | 2 rounds, 2 fixes, 3 attempts, stop when not improving, 270 s budget |
-| Calendar planner: chunks in parallel, validated by code (posts per week, pillar mix, unique topics) | 3 repairs |
-| Lead engine: plan queries, search, extract, verify against results, score with quoted evidence, contacts for qualified companies only | 3 rounds, Hunter quota respected |
+| No human ratings of the posts yet | The blind-review kit and in-app ratings exist; someone has to spend 30-45 minutes rating |
+| Live drafts often stay below the editor's 4.0 bar | Measured, not hidden: they are delivered labelled and do not count toward the target. A stronger writer model (a paid key) is the likely fix; not tested |
+| OpenAI and Anthropic not run against their own APIs | No paid key; see section 4 |
+| Live click-through on the deployed site not done | Needs the merge and one Google sign-in by the owner |
+| Groq's free tier makes runs slow (a week of posts takes 7-13 minutes, mostly waiting on the 8,000 tokens a minute limit) and allows about two post runs a day per key | A paid plan or another provider; see [ECONOMICS.md](ECONOMICS.md) |
+| The figure check is strict: it blocks some fair uses of a sourced number when the wording around it differs from the source | Kept on purpose (loosening it let a customer count pass as a market size); the writer is told why and redrafts |
+| Few profiles reach 10 leads a week; most candidates are judged a poor fit | Every run shows the funnel and suggests what to widen; *Broaden and retry* relaxes region and size |
+| Lead review was done by the implementing agent (an AI), not a person | Spot-checking a sample by hand is the next step |
+| One web worker; the run engine is in-process | Fine for one operator; a queue would be needed for many |
+| Render's free plan sleeps after 15 minutes idle (first request about a minute) | Data is in Neon, so nothing is lost |
 
-## 3. Speed and cost (measured live)
-
-| Run | Before | Now | AI cost | Search and contacts |
-|---|---|---|---|---|
-| Research and strategy | 14-20 min | **90 s** | $0.048 | $0.28 |
-| Posts and calendar (5 posts) | part of 20-35 min | **147 s** | $0.016 | $0 |
-| Leads and outreach (8 leads, 6 verified emails) | part of 20-35 min | **18 s** | $0.007 | $0.25 |
-
-Why it was slow: free-tier limits are **per model** (Groq: 8,000 tokens a minute) and Groq counts the reserved `max_tokens`, while every step used one model and research re-read every page on every step. The ledger now records each call's model time, pacing wait and 429 wait, which showed this. Fixes: each tier leads with a different model and spills to the next when the first is busy, budgets sized from measured use, a decide-act research loop with one extraction on Gemini, and steps that start as soon as their own inputs are ready.
-
-**Per client per month** (1 research run, 4 post runs, 4 lead runs): about $0.14 of AI, $0.44 of search, $0.83 of Hunter credits, so **about $1.41**, at paid list prices checked on 2026-10-27. On the free tiers the bill was $0. AI is cheap even at frontier prices (Claude Sonnet 5.5: about $0.88 a month; GPT-5.5: about $2.43). **Contact data and hosting decide the margin**: 12 clients cost about $58 a month all-in, mostly a $49 Hunter plan. Full tables in [ECONOMICS.md](ECONOMICS.md).
-
-## 4. RBAC and tenant isolation, proven
-
-Four roles (platform admin, account manager, founder, read-only viewer) in one deny-by-default table; workspace membership is a second, independent check; a grant table says who may hand out which role.
-
-- **Team page:** the founder adds a teammate with an email, password and role, changes roles, resets passwords, deactivates or removes them. The last owner can never be removed or demoted.
-- **Admin data view:** read-only users, workspaces, memberships, runs, spend and audit, with search. The admin creates account managers and assigns clients. No hashes, tokens or keys are ever shown.
-- **Enforcement:** viewers see everything and get **403 on every write**, API and UI, with a page naming the missing permission. Other workspaces return 404. Sessions are re-checked against the database on every request, so revocation applies on the next click. Cross-site form posts are refused.
-
-| Proof | Result |
-|---|---|
-| RBAC eval: 9 actors x 35 endpoints (API and UI), hand-written expectations | **315/315** |
-| Cross-tenant access violations | **0** |
-| Escalation attempts that succeeded (agency roles, self-promotion, forged and stale tokens, last owner...) | **0 of 14** |
-| Mutation test: break access control four ways, does the eval notice? | **4 of 4 caught** |
-| ORM interceptor: unscoped or unfilterable queries are refused; cross-tenant writes blocked | tested |
-
-## 5. Evals and guardrails
-
-**The model proposes, code disposes.** Guardrails are code: claim-level grounding (every figure needs a verbatim source quote used in the source's sense), research claims checked against their pages (unsupported ones are flagged, never shown as facts; outdated figures labelled), injection scanning with quarantine, leakage, PII and agency-name checks, approval state machines, and a send gate (approval, role, verified recipient, do-not-contact, daily cap, kill switch, row lock against double sends).
-
-| Eval | Result |
-|---|---|
-| Red team (22 cases incl. benign controls): block recall / false positives | **1.0 / 0.0** |
-| Injection recall: offline heuristics / live with Prompt Guard | 0.8 / **1.0** |
-| Deterministic quality on the live run's posts: ungrounded figures, safety issues, banned phrases, copies, near duplicates | **all 0**; 5 of 5 at the editor's bar |
-| Lead screening: suppressed, competitor and contactless prospects removed / good ones wrongly removed | **1.0 / 0** |
-| Judge calibration (live): critic within one point of a human / Spearman | **0.875 / 0.89** (gate 0.75 / 0.6) |
-| Stress: 100 clients, mock models with 5% 429s and 2% 5xx | 1,600 steps, **0 failed**, 0 lock errors, 0 cross-tenant, 100/100 met targets, 77 s |
-
-A live run exposed a strict critic that scored drafts it called "solid" at 3.6 against a 4.0 bar, so redrafting could never satisfy it. The rubric is now anchored to the human scale, and its agreement with the hand-scored set went from 0.75 to 0.875.
-
-## 6. Tests
-
-224 tests (`pytest -q`, about 2.5 minutes); the same suite runs on PostgreSQL with `TEST_DATABASE_URL`. Running them on Postgres found two real bugs that SQLite had hidden: a double click sent an email four times, and parallel identical cache writes failed a step. Both are fixed. Coverage: RBAC and revocation, tenancy, the send gate, grounding regressions, research integrity, routing and pacing, orchestration failure and recovery, the weekly-target guarantee, integrations against mock HTTP, migrations matching the models, and a production-mode boot that proves no demo data or mock output.
-
-## 7. Known limitations
-
-| Limitation | Plan |
-|---|---|
-| Gmail sending is tested against mock HTTP only; Google's testing mode sends only to listed test users | Live test with the founder's own address via "Add a lead manually", then Google app verification |
-| Free Render plan: SQLite in `/tmp` is wiped on restart or idle spin-down (a banner says so) | Point `DATABASE_URL` at a free hosted Postgres (supported and tested locally, not yet on a hosted provider) |
-| Content runs still wait on Groq's free 8,000 tokens/minute | Paid tier, or more writer models in `ROUTE_BIG` |
-| Orchestrator and rate limiter are in-process (one worker) | Durable queue and Redis; checkpoints carry over |
-| No LinkedIn publishing (by design); Docker image not built locally (Render builds it) | Founder copies and marks posted |
-| Hunter.io free plan is 50 credits a month | Starter plan for 12 clients |
-
-## 8. Run it
+## 7. Run it
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env                       # keys; use a NEW database file
+cp .env.example .env
 .venv/bin/uvicorn app.main:app --port 8000
-.venv/bin/python -m pytest -q && .venv/bin/python -m evals.run_evals && .venv/bin/python -m evals.rbac_mutations
-.venv/bin/python -m loadtest.stress --tenants 100
+.venv/bin/python -m pytest -q && .venv/bin/python -m evals.run_evals
+APP_ENV=demo DATABASE_URL=sqlite+aiosqlite:///./demo.db .venv/bin/uvicorn app.main:app --port 8010   # labelled demo
 ```
