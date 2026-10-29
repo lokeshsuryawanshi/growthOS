@@ -62,6 +62,12 @@ def test_years_and_small_counts_are_not_claims():
     assert rules(check_claims("In 2026 I learned three lessons and 5 habits.", [], policy())) == set()
 
 
+def test_numbers_inside_product_names_are_not_claims():
+    # live regression: every draft about the "Baochip-1x" was blocked for an unsourced "1x"
+    text = "We put the RTL of the Baochip\u20111x on GitHub, and GPT-4 helped review it. It is 3x smaller."
+    assert {(v.rule, v.detail.split("'")[1]) for v in check_claims(text, [], policy())} == {("unclaimed_stat", "3x")}
+
+
 def test_human_edits_skip_claim_bookkeeping_but_keep_number_check():
     p = policy()
     ok = check_post("We close 83% faster. " * 20, [], p)           # exists in sources: no claim list demanded

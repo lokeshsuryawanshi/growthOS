@@ -29,16 +29,18 @@ FALSE_FAMILIARITY = ["as we discussed", "following up on our call", "great to me
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"(?<!\d)(?:\+?\d{1,2}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\d)")
 # Any figure a reader could take as a factual claim: percentages, money, multipliers, thousands separators,
-# or a bare count above 10. Years and small list numbers ("3 lessons") are not claims.
+# or a bare count above 10. Years and small list numbers ("3 lessons") are not claims, and neither is a number that is
+# part of a name ("Baochip-1x", "GPT-4").
+_NAME_PART = r"(?<!\w[-\u2010\u2011\u2012\u2013])"
 _CLAIM_NUM = re.compile(
-    r"(?<![\w.,])(?:[$£€]\s?\d[\d,]*(?:\.\d+)?\s?(?:k|m|bn|million|billion)?"
+    _NAME_PART + r"(?<![\w.,])(?:[$£€]\s?\d[\d,]*(?:\.\d+)?\s?(?:k|m|bn|million|billion)?"
     r"|\d{1,3}(?:,\d{3})+(?:\.\d+)?"
     r"|\d+(?:\.\d+)?\s?(?:%|percent|x\b|times\b|k\b|million|billion|bn\b)"
     r"|\d{2,}(?:\.\d+)?)(?![\w,]*\d)", re.I)
 _STOP = set("a an the and or but of in on at to for from by with as is are was were be been being it its this that these those "
             "we our you your i my me they their them he she his her not no so if than then too very just also more most "
             "over into about up out how what when why who which can could would should will do does did has have had".split())
-_STAT = re.compile(r"(?:[$£€]\s?\d[\d,.]*\s?(?:k|m|bn|million|billion)?|\d[\d,.]*\s?(?:%|percent|x\b|times\b|k\b|million|billion))", re.I)
+_STAT = re.compile(_NAME_PART + r"(?:[$£€]\s?\d[\d,.]*\s?(?:k|m|bn|million|billion)?|\d[\d,.]*\s?(?:%|percent|x\b|times\b|k\b|million|billion))", re.I)
 
 
 class Violation(BaseModel):
