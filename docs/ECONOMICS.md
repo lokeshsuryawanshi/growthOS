@@ -19,7 +19,10 @@ same tokens cost at the providers' paid list prices (the free tiers billed $0). 
 
 **Where the time goes.** In the post runs the models themselves worked 40-54 s; the rest was waiting on Groq's free
 tier (8,000 tokens a minute per model, counted on the reserved output too) — 1,490 to 2,815 call-seconds of pacing per
-run, across parallel calls. A post run and a lead run started together share one key's budget and both slow down. On
+run, across parallel calls. A post run and a lead run started together share one key's budget and both slow down.
+The free tier also has a **daily** token limit per model (200,000 tokens a day for `openai/gpt-oss-120b` when measured).
+A post run uses about 110,000, so one free key manages about two post runs a day; on 2026-10-29 five runs stopped on
+that limit (and said so). On
 a paid Groq plan, or with an OpenAI or Anthropic key (whose limits depend on the account), most of that wait goes.
 
 ## 2. Per client per month
