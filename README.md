@@ -47,8 +47,11 @@ Live: https://growthos-b0t9.onrender.com
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env                                   # JWT_SECRET, ENCRYPTION_KEY, DATABASE_URL, Google sign-in
-.venv/bin/uvicorn app.main:app --port 8000
+DATABASE_URL="sqlite+aiosqlite:///./local-check.db" .venv/bin/uvicorn app.main:app --port 8000
 ```
+
+The `DATABASE_URL=` prefix keeps a local run on a throwaway file, never the production database. Google sign-in needs
+`http://localhost:8000/auth/google/callback` as a redirect URI.
 
 Labelled synthetic demo (mock models, fictional clients, sign-in without Google):
 

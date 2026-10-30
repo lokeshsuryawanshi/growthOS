@@ -176,6 +176,6 @@ and spills to the next model in the tier when the first is busy.
 | Anthropic adapter | contract-tested with the official SDK over a mock transport; not run against Anthropic's API |
 | Web search (Tavily), page fetch, list mining, contact routes | real, measured on live runs |
 | Hunter.io | optional; contract-tested with mocks; not needed for leads |
-| Google sign-in | real code, tested against a fake Google that signs real RS256 tokens; verified live only once the operator signs in |
+| Google sign-in | real code, tested against a fake Google that signs real RS256 tokens; used with real Google by the owner on a local run (2026-10-30); not yet signed in on the deployed site |
 | Sending email, publishing posts | not done by the system: the operator does it and marks it done |
 | Fixtures and mock models | tests and the labelled local demo only; production refuses to load them |

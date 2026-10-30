@@ -19,13 +19,13 @@ The first version was turned down with five points. Each one, and what answers i
 | **1. Ask who runs the system.** It is done-for-you: the team operates and approves, not the founder. | The founder-facing roles, team pages, admin console and invite codes are gone. One operator account owns its clients; there are no roles to get wrong. Sign-in is Google only. | `app/api/deps.py` (one ownership rule, `tenant_or_404`); the app code is 206 lines *shorter* than v1 although it gained Google sign-in, three AI providers, own keys and a new lead engine |
 | **2. Hold output to a human bar.** Posts read as a generic template; test with real samples and human review, not a model grading itself. | A style card measured from the founder's own posts drives the writer; code (not the model) detects seven generic LinkedIn patterns the founder never uses, sends the draft back to the editor until they are gone, and flags any that remain; invented anecdotes and copied sentences are blocked. Measured on six real public writers with a style-distance metric and a cross-client template test. A blind human-rating kit and in-app ratings are built. | [EVALS 2.4](EVALS_AND_GUARDRAILS.md#24-voice-and-template-live-output); **no human has rated the posts yet**, so no claim is made that they pass a human bar |
 | **3. Test beyond one example.** A lead run for the reviewer's profile returned zero. | A new lead engine: seven kinds of search, company links mined from list pages, the leading candidates' own sites read (a company whose site does not load is dropped), four contact routes that need no Hunter. Every run shows its funnel (found → dropped, and why); a short week offers *Broaden and retry*. Run live on six different profiles. | [EVALS 2.5](EVALS_AND_GUARDRAILS.md#25-leads-live-output) |
-| **4. Click through the live app.** The first sign-up hit a server error. | Every error is a friendly page (no stack traces); a browser test signs in, adds a client, saves a key, runs research, opens a calendar card and the post, uses both outreach buttons and deletes the client; `scripts/check_deploy.py` checks the deployed site. | `tests/e2e/test_browser.py` passes locally. The live click-through on the deployed site **has not been done yet**: it needs the branch merged and the owner to sign in with Google once |
+| **4. Click through the live app.** The first sign-up hit a server error. | Every error is a friendly page (no stack traces); a browser test signs in, adds a client, saves a key, runs research, opens a calendar card and the post, uses both outreach buttons and deletes the client; `scripts/check_deploy.py` checks the deployed site. | `tests/e2e/test_browser.py` passes locally; the owner clicked through a local run with real Google sign-in (2026-10-30); `scripts/check_deploy.py` passes on the deployed site. A full click-through on the deployed site **has not been done yet** |
 | **5. Stay inside the brief.** | This cannot be undone: v1, and this v2, took far longer than the brief's 2-3 hours. What v2 changes is scope, toward fewer moving parts: roles, team and admin pages, Gmail sending, password sign-in, the agency all-in-one run and the 100-client stress harness were removed. | `DECISIONS.md` section 0 |
 
 ## 2. Status
 
-Measured on 2026-10-29. All v2 work is on the branch `feature/v2-single-user`, **not merged**, so the live site still
-runs v1.
+Measured on 2026-10-29. v2 was merged to `main` and deployed on 2026-10-30: `scripts/check_deploy.py` reports the live
+site in production mode on Postgres (persistent), no fixtures, live models, public pages up and no test sign-in.
 
 | Area | Result |
 |---|---|
@@ -36,7 +36,8 @@ runs v1.
 | Posts | 56 delivered; 13 of 56 at the editor's bar; closer to their own founder than the template in 56 of 56, but the right founder is the nearest only 27% of the time ([details](EVALS_AND_GUARDRAILS.md#24-voice-and-template-live-output)) |
 | Leads | 33 across six profiles, 28 traced to a page naming the company, no invented emails; one profile met the weekly minimum of 10, one found none until broadened ([details](EVALS_AND_GUARDRAILS.md#25-leads-live-output)) |
 | Cost | about $0.35 of AI and $1.01 of search per client per month on Groq ([ECONOMICS.md](ECONOMICS.md)) |
-| Not verified | human ratings; the deployed site click-through; OpenAI and Anthropic against their own APIs |
+| Deployed | yes, 2026-10-30 ([DEPLOY.md](DEPLOY.md)) |
+| Not verified | human ratings; a full click-through on the deployed site; OpenAI and Anthropic against their own APIs |
 
 ## 3. How it works
 
@@ -85,7 +86,7 @@ and the per-file test table: [EVALS_AND_GUARDRAILS.md](EVALS_AND_GUARDRAILS.md).
 | No human ratings of the posts yet | The blind-review kit and in-app ratings exist; someone has to spend 30-45 minutes rating |
 | Live drafts often stay below the editor's 4.0 bar | Measured, not hidden: they are delivered labelled and do not count toward the target. A stronger writer model (a paid key) is the likely fix; not tested |
 | OpenAI and Anthropic not run against their own APIs | No paid key; see section 4 |
-| Live click-through on the deployed site not done | Needs the merge and one Google sign-in by the owner |
+| Full click-through on the deployed site not done | Needs the owner to sign in with Google there once |
 | Groq's free tier makes runs slow (a week of posts takes 7-13 minutes, mostly waiting on the 8,000 tokens a minute limit) and allows about two post runs a day per key | A paid plan or another provider; see [ECONOMICS.md](ECONOMICS.md) |
 | The figure check is strict: it blocks some fair uses of a sourced number when the wording around it differs from the source | Kept on purpose (loosening it let a customer count pass as a market size); the writer is told why and redrafts |
 | Few profiles reach 10 leads a week; most candidates are judged a poor fit | Every run shows the funnel and suggests what to widen; *Broaden and retry* relaxes region and size |

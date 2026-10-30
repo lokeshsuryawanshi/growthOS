@@ -1,7 +1,7 @@
 # Growth OS: handoff
 
-State as of 2026-10-29 (end of the build). All v2 work is on the branch **`feature/v2-single-user`**, committed in small steps and
-pushed, **not merged**. `main` (and so the live site, which auto-deploys from `main`) still runs v1. Untracked on
+State as of 2026-10-30. v2 was built on the branch `feature/v2-single-user`, merged to **`main`** (fast-forward) and
+deployed: the live site runs v2 on Neon Postgres and `scripts/check_deploy.py` passes. Untracked on
 purpose, never to be committed: `AGENT_PROMPT.md`, `AGENT_PLAN_V2.md`, `coding-round-links.md`, `data/`.
 
 ## 1. What this is
@@ -19,7 +19,7 @@ invented, but only one of six profiles reached 10 a week. No human has rated any
 ## 2. Run it
 
 ```bash
-.venv/bin/uvicorn app.main:app --port 8000                     # needs JWT_SECRET, ENCRYPTION_KEY, Google sign-in
+DATABASE_URL="sqlite+aiosqlite:///./local-check.db" .venv/bin/uvicorn app.main:app --port 8000   # never the prod DB
 .venv/bin/python -m pytest -q                                   # about 45 s on SQLite
 .venv/bin/python -m evals.run_evals                             # offline gate
 .venv/bin/python scripts/live_run.py --profile evals/datasets/voice_samples/<person>.json --db <file.db> \
@@ -29,17 +29,17 @@ invented, but only one of six profiles reached 10 a week. No human has rated any
 
 ## 3. What you need to do
 
-1. **Render environment** (Settings → Environment): `DATABASE_URL` = the Neon pooled URL, `ENCRYPTION_KEY` = the Fernet
-   key from your local `.env` (keep it the same from now on), `GOOGLE_OAUTH_CLIENT_ID` and `_SECRET`, `CONTACT_EMAIL`
-   (the address for the privacy page; I did not invent one), optionally `ALLOWED_EMAILS`. Delete the v1 variables:
+1. **Render environment**: set on 2026-10-30. Keep the production `ENCRYPTION_KEY` unchanged from now on (if it
+   changes, saved API keys must be re-entered). `APP_BASE_URL` must be exactly `https://growthos-b0t9.onrender.com`,
+   with no path. If they are still there, delete the v1 variables:
    `GROQ_API_KEY`, `TAVILY_API_KEY`, `GOOGLE_API_KEY`, `HUNTER_API_KEY`, `SIGNUP_INVITE_CODE`, `ADMIN_EMAIL`,
    `ADMIN_PASSWORD`, `GOOGLE_REDIRECT_URI`, `GLOBAL_DAILY_BUDGET_USD`, `SELF_SERVE_MONTHLY_BUDGET_USD`.
 2. **Google Cloud console**: add the redirect URIs `https://growthos-b0t9.onrender.com/auth/google/callback` and
    `http://localhost:8000/auth/google/callback`; consent screen "In production" with scopes `openid email profile`,
    terms `https://growthos-b0t9.onrender.com/termsofservice`, privacy `https://growthos-b0t9.onrender.com/login/policy`.
-3. **Review and merge** the branch when you are happy (merging redeploys). Then run `scripts/check_deploy.py`.
-4. **Sign in once** on the live site with Google in the browser pane, so the live click-through can be done (I never
-   type passwords).
+3. Merged and deployed on 2026-10-30. Run `scripts/check_deploy.py` after every deploy.
+4. **Sign in once** on the live site with Google, so a full click-through can be done there (I never type
+   passwords).
 5. **Rate drafts** (30-45 minutes): `scripts/export_blind_review.py` builds a shuffled, unlabelled sheet; fill
    `ratings.csv`; `scripts/import_ratings.py` reports the result. Until then the honest headline is "no human ratings
    yet".
